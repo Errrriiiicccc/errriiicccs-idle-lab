@@ -1,0 +1,26 @@
+{
+  "name": "Menu nav + currency toggle lab",
+  "goal": "Runnable example: currency toggle + upgrade scroll maps.",
+  "created_by": "ai",
+  "requests": [
+    {
+      "id": "req-currency-before",
+      "kind": "screen_map_shot",
+      "label": "Currency balances",
+      "steps": [
+        {"action": "wait", "ms": 400},
+        {"action": "screenshot", "title": "currency-balances"}
+      ]
+    },
+    {
+      "id": "req-currency-click1",
+      "kind": "screen_map_shot",
+      "label": "After first currency click",
+      "steps": [
+        {"action": "click", "nx": 0.15, "ny": 0.09, "hold_ms": 50},
+        {"action": "wait", "ms": 600},
+        {"action": "screenshot", "title": "currency-after-click-1"}
+      ]
+    }
+  ]
+}

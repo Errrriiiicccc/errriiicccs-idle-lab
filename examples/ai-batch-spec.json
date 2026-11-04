@@ -1,0 +1,31 @@
+{
+  "name": "Workshop + Lab menus",
+  "goal": "Grab screenshots of workshop and lab so we can classify navigation and visible stats.",
+  "created_by": "ai",
+  "requests": [
+    {
+      "id": "req-workshop",
+      "kind": "screen_map_batch",
+      "label": "Workshop screens",
+      "detail": "Screen Map batch covering workshop tabs / upgrade rows."
+    },
+    {
+      "id": "req-lab",
+      "kind": "screenshot",
+      "label": "Lab main",
+      "detail": "One clear shot of the lab screen with research rows visible."
+    },
+    {
+      "id": "req-ocr-event",
+      "kind": "event_snapshot",
+      "label": "OCR A/B tick event",
+      "detail": "Snapshot automations/events/ocr_ab_tick.json into this batch for the review chat."
+    },
+    {
+      "id": "req-gaps",
+      "kind": "note",
+      "label": "Gaps",
+      "detail": "Human notes anything the AI still needs after this pass."
+    }
+  ]
+}

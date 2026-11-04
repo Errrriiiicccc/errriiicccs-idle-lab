@@ -1,0 +1,18 @@
+{
+  "name": "currency toggle",
+  "version": 1,
+  "timing_mode": "realtime",
+  "loop": false,
+  "loop_count": 1,
+  "notes": "Tap the top currency cluster to flip balances ↔ /min (playbook nx≈0.15, ny≈0.09). Gems/diamonds stay stock. Use before reading rate ROIs, then again to restore balances.",
+  "points": [
+    {
+      "nx": 0.15,
+      "ny": 0.09,
+      "delay_ms": 80,
+      "hold_ms": 50,
+      "button": "left",
+      "label": "currency-hud"
+    }
+  ]
+}
