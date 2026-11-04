@@ -7,8 +7,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from idle_lab.click_background import background_click
-from idle_lab.click_foreground import foreground_click
+from idle_lab.humanize import HumanizeProfile, human_click, jitter_delay_ms
 from idle_lab.models import ClickError, ClickPoint, Rect, normalized_to_screen
 from idle_lab import win32_api
 
@@ -37,6 +36,7 @@ class Player:
         countdown: int,
         hwnd: int,
         snapshot: Callable[[], tuple[str, int, Rect | None, str]],
+        humanize: HumanizeProfile | None = None,
     ) -> None:
         if self.is_active:
             return
@@ -61,6 +61,7 @@ class Player:
                 "countdown": countdown,
                 "hwnd": hwnd,
                 "snapshot": snapshot,
+                "humanize": humanize or HumanizeProfile.from_level("medium"),
             },
         )
         self._thread.start()
@@ -84,8 +85,9 @@ class Player:
             self._pause.clear()
         self.events.put(("paused", self.paused))
 
-    def _wait(self, duration_ms: int) -> bool:
-        remaining = max(0, duration_ms) / 1000
+    def _wait(self, duration_ms: int, humanize: HumanizeProfile) -> bool:
+        # Apply humanize variance, then honor pause/stop while sleeping.
+        remaining = jitter_delay_ms(duration_ms, humanize) / 1000
         while remaining > 0:
             if self._stop.is_set():
                 return False
@@ -118,10 +120,11 @@ class Player:
         countdown: int,
         hwnd: int,
         snapshot: Callable[[], tuple[str, int, Rect | None, str]],
+        humanize: HumanizeProfile,
     ) -> str:
         if countdown:
             self.events.put(("status", f"Starting in {countdown}s.", "warn"))
-            if not self._wait(countdown * 1000):
+            if not self._wait(countdown * 1000, HumanizeProfile.from_level("off")):
                 return "Stopped."
         if method == "foreground" and focus:
             if not win32_api.focus_window(hwnd):
@@ -132,7 +135,7 @@ class Player:
             loop_index += 1
             for index, point in enumerate(points):
                 self.events.put(("point", index, loop_index, len(points)))
-                if not self._wait(point.delay_ms):
+                if not self._wait(point.delay_ms, humanize):
                     return "Stopped."
                 status, current_hwnd, rect, _title = snapshot()
                 if status == "minimized":
@@ -140,10 +143,17 @@ class Player:
                 if status != "ok" or rect is None or not current_hwnd:
                     return "The anchored window is gone, so playback stopped."
                 x, y = normalized_to_screen(rect, point.nx, point.ny)
-                if method == "background":
-                    background_click(current_hwnd, x, y, point.hold_ms, self._stop)
-                else:
-                    foreground_click(x, y, point.hold_ms, restore_cursor, self._stop)
+                human_click(
+                    x,
+                    y,
+                    point.hold_ms,
+                    method=method,
+                    hwnd=current_hwnd,
+                    restore_cursor=restore_cursor,
+                    profile=humanize,
+                    rect=rect,
+                    stop=self._stop,
+                )
                 if self._stop.is_set():
                     return "Stopped."
             if repeats is not None and loop_index >= repeats:

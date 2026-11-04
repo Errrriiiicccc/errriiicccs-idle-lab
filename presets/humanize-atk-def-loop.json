@@ -1,0 +1,50 @@
+{
+  "name": "humanize atk def loop",
+  "version": 1,
+  "timing_mode": "realtime",
+  "loop": false,
+  "loop_count": 1,
+  "notes": "POC humanize showcase. Attack→Damage, Defense→Health, return to Attack. NO close tap — leave the panel open. Calibrated buy aim 0.38,0.735.",
+  "points": [
+    {
+      "nx": 0.20,
+      "ny": 0.955,
+      "delay_ms": 180,
+      "hold_ms": 70,
+      "button": "left",
+      "label": "attack-tab"
+    },
+    {
+      "nx": 0.38,
+      "ny": 0.735,
+      "delay_ms": 720,
+      "hold_ms": 75,
+      "button": "left",
+      "label": "damage"
+    },
+    {
+      "nx": 0.40,
+      "ny": 0.955,
+      "delay_ms": 680,
+      "hold_ms": 70,
+      "button": "left",
+      "label": "defense-tab"
+    },
+    {
+      "nx": 0.38,
+      "ny": 0.735,
+      "delay_ms": 720,
+      "hold_ms": 75,
+      "button": "left",
+      "label": "health"
+    },
+    {
+      "nx": 0.20,
+      "ny": 0.955,
+      "delay_ms": 700,
+      "hold_ms": 70,
+      "button": "left",
+      "label": "attack-tab-return"
+    }
+  ]
+}

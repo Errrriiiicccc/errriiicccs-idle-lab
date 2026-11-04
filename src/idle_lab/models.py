@@ -86,6 +86,7 @@ class Settings:
     focus_before_run: bool = True
     restore_cursor: bool = True
     countdown_seconds: int = 0
+    humanize_level: str = "medium"
 
 
 class ClickError(RuntimeError):

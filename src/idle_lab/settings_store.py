@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from idle_lab.humanize import HUMANIZE_LEVELS, normalize_level
 from idle_lab.models import Settings
 
 
@@ -23,12 +24,16 @@ def load_settings(path: Path) -> tuple[Settings, str | None]:
     countdown = data.get("countdown_seconds", 0)
     if countdown not in (0, 1, 3):
         countdown = 0
+    humanize = normalize_level(data.get("humanize_level", "medium"))
+    if humanize not in HUMANIZE_LEVELS:
+        humanize = "medium"
     return (
         Settings(
             click_method=method,
             focus_before_run=bool(data.get("focus_before_run", True)),
             restore_cursor=bool(data.get("restore_cursor", True)),
             countdown_seconds=int(countdown),
+            humanize_level=humanize,
         ),
         None,
     )
@@ -40,5 +45,6 @@ def save_settings(path: Path, settings: Settings) -> None:
         "focus_before_run": settings.focus_before_run,
         "restore_cursor": settings.restore_cursor,
         "countdown_seconds": settings.countdown_seconds,
+        "humanize_level": normalize_level(settings.humanize_level),
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

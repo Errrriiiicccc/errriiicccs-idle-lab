@@ -1,0 +1,29 @@
+{
+  "id": "humanize_upgrade_loop",
+  "title": "Humanize upgrade loop",
+  "version": 1,
+  "enabled": false,
+  "priority": 20,
+  "timing": {"type": "interval", "every_ms": 10000},
+  "description": "Every 10 seconds, run a humanized Attack→Damage→Defense→Health→Attack loop (preset 'humanize atk def loop'). Showcase for Medium humanize timing and aim jitter.",
+  "notes": "DISABLED by default — the old preset closed Attack and fights Endgame Tier 1 / Stat collecting. Showcase only; do not enable alongside keep-open gameplay packs.",
+  "actions": [
+    {
+      "type": "log",
+      "message": "humanize loop: Attack → Damage → Defense → Health → Attack",
+      "level": "run",
+      "description": "Announce the loop in the Automations console."
+    },
+    {
+      "type": "play_preset",
+      "preset": "humanize atk def loop",
+      "description": "Play the humanized Attack/Damage + Defense/Health preset once."
+    },
+    {
+      "type": "log",
+      "message": "humanize loop finished — next fire in ~10s",
+      "level": "ok",
+      "description": "Confirm the preset completed."
+    }
+  ]
+}
