@@ -37,6 +37,8 @@ MK_LBUTTON = 0x0001
 INPUT_MOUSE = 0
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
+MOUSEEVENTF_WHEEL = 0x0800
+WHEEL_DELTA = 120
 CWP_SKIPINVISIBLE = 0x0001
 CWP_SKIPDISABLED = 0x0002
 CWP_SKIPTRANSPARENT = 0x0004
@@ -371,3 +373,22 @@ def send_left_button(down: bool) -> None:
     sent = user32.SendInput(1, ctypes.byref(event), ctypes.sizeof(INPUT))
     if sent != 1:
         user32.mouse_event(flags, 0, 0, 0, 0)
+
+
+def send_mouse_wheel(notches: int) -> None:
+    """Scroll the wheel at the current cursor. Positive = away/up, negative = toward/down."""
+
+    notches = int(notches)
+    if notches == 0:
+        return
+    data = notches * WHEEL_DELTA
+    if ctypes.sizeof(INPUT) not in (28, 40):
+        user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, data & 0xFFFFFFFF, 0)
+        return
+    event = INPUT()
+    event.type = INPUT_MOUSE
+    event.union.mi.dwFlags = MOUSEEVENTF_WHEEL
+    event.union.mi.mouseData = data & 0xFFFFFFFF
+    sent = user32.SendInput(1, ctypes.byref(event), ctypes.sizeof(INPUT))
+    if sent != 1:
+        user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, data & 0xFFFFFFFF, 0)
