@@ -5,7 +5,7 @@
   "enabled": true,
   "priority": 10,
   "timing": {"type": "interval", "every_ms": 10000},
-  "notes": "Every 10s: screenshot → OCR signal → branch A or B. Lower priority than minute_clip.",
+  "notes": "Every 10s: screenshot click-logger SIGNAL band → if parsed signal equals A take PATH A (click UPPER), else PATH B (click LOWER).",
   "actions": [
     {"type": "screenshot", "prefix": "ab"},
     {"type": "ocr", "roi": "signal_roi", "variable": "signal", "parse_as": "signal"},
@@ -14,12 +14,14 @@
       "variable": "signal",
       "match_a": "A",
       "mode": "equals",
+      "explain_a": "click the UPPER circle on the click logger (preset 'ab choice a')",
+      "explain_b": "click the LOWER circle on the click logger (preset 'ab choice b')",
       "on_a": [
-        {"type": "log", "message": "branch A — playing ab choice a", "level": "ok"},
+        {"type": "log", "message": "PATH A action: one left-click on UPPER", "level": "ok"},
         {"type": "play_preset", "preset": "ab choice a"}
       ],
       "on_b": [
-        {"type": "log", "message": "branch B — playing ab choice b", "level": "ok"},
+        {"type": "log", "message": "PATH B action: one left-click on LOWER", "level": "ok"},
         {"type": "play_preset", "preset": "ab choice b"}
       ]
     }

@@ -147,10 +147,18 @@ class AutomationsPanel(ctk.CTkFrame):
             elif action.type == "record_clip":
                 summary += f": {action.raw.get('duration_s', 10)}s"
             elif action.type == "decide":
-                summary += f": var={action.raw.get('variable')} match_a={action.raw.get('match_a')}"
+                summary += (
+                    f": if {action.raw.get('variable')} {action.raw.get('mode')} "
+                    f"{action.raw.get('match_a')!r} → A else B"
+                )
             elif action.type == "log":
                 summary += f": {action.raw.get('message')}"
             lines.append(f"{index}. {summary}")
+            if action.type == "decide":
+                if action.raw.get("explain_a"):
+                    lines.append(f"   PATH A: {action.raw.get('explain_a')}")
+                if action.raw.get("explain_b"):
+                    lines.append(f"   PATH B: {action.raw.get('explain_b')}")
         if event.notes:
             lines.extend(["", f"Notes: {event.notes}"])
         self._set_details("\n".join(lines))

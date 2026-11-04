@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from idle_lab.automations.capture import CaptureError, crop_roi, grab_anchor, save_screenshot
 from idle_lab.automations.csv_log import append_run_row
-from idle_lab.automations.decide import decide_ab
+from idle_lab.automations.decide import decide_ab_with_reason
 from idle_lab.automations.ocr import OcrError, ocr_field
 from idle_lab.automations.scheduler import Scheduler
 from idle_lab.automations.schema import Event, Roi
@@ -206,13 +206,28 @@ class AutomationRuntime:
     def _action_decide(self, raw: dict[str, Any]) -> list[dict[str, Any]] | None:
         variable = str(raw.get("variable") or "signal")
         value = self.state.variables.get(variable)
+        raw_key = f"{variable}_raw"
+        raw_obs = self.state.variables.get(raw_key)
         match_a = str(raw.get("match_a") or "A")
         mode = str(raw.get("mode") or "contains")
-        branch = decide_ab(value, match_a=match_a, mode=mode)
+        explain_a = str(raw.get("explain_a") or "run on_a actions")
+        explain_b = str(raw.get("explain_b") or "run on_b actions")
+        branch, reason = decide_ab_with_reason(value, match_a=match_a, mode=mode)
         self.state.variables["branch"] = branch
-        self.log(f"decide {variable}={value!r} → branch {branch}", "ok")
+        self.log("── A/B decision ──", "info")
+        self.log(
+            f"saw OCR raw={raw_obs!r} → parsed {variable}={value!r}",
+            "info",
+        )
+        self.log(
+            f"rule: if {variable} {mode} {match_a!r} → PATH A, else → PATH B",
+            "info",
+        )
+        self.log(reason, "ok")
         if branch == "A":
+            self.log(f"PATH A does: {explain_a}", "run")
             return list(raw.get("on_a") or [])
+        self.log(f"PATH B does: {explain_b}", "run")
         return list(raw.get("on_b") or [])
 
     def _action_play_preset(self, raw: dict[str, Any]) -> None:
@@ -223,8 +238,9 @@ class AutomationRuntime:
         if self.play_preset is None:
             self.log(f"play_preset stub: would run {name!r}", "warn")
             return
-        self.log(f"playing preset {name!r}", "run")
+        self.log(f"action: play preset {name!r}", "run")
         self.play_preset(name)
+        self.log(f"finished preset {name!r}", "ok")
 
     def _action_record_clip(self, raw: dict[str, Any]) -> None:
         rect = self.get_anchor_rect()

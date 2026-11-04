@@ -59,6 +59,11 @@ Schema: [automation-schema.md](automation-schema.md).
 2. Countdown **0**, method **Foreground**.
 3. Automations → **Reload** → **Start**.
 4. Watch console for 10s A/B ticks; toggle SIGNAL A/B on the logger.
+
+   **What A/B means (Demo POC):** OCR reads the yellow **SIGNAL** band on the click logger.
+   - If parsed value **equals** `A` → **PATH A** → one click on the **UPPER** circle (`ab choice a`).
+   - Otherwise → **PATH B** → one click on the **LOWER** circle (`ab choice b`).
+   Console prints the OCR raw/parsed values, the rule, why A/B was chosen, and what that path does.
 5. Wait for the 60s clip (or temporarily edit `minute_clip.json` `every_ms` to `20000` for a faster smoke, then Reload).
 6. Inspect `runs/screenshots/`, `runs/clips/run_1_wave_*.mp4`, `runs/run_log.csv`.
 

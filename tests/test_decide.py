@@ -1,6 +1,6 @@
 import unittest
 
-from idle_lab.automations.decide import decide_ab, decide_branch
+from idle_lab.automations.decide import decide_ab, decide_ab_with_reason, decide_branch
 
 
 class DecideTests(unittest.TestCase):
@@ -13,6 +13,15 @@ class DecideTests(unittest.TestCase):
     def test_equals(self) -> None:
         self.assertEqual(decide_ab("A", match_a="A", mode="equals"), "A")
         self.assertEqual(decide_ab("AA", match_a="A", mode="equals"), "B")
+
+    def test_reason_explains_choice(self) -> None:
+        branch, reason = decide_ab_with_reason("A", match_a="A", mode="equals")
+        self.assertEqual(branch, "A")
+        self.assertIn("PATH A", reason)
+        branch_b, reason_b = decide_ab_with_reason("B", match_a="A", mode="equals")
+        self.assertEqual(branch_b, "B")
+        self.assertIn("PATH B", reason_b)
+        self.assertIn("match failed", reason_b)
 
     def test_multi_branch(self) -> None:
         self.assertEqual(

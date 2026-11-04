@@ -48,6 +48,35 @@ def decide_ab(
     return "A" if hit else "B"
 
 
+def decide_ab_with_reason(
+    value: Any,
+    *,
+    match_a: str,
+    mode: str = "contains",
+    case_insensitive: bool = True,
+) -> tuple[str, str]:
+    """Return ``(branch, human_reason)`` for console / UI feedback."""
+
+    branch = decide_ab(
+        value,
+        match_a=match_a,
+        mode=mode,
+        case_insensitive=case_insensitive,
+    )
+    shown = normalize_text(value)
+    if shown == "":
+        shown = "(empty)"
+    needle = normalize_text(match_a) or "(empty)"
+    if branch == "A":
+        reason = f"chose PATH A because {mode} match succeeded: value {shown!r} vs match_a {needle!r}"
+    else:
+        reason = (
+            f"chose PATH B because {mode} match failed: value {shown!r} is not {mode} {needle!r} "
+            f"(anything that is not PATH A becomes B)"
+        )
+    return branch, reason
+
+
 def decide_branch(
     value: Any,
     branches: dict[str, Any],
