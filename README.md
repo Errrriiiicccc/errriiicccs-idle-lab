@@ -1,6 +1,6 @@
 # Errriiiccc's Idle Lab
 
-Personal Windows toolkit forked from the Tower Autoclicker: keep window-anchored click presets, and add a file-driven **Automations** tab for capture, OCR, A/B decisions, priorities, short clips, and CSV logging.
+Personal Windows toolkit forked from the Tower Autoclicker: keep window-anchored click presets, add a file-driven **Automations** tab (OCR, A/B, clips, CSV), and a **Screen Map** tab for titled screenshot batches.
 
 It sends ordinary mouse input and reads pixels from the screen. It does not inject into games or hide itself. Check the game's rules before leaving a run going.
 
@@ -21,6 +21,7 @@ py -3 -m venv .venv
 
 - **Clicker** — same workflows as the autoclicker: anchor, record presets, playback, hotkeys, click methods, click logger.
 - **Automations** — load events/collections from `automations/`, run a priority scheduler, watch the queue and console.
+- **Screen Map** — start a batch, Space → title → PNG of the anchored window, Esc ends; writes `screen-maps/<batch>/` + `manifest.json`.
 
 ## Hotkeys (Clicker)
 
@@ -38,6 +39,7 @@ py -3 -m venv .venv
 5. Click the SIGNAL band in the click logger to toggle A ↔ B; click WAVE to bump the number.
 
 Details: [docs/USAGE.md](docs/USAGE.md), [docs/SMOKE-TESTS.md](docs/SMOKE-TESTS.md), [docs/automation-schema.md](docs/automation-schema.md).  
+Screen Map: [docs/SCREEN-MAP-USAGE.md](docs/SCREEN-MAP-USAGE.md), [docs/SCREEN-MAP-SMOKE-TESTS.md](docs/SCREEN-MAP-SMOKE-TESTS.md). After a batch, paste [docs/SCREEN-MAP-REVIEW-PROMPT.md](docs/SCREEN-MAP-REVIEW-PROMPT.md) into a review chat.  
 Next chat: [docs/CONTINUATION.md](docs/CONTINUATION.md).
 
 ## Tests

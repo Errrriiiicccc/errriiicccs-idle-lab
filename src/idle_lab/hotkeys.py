@@ -53,6 +53,8 @@ class HookFlags:
         self.anchor_armed = False
         self.recording = False
         self.playback = False
+        self.screenshot_mode = False
+        self.title_dialog_open = False
         self.our_pid = os.getpid()
 
 
@@ -147,25 +149,45 @@ class InputHooks:
         is_up = bool(data.flags & LLKHF_UP)
         vk = int(data.vkCode)
         swallow = False
-        if vk == VK_SPACE and self.state.recording:
-            swallow = True
-            if is_up:
-                self._space_down = False
-                self.events.put(("space_up",))
-            elif not self._space_down:
-                self._space_down = True
-                x, y = win32_api.cursor_pos()
-                self.events.put(("space_down", x, y))
+        if vk == VK_SPACE:
+            # Pass Space through while a title dialog is open so titles can include spaces.
+            if self.state.title_dialog_open:
+                pass
+            elif self.state.recording:
+                swallow = True
+                if is_up:
+                    self._space_down = False
+                    self.events.put(("space_up",))
+                elif not self._space_down:
+                    self._space_down = True
+                    x, y = win32_api.cursor_pos()
+                    self.events.put(("space_down", x, y))
+            elif self.state.screenshot_mode:
+                swallow = True
+                if is_up:
+                    self._space_down = False
+                elif not self._space_down:
+                    self._space_down = True
+                    self.events.put(("screen_map_space",))
         elif vk == VK_ESCAPE:
-            armed = self.state.anchor_armed or self.state.recording or self.state.playback
-            if is_up:
-                self._esc_down = False
-            elif armed and not self._esc_down:
-                self._esc_down = True
-                swallow = True
-                self.events.put(("escape",))
-            elif armed:
-                swallow = True
+            # Pass Esc through while a title dialog is open so the dialog can cancel first.
+            if self.state.title_dialog_open:
+                pass
+            else:
+                armed = (
+                    self.state.anchor_armed
+                    or self.state.recording
+                    or self.state.playback
+                    or self.state.screenshot_mode
+                )
+                if is_up:
+                    self._esc_down = False
+                elif armed and not self._esc_down:
+                    self._esc_down = True
+                    swallow = True
+                    self.events.put(("escape",))
+                elif armed:
+                    swallow = True
         elif vk == VK_F6:
             swallow = True
             if is_up:

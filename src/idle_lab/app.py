@@ -13,6 +13,7 @@ from idle_lab.anchor import Anchor
 from idle_lab.automations.mouse_sync import play_points_sync
 from idle_lab.automations.runtime import AutomationRuntime
 from idle_lab.automations.store import AutomationStore
+from idle_lab.automations.capture import CaptureError, grab_anchor
 from idle_lab.automations.ui import AutomationsPanel
 from idle_lab.click_logger import ClickLogger
 from idle_lab.hotkeys import InputHooks
@@ -21,6 +22,8 @@ from idle_lab.overlay import Overlay
 from idle_lab.player import Player
 from idle_lab.presets import PresetError, PresetStore, load_preset, preset_to_dict, project_root, slug
 from idle_lab.recorder import Recorder
+from idle_lab.screen_map.batch import ScreenMapController, ScreenMapError, add_shot, create_batch
+from idle_lab.screen_map.ui import ScreenMapPanel
 from idle_lab.settings_store import load_settings, save_settings
 from idle_lab import win32_api
 
@@ -58,6 +61,9 @@ class App(ctk.CTk):
             play_preset=self._automation_play_preset,
         )
         self.auto_panel: AutomationsPanel | None = None
+        self.screen_map_panel: ScreenMapPanel | None = None
+        self.screen_map = ScreenMapController()
+        self.screen_maps_root = root / "screen-maps"
         self.anchor_target = Anchor()
         self.recorder = Recorder()
         self.player = Player()
@@ -69,6 +75,7 @@ class App(ctk.CTk):
         self._anchor_waiting = False
         self._logger: ClickLogger | None = None
         self._active_index: int | None = None
+        self._screen_map_title_dialog = None
         self._begin_load()
         self._build()
         self._end_load()
@@ -106,6 +113,7 @@ class App(ctk.CTk):
         self.tabs.pack(fill="both", expand=True, padx=8, pady=(8, 0))
         clicker = self.tabs.add("Clicker")
         automations = self.tabs.add("Automations")
+        screen_map = self.tabs.add("Screen Map")
 
         self.body = ctk.CTkScrollableFrame(clicker, fg_color="transparent")
         self.body.pack(fill="both", expand=True, padx=4, pady=(4, 0))
@@ -119,6 +127,14 @@ class App(ctk.CTk):
             on_stop=self._stop_automations,
         )
         self.auto_panel.pack(fill="both", expand=True)
+
+        self.screen_map_panel = ScreenMapPanel(
+            screen_map,
+            on_start_batch=self._start_screen_map_batch,
+            on_end_batch=self._end_screen_map_batch,
+            on_open_folder=self._open_screen_map_folder,
+        )
+        self.screen_map_panel.pack(fill="both", expand=True)
 
     def _build_clicker_body(self) -> None:
         header = ctk.CTkFrame(self.body, fg_color="transparent")
@@ -860,6 +876,8 @@ class App(ctk.CTk):
                     if point is not None:
                         self._rebuild_points()
                         self._status(f"Point {len(self.recorder.points)} added.", "warn")
+                elif kind == "screen_map_space":
+                    self._screen_map_space()
                 elif kind == "escape":
                     if self._anchor_waiting or self.hooks.state.anchor_armed:
                         self._cancel_anchor_mode()
@@ -867,10 +885,12 @@ class App(ctk.CTk):
                         self._finish_recording()
                     elif self.player.is_active:
                         self._stop_playback()
+                    elif self.screen_map.active:
+                        self._end_screen_map_batch()
                 elif kind == "f6":
                     if self.player.is_active:
                         self._stop_playback()
-                    elif not self.recorder.active:
+                    elif not self.recorder.active and not self.screen_map.active:
                         self._start_playback()
                 elif kind == "f7" and self.player.is_active:
                     self._toggle_pause()
@@ -918,6 +938,8 @@ class App(ctk.CTk):
         self.hooks.state.anchor_armed = False
         self.hooks.state.recording = False
         self.hooks.state.playback = False
+        self.hooks.state.screenshot_mode = False
+        self.hooks.state.title_dialog_open = False
         try:
             self.auto_runtime.stop()
         except Exception:
@@ -929,6 +951,174 @@ class App(ctk.CTk):
         except Exception:
             pass
         self.destroy()
+
+    def _refresh_screen_map_panel(self) -> None:
+        if self.screen_map_panel is None:
+            return
+        session = self.screen_map.session
+        if session is None:
+            self.screen_map_panel.set_idle()
+        else:
+            self.screen_map_panel.set_active(session.folder, session.titles)
+
+    def _start_screen_map_batch(self) -> None:
+        if self.screen_map.active:
+            self._status("A Screen Map batch is already running.", "warn")
+            return
+        if self.recorder.active or self.player.is_active:
+            self._status("Finish recording/playback before starting a Screen Map batch.", "warn")
+            return
+        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+        if status != "ok":
+            self._status("Anchor a window before starting a Screen Map batch.", "error")
+            return
+        title = self._ask_name("Screen Map batch", "tower-screens")
+        if not title:
+            return
+        try:
+            self.screen_maps_root.mkdir(parents=True, exist_ok=True)
+            session = create_batch(self.screen_maps_root, title)
+            self.screen_map.start(session)
+        except ScreenMapError as exc:
+            self._status(str(exc), "error")
+            return
+        except OSError as exc:
+            self._status(f"Could not create batch folder: {exc}", "error")
+            return
+        self.hooks.state.screenshot_mode = True
+        self.hooks.state.title_dialog_open = False
+        self._refresh_screen_map_panel()
+        self._status(f"Screenshot mode ON. Space titles a shot. Batch: {session.folder}", "run")
+
+    def _end_screen_map_batch(self) -> None:
+        if self._screen_map_title_dialog is not None:
+            try:
+                if self._screen_map_title_dialog.winfo_exists():
+                    self._screen_map_title_dialog.destroy()
+            except Exception:
+                pass
+            self._screen_map_title_dialog = None
+        self.hooks.state.title_dialog_open = False
+        session = self.screen_map.end()
+        self.hooks.state.screenshot_mode = False
+        self._refresh_screen_map_panel()
+        if session is None:
+            self._status("Screenshot mode OFF.", "warn")
+            return
+        self._status(
+            f"Batch finished: {session.shot_count} shot(s) in {session.folder}",
+            "ok",
+        )
+
+    def _open_screen_map_folder(self) -> None:
+        session = self.screen_map.session
+        folder = session.folder if session else self.screen_maps_root
+        if not folder.exists():
+            self._status("No batch folder to open yet.", "warn")
+            return
+        try:
+            os.startfile(folder)  # type: ignore[attr-defined]
+        except OSError as exc:
+            self._status(f"Could not open folder: {exc}", "error")
+
+    def _screen_map_space(self) -> None:
+        if not self.screen_map.active or self.screen_map.dialog_open:
+            return
+        if self.recorder.active or self.player.is_active:
+            self._status("Cannot capture while recording or playing back.", "warn")
+            return
+        try:
+            self.screen_map.begin_title_dialog()
+        except ScreenMapError as exc:
+            self._status(str(exc), "error")
+            return
+        self.hooks.state.title_dialog_open = True
+        title = self._ask_screen_map_title()
+        self.hooks.state.title_dialog_open = False
+        if not self.screen_map.active:
+            # Batch ended while the dialog was open (End batch / close).
+            return
+        if title is None:
+            self.screen_map.cancel_title_dialog()
+            self._status("Shot cancelled.", "warn")
+            return
+        try:
+            self.screen_map.finish_title_dialog()
+        except ScreenMapError:
+            self.screen_map.cancel_title_dialog()
+            return
+        status, _hwnd, rect, window_title = self.anchor_target.snapshot()
+        if status == "missing":
+            self._status("No window anchored — capture refused.", "error")
+            return
+        if status == "closed":
+            self._status("Anchored window is gone — capture refused.", "error")
+            return
+        if status == "minimized":
+            self._status("Anchored window is minimized — capture refused.", "error")
+            return
+        if status != "ok" or rect is None:
+            self._status(f"Anchor not ready ({status}) — capture refused.", "error")
+            return
+        try:
+            image = grab_anchor(rect)
+        except CaptureError as exc:
+            self._status(f"Capture failed: {exc}", "error")
+            return
+        session = self.screen_map.session
+        if session is None:
+            self._status("Batch session missing.", "error")
+            return
+        anchor_meta = {
+            "window_title": window_title,
+            "width": rect.width,
+            "height": rect.height,
+            "left": rect.left,
+            "top": rect.top,
+        }
+        try:
+            shot = add_shot(session, title=title, image=image, anchor=anchor_meta)
+        except ScreenMapError as exc:
+            self._status(str(exc), "error")
+            return
+        except OSError as exc:
+            self._status(f"Could not save shot: {exc}", "error")
+            return
+        self._refresh_screen_map_panel()
+        self._status(f"Saved {shot.filename}", "ok")
+
+    def _ask_screen_map_title(self) -> str | None:
+        """Title dialog for Space captures. Esc cancels; Space types normally."""
+
+        result: dict[str, str | None] = {"value": None}
+        dialog = self._modal("Screenshot title", 420, 160)
+        self._screen_map_title_dialog = dialog
+        ctk.CTkLabel(dialog, text="Title for this screen").pack(anchor="w", padx=16, pady=(16, 6))
+        entry = ctk.CTkEntry(dialog, width=380)
+        entry.pack(padx=16)
+
+        def ok(_event=None) -> None:
+            text = entry.get().strip()
+            if not text:
+                return
+            result["value"] = text
+            dialog.destroy()
+
+        def cancel(_event=None) -> None:
+            result["value"] = None
+            dialog.destroy()
+
+        buttons = ctk.CTkFrame(dialog, fg_color="transparent")
+        buttons.pack(fill="x", padx=16, pady=16)
+        ctk.CTkButton(buttons, text="Cancel", width=90, command=cancel).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(buttons, text="Capture", width=100, command=ok).pack(side="right")
+        entry.bind("<Return>", ok)
+        dialog.bind("<Escape>", cancel)
+        entry.focus_set()
+        dialog.after(50, entry.focus_set)
+        self.wait_window(dialog)
+        self._screen_map_title_dialog = None
+        return result["value"]
 
 
     def _automation_anchor_rect(self):

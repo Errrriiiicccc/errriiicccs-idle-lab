@@ -13,9 +13,10 @@ errriiicccs-idle-lab/
     events/
     collections/
   runs/                    # gitignored output
+  screen-maps/             # gitignored Screen Map batches
   src/idle_lab/
     __main__.py
-    app.py                 # Clicker | Automations tabs
+    app.py                 # Clicker | Automations | Screen Map tabs
     overlay.py
     anchor.py
     recorder.py
@@ -28,6 +29,11 @@ errriiicccs-idle-lab/
     settings_store.py
     models.py
     win32_api.py
+    screen_map/
+      names.py
+      manifest.py
+      batch.py
+      ui.py
     automations/
       schema.py
       store.py
