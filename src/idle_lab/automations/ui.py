@@ -9,6 +9,7 @@ import customtkinter as ctk
 from idle_lab.automations.describe import format_collection, format_event, list_caption
 from idle_lab.automations.schema import Collection, Event
 from idle_lab.automations.store import AutomationStore
+from idle_lab.scroll_memory import ScrollMemory
 
 
 class AutomationsPanel(ctk.CTkFrame):
@@ -22,6 +23,7 @@ class AutomationsPanel(ctk.CTkFrame):
         on_stop: Callable[[], None],
         on_walkthrough: Callable[[Collection], None] | None = None,
         on_walkthrough_stop: Callable[[], None] | None = None,
+        scroll: ScrollMemory | None = None,
     ) -> None:
         super().__init__(master, fg_color="transparent")
         self.store = store
@@ -30,6 +32,7 @@ class AutomationsPanel(ctk.CTkFrame):
         self.on_stop = on_stop
         self.on_walkthrough = on_walkthrough
         self.on_walkthrough_stop = on_walkthrough_stop
+        self.scroll = scroll or ScrollMemory()
         self._mode = ctk.StringVar(value="Events")
         self._detail_mode = ctk.StringVar(value="Basic")
         self._selected_event: Event | None = None
@@ -86,6 +89,7 @@ class AutomationsPanel(ctk.CTkFrame):
         ).pack(side="left")
         self.list_box = ctk.CTkScrollableFrame(col1, height=280)
         self.list_box.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.scroll.register("automations.list", self.list_box)
 
         col2 = ctk.CTkFrame(columns)
         col2.grid(row=0, column=1, sticky="nsew", padx=4)
@@ -119,6 +123,7 @@ class AutomationsPanel(ctk.CTkFrame):
         ctk.CTkLabel(col3, text="Queue", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=8, pady=(8, 2))
         self.queue_box = ctk.CTkScrollableFrame(col3, height=280)
         self.queue_box.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.scroll.register("automations.queue", self.queue_box)
 
         console_frame = ctk.CTkFrame(self)
         console_frame.pack(fill="both", expand=False, padx=8, pady=(4, 8))
@@ -133,57 +138,62 @@ class AutomationsPanel(ctk.CTkFrame):
         self.set_queue([])
 
     def refresh_list(self) -> None:
-        for child in self.list_box.winfo_children():
-            child.destroy()
-        if self._mode.get() == "Events":
-            items = sorted(self.store.events.values(), key=lambda event: event.title.lower())
-            if not items:
-                ctk.CTkLabel(self.list_box, text="No events loaded.", text_color="#9AA4B2").pack(anchor="w", padx=4)
-            for event in items:
-                row = ctk.CTkFrame(self.list_box, fg_color="transparent")
-                row.pack(fill="x", pady=3)
-                btn = ctk.CTkButton(
-                    row,
-                    text=f"{event.title}  · p{event.priority}",
-                    anchor="w",
-                    fg_color="transparent",
-                    command=lambda e=event: self._select_event(e),
-                )
-                btn.pack(fill="x")
-                ctk.CTkLabel(
-                    row,
-                    text=list_caption(event),
-                    anchor="w",
-                    justify="left",
-                    text_color="#9AA4B2",
-                    wraplength=220,
-                    font=ctk.CTkFont(size=11),
-                ).pack(fill="x", padx=8)
-        else:
-            items = sorted(self.store.collections.values(), key=lambda collection: collection.title.lower())
-            if not items:
-                ctk.CTkLabel(self.list_box, text="No collections loaded.", text_color="#9AA4B2").pack(anchor="w", padx=4)
-            for collection in items:
-                row = ctk.CTkFrame(self.list_box, fg_color="transparent")
-                row.pack(fill="x", pady=3)
-                branch_hint = f"  · {len(collection.branches)} branches" if collection.branches else ""
-                btn = ctk.CTkButton(
-                    row,
-                    text=f"{collection.title}{branch_hint}",
-                    anchor="w",
-                    fg_color="transparent",
-                    command=lambda c=collection: self._select_collection(c),
-                )
-                btn.pack(fill="x")
-                ctk.CTkLabel(
-                    row,
-                    text=list_caption(collection),
-                    anchor="w",
-                    justify="left",
-                    text_color="#9AA4B2",
-                    wraplength=220,
-                    font=ctk.CTkFont(size=11),
-                ).pack(fill="x", padx=8)
+        def rebuild() -> None:
+            for child in self.list_box.winfo_children():
+                child.destroy()
+            if self._mode.get() == "Events":
+                items = sorted(self.store.events.values(), key=lambda event: event.title.lower())
+                if not items:
+                    ctk.CTkLabel(self.list_box, text="No events loaded.", text_color="#9AA4B2").pack(anchor="w", padx=4)
+                for event in items:
+                    row = ctk.CTkFrame(self.list_box, fg_color="transparent")
+                    row.pack(fill="x", pady=3)
+                    btn = ctk.CTkButton(
+                        row,
+                        text=f"{event.title}  · p{event.priority}",
+                        anchor="w",
+                        fg_color="transparent",
+                        command=lambda e=event: self._select_event(e),
+                    )
+                    btn.pack(fill="x")
+                    ctk.CTkLabel(
+                        row,
+                        text=list_caption(event),
+                        anchor="w",
+                        justify="left",
+                        text_color="#9AA4B2",
+                        wraplength=220,
+                        font=ctk.CTkFont(size=11),
+                    ).pack(fill="x", padx=8)
+            else:
+                items = sorted(self.store.collections.values(), key=lambda collection: collection.title.lower())
+                if not items:
+                    ctk.CTkLabel(self.list_box, text="No collections loaded.", text_color="#9AA4B2").pack(
+                        anchor="w", padx=4
+                    )
+                for collection in items:
+                    row = ctk.CTkFrame(self.list_box, fg_color="transparent")
+                    row.pack(fill="x", pady=3)
+                    branch_hint = f"  · {len(collection.branches)} branches" if collection.branches else ""
+                    btn = ctk.CTkButton(
+                        row,
+                        text=f"{collection.title}{branch_hint}",
+                        anchor="w",
+                        fg_color="transparent",
+                        command=lambda c=collection: self._select_collection(c),
+                    )
+                    btn.pack(fill="x")
+                    ctk.CTkLabel(
+                        row,
+                        text=list_caption(collection),
+                        anchor="w",
+                        justify="left",
+                        text_color="#9AA4B2",
+                        wraplength=220,
+                        font=ctk.CTkFont(size=11),
+                    ).pack(fill="x", padx=8)
+
+        self.scroll.around_rebuild("automations.list", rebuild)
 
     def _select_event(self, event: Event) -> None:
         self._selected_event = event
@@ -228,24 +238,27 @@ class AutomationsPanel(ctk.CTkFrame):
         self.details.configure(state="disabled")
 
     def set_queue(self, items: list[dict]) -> None:
-        for child in self.queue_box.winfo_children():
-            child.destroy()
-        if not items:
-            ctk.CTkLabel(self.queue_box, text="Idle.", text_color="#9AA4B2").pack(anchor="w", padx=4)
-            return
-        for item in items:
-            status = item.get("status", "")
-            marker = {"running": "▶", "deferred": "○", "waiting": "·", "done": "✔"}.get(status, "·")
-            title = item.get("title") or item.get("event_id") or "?"
-            detail = item.get("detail") or status
-            color = "#8EE0C2" if status == "running" else ("#E7C36A" if status == "deferred" else "#C5D0DC")
-            ctk.CTkLabel(
-                self.queue_box,
-                text=f"{marker} {title}\n   {detail}",
-                anchor="w",
-                justify="left",
-                text_color=color,
-            ).pack(fill="x", padx=4, pady=3)
+        def rebuild() -> None:
+            for child in self.queue_box.winfo_children():
+                child.destroy()
+            if not items:
+                ctk.CTkLabel(self.queue_box, text="Idle.", text_color="#9AA4B2").pack(anchor="w", padx=4)
+                return
+            for item in items:
+                status = item.get("status", "")
+                marker = {"running": "▶", "deferred": "○", "waiting": "·", "done": "✔"}.get(status, "·")
+                title = item.get("title") or item.get("event_id") or "?"
+                detail = item.get("detail") or status
+                color = "#8EE0C2" if status == "running" else ("#E7C36A" if status == "deferred" else "#C5D0DC")
+                ctk.CTkLabel(
+                    self.queue_box,
+                    text=f"{marker} {title}\n   {detail}",
+                    anchor="w",
+                    justify="left",
+                    text_color=color,
+                ).pack(fill="x", padx=4, pady=3)
+
+        self.scroll.around_rebuild("automations.queue", rebuild)
 
     def append_console(self, message: str, level: str = "info") -> None:
         self.console.configure(state="normal")
