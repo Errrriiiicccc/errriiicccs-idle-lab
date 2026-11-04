@@ -101,6 +101,8 @@ def record_clip(
             raise VideoError("no frames captured")
 
         pattern = str(tmp_path / "frame_%05d.png")
+        # libx264 requires even width/height; window rects are often odd.
+        # Scale/crop to nearest even size so encode does not leave a 0-byte mp4.
         cmd = [
             ffmpeg,
             "-y",
@@ -111,6 +113,8 @@ def record_clip(
             str(fps),
             "-i",
             pattern,
+            "-vf",
+            "scale=trunc(iw/2)*2:trunc(ih/2)*2",
             "-c:v",
             "libx264",
             "-pix_fmt",
@@ -120,11 +124,22 @@ def record_clip(
         try:
             completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
         except OSError as exc:
+            _remove_empty(dest)
             raise VideoError(f"ffmpeg failed to start: {exc}") from exc
         if completed.returncode != 0:
+            _remove_empty(dest)
             detail = (completed.stderr or completed.stdout or "").strip()
             raise VideoError(detail or "ffmpeg encoding failed")
 
-    if not dest.exists():
-        raise VideoError("ffmpeg did not produce an output file")
+    if not dest.exists() or dest.stat().st_size <= 0:
+        _remove_empty(dest)
+        raise VideoError("ffmpeg did not produce a usable output file")
     return dest
+
+
+def _remove_empty(path: Path) -> None:
+    try:
+        if path.exists() and path.stat().st_size <= 0:
+            path.unlink()
+    except OSError:
+        pass
