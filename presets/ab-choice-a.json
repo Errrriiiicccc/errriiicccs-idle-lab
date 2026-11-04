@@ -4,8 +4,15 @@
   "timing_mode": "instantaneous",
   "loop": false,
   "loop_count": 1,
-  "notes": "POC Automations branch A — clicks the upper click-logger target once.",
+  "notes": "POC Automations branch A \u2014 clicks the upper click-logger target once.",
   "points": [
-    {"nx": 0.25, "ny": 0.25, "delay_ms": 50, "hold_ms": 50, "button": "left", "label": "branch-a"}
+    {
+      "nx": 0.25675675675675674,
+      "ny": 0.249269717624148,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": "branch-a"
+    }
   ]
 }
