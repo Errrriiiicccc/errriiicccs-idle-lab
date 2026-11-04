@@ -36,18 +36,23 @@ Schedulable unit.
 | `priority` | int | Higher wins; recording demo uses 100 vs A/B 10 |
 | `timing` | object | POC: `{"type":"interval","every_ms":N}` |
 | `actions` | array | Non-empty ordered steps |
-| `notes` | string | Optional |
+| `description` | string | Optional plain-language summary for Basic UI |
+| `notes` | string | Optional author notes (shown in Detailed) |
 
 ### Action types
 
+Each action may include optional `description` (plain sentence for Basic UI).
+
 - `screenshot` — `{ "prefix": "ab" }`
 - `ocr` — `{ "roi": "signal_roi", "variable": "signal", "parse_as": "signal"|"wave"|"raw" }`
-- `decide` — `{ "variable", "match_a", "mode": "equals"|"contains"|"startswith", "on_a": [...], "on_b": [...] }`
+- `decide` — `{ "variable", "match_a", "mode", "explain_a", "explain_b", "on_a": [...], "on_b": [...] }`
 - `play_preset` / `mouse` — `{ "preset": "ab choice a" }` (preset `name` from `presets/`)
 - `record_clip` — `{ "duration_s": 10 }` → `runs/clips/run_{run}_wave_{wave}.mp4`
 - `csv_append` — `{ "path": "run_log.csv" }` under `runs/`
 - `log` — `{ "message": "…{wave_number}…", "level": "info" }`
 - `set_variable` — `{ "name": "phase", "value": "begin" }`
+
+UI **Basic** mode shows plain descriptions + branch contention. **Detailed** mode adds ids, output paths, and nested path steps.
 
 ## Collection
 
@@ -59,7 +64,8 @@ Schedulable unit.
 | `branches` | object | value → child id |
 | `loop` | bool | |
 | `stop_when` | string\|null | Stub for later (e.g. `game_over`) |
-| `notes` | string | |
+| `description` | string | Optional plain-language summary for Basic UI |
+| `notes` | string | Optional |
 
 `resolve_branch(collection, variables)` maps `variables[branch_variable]` onto `branches` (case-insensitive). Full Main Gameplay Loop execution is out of POC scope; the UI and schema express it.
 

@@ -86,6 +86,7 @@ class Event:
     actions: list[Action] = field(default_factory=list)
     enabled: bool = True
     version: int = 1
+    description: str = ""
     notes: str = ""
     path: str | None = None
 
@@ -100,6 +101,7 @@ class Collection:
     loop: bool = False
     stop_when: str | None = None
     version: int = 1
+    description: str = ""
     notes: str = ""
     path: str | None = None
 
@@ -163,6 +165,9 @@ def event_from_dict(data: Any, path: str | None = None) -> Event:
     if not isinstance(raw_actions, list) or not raw_actions:
         raise AutomationSchemaError("actions must be a non-empty list")
     actions = [action_from_dict(item) for item in raw_actions]
+    description = data.get("description", "")
+    if not isinstance(description, str):
+        raise AutomationSchemaError("description must be text")
     notes = data.get("notes", "")
     if not isinstance(notes, str):
         raise AutomationSchemaError("notes must be text")
@@ -174,6 +179,7 @@ def event_from_dict(data: Any, path: str | None = None) -> Event:
         actions=actions,
         enabled=enabled,
         version=1,
+        description=description,
         notes=notes,
         path=path,
     )
@@ -207,6 +213,9 @@ def collection_from_dict(data: Any, path: str | None = None) -> Collection:
     stop_when = data.get("stop_when")
     if stop_when is not None and (not isinstance(stop_when, str) or not stop_when.strip()):
         raise AutomationSchemaError("stop_when must be text or null")
+    description = data.get("description", "")
+    if not isinstance(description, str):
+        raise AutomationSchemaError("description must be text")
     notes = data.get("notes", "")
     if not isinstance(notes, str):
         raise AutomationSchemaError("notes must be text")
@@ -219,6 +228,7 @@ def collection_from_dict(data: Any, path: str | None = None) -> Collection:
         loop=loop,
         stop_when=stop_when.strip() if isinstance(stop_when, str) else None,
         version=1,
+        description=description,
         notes=notes,
         path=path,
     )

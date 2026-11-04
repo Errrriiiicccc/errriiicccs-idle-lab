@@ -2,8 +2,9 @@
   "id": "phase_end_stub",
   "title": "Phase: Endgame (stub)",
   "version": 1,
+  "description": "Placeholder for late-run behavior. Shown as a branch target from Demo POC.",
   "children": [],
   "branches": {},
   "loop": false,
-  "notes": "Placeholder collection for Main Gameplay Loop branching."
+  "notes": "Fill with endgame events in a later chat."
 }

@@ -2,6 +2,7 @@
   "id": "demo_poc",
   "title": "Demo POC",
   "version": 1,
+  "description": "Demo pack that groups the 10s A/B tick and the 1-minute recorder. Also shows how Beginning / Mid / Endgame phase branches would be chosen later.",
   "children": ["ocr_ab_tick", "minute_clip"],
   "branch_variable": "phase",
   "branches": {
@@ -11,5 +12,5 @@
   },
   "loop": true,
   "stop_when": "game_over",
-  "notes": "Wires the two POC events. Branch map is a schema/UI placeholder for Beginning/Mid/Endgame — child ids are stubs for a later chat."
+  "notes": "Branch children are stubs — collection execution of phases is not fully implemented yet."
 }

@@ -2,8 +2,9 @@
   "id": "phase_begin_stub",
   "title": "Phase: Beginning (stub)",
   "version": 1,
+  "description": "Placeholder for early-run behavior. Not executed yet — exists so Demo POC can show branch targets.",
   "children": [],
   "branches": {},
   "loop": false,
-  "notes": "Placeholder collection for Main Gameplay Loop branching. Fill with events in a later chat."
+  "notes": "Fill with beginning-phase events in a later chat."
 }

@@ -5,12 +5,36 @@
   "enabled": true,
   "priority": 100,
   "timing": {"type": "interval", "every_ms": 60000},
-  "notes": "Every 60s: OCR wave, record 10s clip, CSV row. Higher priority — blocks ocr_ab_tick while recording.",
+  "description": "About once a minute, read the wave number, record a 10-second clip of the game, and append a spreadsheet row. Outranks the A/B tick while recording.",
+  "notes": "Clip name uses run number + wave from the pre-clip OCR.",
   "actions": [
-    {"type": "screenshot", "prefix": "preclip"},
-    {"type": "ocr", "roi": "wave_roi", "variable": "wave_number", "parse_as": "wave"},
-    {"type": "log", "message": "preclip wave={wave_number}", "level": "info"},
-    {"type": "record_clip", "duration_s": 10},
-    {"type": "csv_append", "path": "run_log.csv"}
+    {
+      "type": "screenshot",
+      "prefix": "preclip",
+      "description": "Snapshot the anchored window just before recording."
+    },
+    {
+      "type": "ocr",
+      "roi": "wave_roi",
+      "variable": "wave_number",
+      "parse_as": "wave",
+      "description": "Read the WAVE band and parse the number used in the clip filename."
+    },
+    {
+      "type": "log",
+      "message": "preclip wave={wave_number}",
+      "level": "info",
+      "description": "Echo the parsed wave into the console."
+    },
+    {
+      "type": "record_clip",
+      "duration_s": 10,
+      "description": "Record 10 seconds of the anchored window to runs/clips/."
+    },
+    {
+      "type": "csv_append",
+      "path": "run_log.csv",
+      "description": "Append datetime, run_number, and wave_number to runs/run_log.csv."
+    }
   ]
 }

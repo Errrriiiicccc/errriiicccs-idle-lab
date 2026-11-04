@@ -1,0 +1,278 @@
+"""Human-readable Basic / Detailed text for events and collections."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from idle_lab.automations.schema import Action, Collection, Event
+from idle_lab.automations.store import AutomationStore
+
+
+def _seconds(ms: int) -> str:
+    if ms % 1000 == 0:
+        return f"{ms // 1000}s"
+    return f"{ms / 1000:.1f}s"
+
+
+def _action_description(action: Action) -> str:
+    raw = action.raw
+    explicit = raw.get("description")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    return _action_basic(action)
+
+
+def _action_basic(action: Action) -> str:
+    raw = action.raw
+    kind = action.type
+    if kind == "screenshot":
+        prefix = raw.get("prefix") or "shot"
+        return f"Take a screenshot of the anchored window (saved as {prefix}_…)."
+    if kind == "ocr":
+        roi = raw.get("roi") or "?"
+        variable = raw.get("variable") or roi
+        parse_as = raw.get("parse_as") or "raw"
+        return f"Read text from region “{roi}” and store it as {variable} ({parse_as})."
+    if kind == "decide":
+        variable = raw.get("variable") or "signal"
+        mode = raw.get("mode") or "contains"
+        match_a = raw.get("match_a") or "A"
+        explain_a = raw.get("explain_a") or "PATH A"
+        explain_b = raw.get("explain_b") or "PATH B"
+        return (
+            f"Choose a path from {variable}: if it {mode} {match_a!r} → {explain_a}; "
+            f"otherwise → {explain_b}."
+        )
+    if kind in {"mouse", "play_preset"}:
+        preset = raw.get("preset") or raw.get("name") or "?"
+        return f"Play click preset “{preset}” on the anchored window."
+    if kind == "record_clip":
+        duration = raw.get("duration_s") or 10
+        return f"Record a {duration}s video clip of the anchored window."
+    if kind == "csv_append":
+        path = raw.get("path") or "run_log.csv"
+        return f"Append a row to the spreadsheet file {path}."
+    if kind == "log":
+        message = raw.get("message") or ""
+        return f"Write to the console: {message}" if message else "Write a console message."
+    if kind == "set_variable":
+        name = raw.get("name") or "?"
+        return f"Set variable {name} to {raw.get('value')!r}."
+    return f"Run action “{kind}”."
+
+
+def _action_detailed(action: Action, *, indent: str = "") -> list[str]:
+    raw = action.raw
+    lines = [f"{indent}{_action_description(action)}"]
+    kind = action.type
+    if kind == "screenshot":
+        prefix = raw.get("prefix") or "shot"
+        lines.append(f"{indent}  → writes PNG under runs/screenshots/{prefix}_<timestamp>.png")
+    elif kind == "ocr":
+        lines.append(f"{indent}  → ROI id: {raw.get('roi')}")
+        lines.append(f"{indent}  → variable: {raw.get('variable')}  (parse_as={raw.get('parse_as') or 'raw'})")
+        lines.append(f"{indent}  → also keeps {raw.get('variable')}_raw with the OCR string")
+    elif kind == "decide":
+        variable = raw.get("variable") or "signal"
+        mode = raw.get("mode") or "contains"
+        match_a = raw.get("match_a") or "A"
+        lines.append(f"{indent}  Decision rule")
+        lines.append(f"{indent}    look at: {variable}")
+        lines.append(f"{indent}    if {variable} {mode} {match_a!r} → PATH A")
+        lines.append(f"{indent}    otherwise → PATH B")
+        lines.append(f"{indent}  Branches in contention")
+        lines.append(f"{indent}    PATH A — {raw.get('explain_a') or 'on_a actions'}")
+        for nested in raw.get("on_a") or []:
+            if isinstance(nested, dict):
+                nested_action = Action(type=str(nested.get("type") or "?"), raw=nested)
+                lines.extend(_action_detailed(nested_action, indent=indent + "      "))
+        lines.append(f"{indent}    PATH B — {raw.get('explain_b') or 'on_b actions'}")
+        for nested in raw.get("on_b") or []:
+            if isinstance(nested, dict):
+                nested_action = Action(type=str(nested.get("type") or "?"), raw=nested)
+                lines.extend(_action_detailed(nested_action, indent=indent + "      "))
+    elif kind in {"mouse", "play_preset"}:
+        lines.append(f"{indent}  → preset file name/id: {raw.get('preset') or raw.get('name')}")
+        lines.append(f"{indent}  → clicks use the current Clicker method (foreground/background)")
+    elif kind == "record_clip":
+        duration = raw.get("duration_s") or 10
+        lines.append(f"{indent}  → duration: {duration}s")
+        lines.append(f"{indent}  → output: runs/clips/run_{{run_number}}_wave_{{wave_number}}.mp4")
+        lines.append(f"{indent}  → wave_number comes from OCR taken just before recording")
+        lines.append(f"{indent}  → while recording, lower-priority events are deferred")
+    elif kind == "csv_append":
+        path = raw.get("path") or "run_log.csv"
+        lines.append(f"{indent}  → file: runs/{path}")
+        lines.append(f"{indent}  → columns: datetime, run_number, wave_number")
+    elif kind == "log":
+        lines.append(f"{indent}  → level: {raw.get('level') or 'info'}")
+        lines.append(f"{indent}  → message template: {raw.get('message')!r}")
+    elif kind == "set_variable":
+        lines.append(f"{indent}  → {raw.get('name')} = {raw.get('value')!r}")
+    return lines
+
+
+def _event_blurb(event: Event) -> str:
+    if event.description.strip():
+        return event.description.strip()
+    if event.notes.strip():
+        return event.notes.strip()
+    bits = [_action_description(action) for action in event.actions[:3]]
+    more = "" if len(event.actions) <= 3 else f" (+{len(event.actions) - 3} more steps)"
+    return " ".join(bits) + more
+
+
+def format_event(event: Event, *, detailed: bool, store: AutomationStore | None = None) -> str:
+    del store  # reserved for resolving nested refs later
+    every = _seconds(event.every_ms)
+    lines = [
+        event.title,
+        "",
+        _event_blurb(event),
+        "",
+        f"Runs every {every} · priority {event.priority}"
+        + (" · enabled" if event.enabled else " · disabled"),
+    ]
+    if not detailed:
+        lines.append("")
+        lines.append("What it does")
+        for index, action in enumerate(event.actions, start=1):
+            lines.append(f"{index}. {_action_description(action)}")
+            if action.type == "decide":
+                lines.append("   Branches in contention:")
+                lines.append(f"   • PATH A — {action.raw.get('explain_a') or 'on_a'}")
+                lines.append(f"   • PATH B — {action.raw.get('explain_b') or 'on_b'}")
+                lines.append(
+                    f"   Decided by: {action.raw.get('variable')} "
+                    f"{action.raw.get('mode')} {action.raw.get('match_a')!r} → A, else B"
+                )
+        return "\n".join(lines)
+
+    lines.extend(
+        [
+            "",
+            "Schedule / identity",
+            f"  id: {event.id}",
+            f"  interval: every {event.every_ms} ms ({every})",
+            f"  priority: {event.priority} (higher wins when multiple are due)",
+            f"  enabled: {event.enabled}",
+            f"  file: {event.path or '—'}",
+            "",
+            "Exact steps",
+        ]
+    )
+    for index, action in enumerate(event.actions, start=1):
+        lines.append(f"{index}. [{action.type}]")
+        lines.extend(_action_detailed(action, indent="   "))
+    if event.notes.strip() and event.notes.strip() != event.description.strip():
+        lines.extend(["", "Author notes", f"  {event.notes.strip()}"])
+    return "\n".join(lines)
+
+
+def _resolve_title(store: AutomationStore, item_id: str) -> str:
+    if item_id in store.events:
+        return store.events[item_id].title
+    if item_id in store.collections:
+        return store.collections[item_id].title
+    return item_id
+
+
+def _collection_blurb(collection: Collection) -> str:
+    if collection.description.strip():
+        return collection.description.strip()
+    if collection.notes.strip():
+        return collection.notes.strip()
+    child_n = len(collection.children)
+    branch_n = len(collection.branches)
+    if branch_n:
+        keys = ", ".join(collection.branches.keys())
+        return (
+            f"Ordered group of {child_n} item(s). Branches on “{collection.branch_variable}” "
+            f"among: {keys}."
+        )
+    return f"Ordered group of {child_n} event/collection id(s)."
+
+
+def format_collection(collection: Collection, *, detailed: bool, store: AutomationStore) -> str:
+    lines = [
+        collection.title,
+        "",
+        _collection_blurb(collection),
+    ]
+    if collection.branches:
+        lines.extend(
+            [
+                "",
+                "Branches in contention",
+                f"Decided by variable: {collection.branch_variable}",
+                "Rule: match the variable’s value (case-insensitive) to one of these keys:",
+            ]
+        )
+        for key, child_id in collection.branches.items():
+            title = _resolve_title(store, child_id)
+            lines.append(f"  • if {collection.branch_variable} = {key!r} → {title} ({child_id})")
+        lines.append("  • if no key matches → no branch child is selected")
+    if not detailed:
+        if collection.children:
+            lines.append("")
+            lines.append("Includes (in order)")
+            for index, child_id in enumerate(collection.children, start=1):
+                lines.append(f"{index}. {_resolve_title(store, child_id)}")
+        extras = []
+        if collection.loop:
+            extras.append("loops")
+        if collection.stop_when:
+            extras.append(f"stops when {collection.stop_when}")
+        if extras:
+            lines.extend(["", "Also: " + ", ".join(extras)])
+        return "\n".join(lines)
+
+    lines.extend(
+        [
+            "",
+            "Identity",
+            f"  id: {collection.id}",
+            f"  loop: {collection.loop}",
+            f"  stop_when: {collection.stop_when or '—'}",
+            f"  file: {collection.path or '—'}",
+            "",
+            "Children (order)",
+        ]
+    )
+    if not collection.children:
+        lines.append("  (none)")
+    for index, child_id in enumerate(collection.children, start=1):
+        title = _resolve_title(store, child_id)
+        kind = "event" if child_id in store.events else ("collection" if child_id in store.collections else "missing")
+        lines.append(f"  {index}. {title}")
+        lines.append(f"      id: {child_id}  ({kind})")
+        if child_id in store.events:
+            child = store.events[child_id]
+            lines.append(f"      summary: {_event_blurb(child)}")
+        elif child_id in store.collections:
+            child_c = store.collections[child_id]
+            lines.append(f"      summary: {_collection_blurb(child_c)}")
+    if collection.branches:
+        lines.extend(
+            [
+                "",
+                "Branch map (exact)",
+                f"  branch_variable: {collection.branch_variable}",
+            ]
+        )
+        for key, child_id in collection.branches.items():
+            lines.append(f"  {key!r} → {child_id} ({_resolve_title(store, child_id)})")
+    if collection.notes.strip() and collection.notes.strip() != collection.description.strip():
+        lines.extend(["", "Author notes", f"  {collection.notes.strip()}"])
+    return "\n".join(lines)
+
+
+def list_caption(item: Event | Collection) -> str:
+    if isinstance(item, Event):
+        text = _event_blurb(item)
+    else:
+        text = _collection_blurb(item)
+    text = " ".join(text.split())
+    if len(text) > 72:
+        return text[:69] + "…"
+    return text

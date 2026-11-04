@@ -2,8 +2,9 @@
   "id": "phase_mid_stub",
   "title": "Phase: Midgame (stub)",
   "version": 1,
+  "description": "Placeholder for mid-run behavior. Shown as a branch target from Demo POC.",
   "children": [],
   "branches": {},
   "loop": false,
-  "notes": "Placeholder collection for Main Gameplay Loop branching."
+  "notes": "Fill with midgame events in a later chat."
 }

@@ -6,16 +6,9 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from idle_lab.automations.describe import format_collection, format_event, list_caption
 from idle_lab.automations.schema import Collection, Event
 from idle_lab.automations.store import AutomationStore
-
-CONSOLE_COLORS = {
-    "info": "#9AA4B2",
-    "ok": "#8EE0C2",
-    "warn": "#E7C36A",
-    "error": "#F09595",
-    "run": "#8EE0C2",
-}
 
 
 class AutomationsPanel(ctk.CTkFrame):
@@ -34,6 +27,7 @@ class AutomationsPanel(ctk.CTkFrame):
         self.on_start = on_start
         self.on_stop = on_stop
         self._mode = ctk.StringVar(value="Events")
+        self._detail_mode = ctk.StringVar(value="Basic")
         self._selected_event: Event | None = None
         self._selected_collection: Collection | None = None
         self._build()
@@ -72,7 +66,27 @@ class AutomationsPanel(ctk.CTkFrame):
 
         col2 = ctk.CTkFrame(columns)
         col2.grid(row=0, column=1, sticky="nsew", padx=4)
-        ctk.CTkLabel(col2, text="Details", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=8, pady=(8, 2))
+        details_header = ctk.CTkFrame(col2, fg_color="transparent")
+        details_header.pack(fill="x", padx=8, pady=(8, 2))
+        ctk.CTkLabel(details_header, text="Details", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        detail_toggle = ctk.CTkFrame(details_header, fg_color="transparent")
+        detail_toggle.pack(side="right")
+        ctk.CTkRadioButton(
+            detail_toggle,
+            text="Basic",
+            variable=self._detail_mode,
+            value="Basic",
+            width=70,
+            command=self._refresh_details,
+        ).pack(side="left", padx=(0, 4))
+        ctk.CTkRadioButton(
+            detail_toggle,
+            text="Detailed",
+            variable=self._detail_mode,
+            value="Detailed",
+            width=90,
+            command=self._refresh_details,
+        ).pack(side="left")
         self.details = ctk.CTkTextbox(col2, height=280, wrap="word", activate_scrollbars=True)
         self.details.pack(fill="both", expand=True, padx=8, pady=(0, 8))
         self.details.configure(state="disabled")
@@ -103,87 +117,70 @@ class AutomationsPanel(ctk.CTkFrame):
             if not items:
                 ctk.CTkLabel(self.list_box, text="No events loaded.", text_color="#9AA4B2").pack(anchor="w", padx=4)
             for event in items:
-                label = f"{event.title}  (p{event.priority})"
+                row = ctk.CTkFrame(self.list_box, fg_color="transparent")
+                row.pack(fill="x", pady=3)
                 btn = ctk.CTkButton(
-                    self.list_box,
-                    text=label,
+                    row,
+                    text=f"{event.title}  · p{event.priority}",
                     anchor="w",
                     fg_color="transparent",
                     command=lambda e=event: self._select_event(e),
                 )
-                btn.pack(fill="x", pady=2)
+                btn.pack(fill="x")
+                ctk.CTkLabel(
+                    row,
+                    text=list_caption(event),
+                    anchor="w",
+                    justify="left",
+                    text_color="#9AA4B2",
+                    wraplength=220,
+                    font=ctk.CTkFont(size=11),
+                ).pack(fill="x", padx=8)
         else:
             items = sorted(self.store.collections.values(), key=lambda collection: collection.title.lower())
             if not items:
                 ctk.CTkLabel(self.list_box, text="No collections loaded.", text_color="#9AA4B2").pack(anchor="w", padx=4)
             for collection in items:
+                row = ctk.CTkFrame(self.list_box, fg_color="transparent")
+                row.pack(fill="x", pady=3)
+                branch_hint = f"  · {len(collection.branches)} branches" if collection.branches else ""
                 btn = ctk.CTkButton(
-                    self.list_box,
-                    text=collection.title,
+                    row,
+                    text=f"{collection.title}{branch_hint}",
                     anchor="w",
                     fg_color="transparent",
                     command=lambda c=collection: self._select_collection(c),
                 )
-                btn.pack(fill="x", pady=2)
+                btn.pack(fill="x")
+                ctk.CTkLabel(
+                    row,
+                    text=list_caption(collection),
+                    anchor="w",
+                    justify="left",
+                    text_color="#9AA4B2",
+                    wraplength=220,
+                    font=ctk.CTkFont(size=11),
+                ).pack(fill="x", padx=8)
 
     def _select_event(self, event: Event) -> None:
         self._selected_event = event
         self._selected_collection = None
-        lines = [
-            f"Title: {event.title}",
-            f"Id: {event.id}",
-            f"Timing: every {event.every_ms} ms",
-            f"Priority: {event.priority}",
-            f"Enabled: {event.enabled}",
-            "",
-            "── Actions ──",
-        ]
-        for index, action in enumerate(event.actions, start=1):
-            summary = action.type
-            if action.type == "ocr":
-                summary += f": {action.raw.get('roi')} → {action.raw.get('variable')}"
-            elif action.type in {"mouse", "play_preset"}:
-                summary += f": preset={action.raw.get('preset') or action.raw.get('name')}"
-            elif action.type == "record_clip":
-                summary += f": {action.raw.get('duration_s', 10)}s"
-            elif action.type == "decide":
-                summary += (
-                    f": if {action.raw.get('variable')} {action.raw.get('mode')} "
-                    f"{action.raw.get('match_a')!r} → A else B"
-                )
-            elif action.type == "log":
-                summary += f": {action.raw.get('message')}"
-            lines.append(f"{index}. {summary}")
-            if action.type == "decide":
-                if action.raw.get("explain_a"):
-                    lines.append(f"   PATH A: {action.raw.get('explain_a')}")
-                if action.raw.get("explain_b"):
-                    lines.append(f"   PATH B: {action.raw.get('explain_b')}")
-        if event.notes:
-            lines.extend(["", f"Notes: {event.notes}"])
-        self._set_details("\n".join(lines))
+        self._refresh_details()
 
     def _select_collection(self, collection: Collection) -> None:
         self._selected_collection = collection
         self._selected_event = None
-        lines = [
-            f"Title: {collection.title}",
-            f"Id: {collection.id}",
-            f"Loop: {collection.loop}",
-            f"Stop when: {collection.stop_when or '—'}",
-            f"Branch variable: {collection.branch_variable}",
-            "",
-            "── Children (order) ──",
-        ]
-        for index, child_id in enumerate(collection.children, start=1):
-            lines.append(f"{index}. {child_id}")
-        if collection.branches:
-            lines.extend(["", "── Branches ──"])
-            for key, child_id in collection.branches.items():
-                lines.append(f"{collection.branch_variable}={key} → {child_id}")
-        if collection.notes:
-            lines.extend(["", f"Notes: {collection.notes}"])
-        self._set_details("\n".join(lines))
+        self._refresh_details()
+
+    def _refresh_details(self) -> None:
+        detailed = self._detail_mode.get() == "Detailed"
+        if self._selected_event is not None:
+            text = format_event(self._selected_event, detailed=detailed, store=self.store)
+        elif self._selected_collection is not None:
+            text = format_collection(self._selected_collection, detailed=detailed, store=self.store)
+        else:
+            text = "Select an event or collection.\n\nBasic = plain-language summary.\nDetailed = exact paths, outputs, and branch rules."
+        self._set_details(text)
 
     def _set_details(self, text: str) -> None:
         self.details.configure(state="normal")

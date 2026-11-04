@@ -5,24 +5,36 @@
   "enabled": true,
   "priority": 10,
   "timing": {"type": "interval", "every_ms": 10000},
-  "notes": "Every 10s: screenshot click-logger SIGNAL band → if parsed signal equals A take PATH A (click UPPER), else PATH B (click LOWER).",
+  "description": "Every 10 seconds, look at the click-logger SIGNAL band and either click UPPER (path A) or LOWER (path B).",
+  "notes": "Lower priority than minute_clip — deferred while a clip is recording.",
   "actions": [
-    {"type": "screenshot", "prefix": "ab"},
-    {"type": "ocr", "roi": "signal_roi", "variable": "signal", "parse_as": "signal"},
+    {
+      "type": "screenshot",
+      "prefix": "ab",
+      "description": "Snapshot the anchored window so OCR has a fresh frame."
+    },
+    {
+      "type": "ocr",
+      "roi": "signal_roi",
+      "variable": "signal",
+      "parse_as": "signal",
+      "description": "Read the yellow SIGNAL band and parse it as A or B."
+    },
     {
       "type": "decide",
       "variable": "signal",
       "match_a": "A",
       "mode": "equals",
+      "description": "Branch on the parsed SIGNAL value.",
       "explain_a": "click the UPPER circle on the click logger (preset 'ab choice a')",
       "explain_b": "click the LOWER circle on the click logger (preset 'ab choice b')",
       "on_a": [
         {"type": "log", "message": "PATH A action: one left-click on UPPER", "level": "ok"},
-        {"type": "play_preset", "preset": "ab choice a"}
+        {"type": "play_preset", "preset": "ab choice a", "description": "Click UPPER via preset ab choice a."}
       ],
       "on_b": [
         {"type": "log", "message": "PATH B action: one left-click on LOWER", "level": "ok"},
-        {"type": "play_preset", "preset": "ab choice b"}
+        {"type": "play_preset", "preset": "ab choice b", "description": "Click LOWER via preset ab choice b."}
       ]
     }
   ]

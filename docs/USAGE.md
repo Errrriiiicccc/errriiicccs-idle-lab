@@ -47,11 +47,12 @@ Schema: [automation-schema.md](automation-schema.md).
 ### UI
 
 1. Open the **Automations** tab.
-2. Toggle **Events** / **Collections**, select an item to see details.
-3. **Reload** after editing JSON files.
-4. **Start** begins the scheduler; **Stop** ends it.
-5. **Queue** shows running / waiting / deferred (e.g. A/B deferred while recording).
-6. **Console** shows OCR observations/inferences, branches, preemption, errors.
+2. Toggle **Events** / **Collections**. Each list row shows a short caption.
+3. In **Details**, switch **Basic** (plain language + branch contention) vs **Detailed** (exact paths, outputs, nested steps).
+4. **Reload** after editing JSON files. Optional `description` fields on events/collections/actions feed the Basic view.
+5. **Start** begins the scheduler; **Stop** ends it.
+6. **Queue** shows running / waiting / deferred (e.g. A/B deferred while recording).
+7. **Console** shows OCR observations/inferences, branches, preemption, errors.
 
 ### Recommended first demo
 
