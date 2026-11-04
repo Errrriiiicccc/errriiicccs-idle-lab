@@ -8,7 +8,14 @@ py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-Install **Tesseract** and ensure `tesseract` works in a terminal. Install **ffmpeg** and ensure `ffmpeg -version` works. Launch:
+**System deps** (one-time):
+
+```powershell
+winget install --id UB-Mannheim.TesseractOCR -e
+winget install --id Gyan.FFmpeg -e
+```
+
+Idle Lab also looks for Tesseract under `C:\Program Files\Tesseract-OCR\` even if PATH is stale — restart the app after installing. Launch:
 
 ```powershell
 .\.venv\Scripts\pythonw.exe -m idle_lab

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -16,8 +17,35 @@ class VideoError(RuntimeError):
     """Clip recording failed."""
 
 
+def find_ffmpeg() -> str | None:
+    env = os.environ.get("FFMPEG_CMD") or os.environ.get("FFMPEG_PATH")
+    if env:
+        path = Path(env)
+        if path.is_dir():
+            path = path / "ffmpeg.exe"
+        if path.is_file():
+            return str(path)
+
+    which = shutil.which("ffmpeg")
+    if which:
+        return which
+
+    local = Path.home() / "AppData" / "Local" / "Microsoft" / "WinGet" / "Packages"
+    if local.is_dir():
+        matches = sorted(local.glob("Gyan.FFmpeg*/*/bin/ffmpeg.exe"))
+        if matches:
+            return str(matches[-1])
+    for candidate in (
+        Path(r"C:\ffmpeg\bin\ffmpeg.exe"),
+        Path(r"C:\Program Files\ffmpeg\bin\ffmpeg.exe"),
+    ):
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 def ffmpeg_available() -> bool:
-    return shutil.which("ffmpeg") is not None
+    return find_ffmpeg() is not None
 
 
 def clip_name(run_number: int | str, wave_number: int | str) -> str:
@@ -36,8 +64,12 @@ def record_clip(
 
     if rect is None:
         raise VideoError("anchor missing")
-    if not ffmpeg_available():
-        raise VideoError("ffmpeg not found on PATH")
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise VideoError(
+            "ffmpeg not found on PATH. Install with: winget install --id Gyan.FFmpeg -e "
+            "Then restart Idle Lab."
+        )
 
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -70,7 +102,7 @@ def record_clip(
 
         pattern = str(tmp_path / "frame_%05d.png")
         cmd = [
-            "ffmpeg",
+            ffmpeg,
             "-y",
             "-hide_banner",
             "-loglevel",

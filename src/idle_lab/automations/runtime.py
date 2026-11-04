@@ -105,7 +105,19 @@ class AutomationRuntime:
                 self._run_event(chosen)
             except Exception as exc:  # noqa: BLE001
                 self.log(f"event {chosen.id} failed: {exc}", "error")
-                self.log(traceback.format_exc(), "error")
+                # Known dependency/setup errors: keep console readable (no full traceback).
+                message = str(exc).lower()
+                if not any(
+                    tip in message
+                    for tip in (
+                        "tesseract",
+                        "ffmpeg",
+                        "anchor missing",
+                        "not found on path",
+                        "not installed",
+                    )
+                ):
+                    self.log(traceback.format_exc(), "error")
             finally:
                 self.scheduler.mark_finished(chosen, events)
                 self.emit("queue", items=[item.__dict__ for item in self.scheduler.queue_snapshot()])
