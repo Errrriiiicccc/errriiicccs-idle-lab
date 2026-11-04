@@ -1,0 +1,9 @@
+{
+  "id": "phase_mid_stub",
+  "title": "Phase: Midgame (stub)",
+  "version": 1,
+  "children": [],
+  "branches": {},
+  "loop": false,
+  "notes": "Placeholder collection for Main Gameplay Loop branching."
+}

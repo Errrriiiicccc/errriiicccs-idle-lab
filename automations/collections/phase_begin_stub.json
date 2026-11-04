@@ -1,0 +1,9 @@
+{
+  "id": "phase_begin_stub",
+  "title": "Phase: Beginning (stub)",
+  "version": 1,
+  "children": [],
+  "branches": {},
+  "loop": false,
+  "notes": "Placeholder collection for Main Gameplay Loop branching. Fill with events in a later chat."
+}

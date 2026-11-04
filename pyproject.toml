@@ -1,0 +1,18 @@
+[project]
+name = "errriiicccs-idle-lab"
+version = "0.1.0"
+description = "Errriiiccc's Idle Lab — window-anchored clicker plus file-driven automations (capture, OCR, priorities)."
+requires-python = ">=3.11"
+dependencies = [
+  "customtkinter>=5.2.2",
+  "mss>=9.0.1",
+  "Pillow>=10.0.0",
+  "pytesseract>=0.3.10",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

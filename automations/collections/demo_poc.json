@@ -1,0 +1,15 @@
+{
+  "id": "demo_poc",
+  "title": "Demo POC",
+  "version": 1,
+  "children": ["ocr_ab_tick", "minute_clip"],
+  "branch_variable": "phase",
+  "branches": {
+    "begin": "phase_begin_stub",
+    "mid": "phase_mid_stub",
+    "end": "phase_end_stub"
+  },
+  "loop": true,
+  "stop_when": "game_over",
+  "notes": "Wires the two POC events. Branch map is a schema/UI placeholder for Beginning/Mid/Endgame — child ids are stubs for a later chat."
+}

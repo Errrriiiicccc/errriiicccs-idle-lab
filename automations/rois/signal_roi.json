@@ -1,0 +1,9 @@
+{
+  "id": "signal_roi",
+  "version": 1,
+  "nx": 0.28,
+  "ny": 0.92,
+  "nw": 0.44,
+  "nh": 0.08,
+  "notes": "Click-logger SIGNAL A/B band. Click the band in the click logger to toggle A ↔ B."
+}

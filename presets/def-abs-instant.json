@@ -1,0 +1,34 @@
+{
+  "name": "Def Abs Instant",
+  "version": 1,
+  "timing_mode": "instantaneous",
+  "loop": true,
+  "loop_count": null,
+  "notes": "",
+  "points": [
+    {
+      "nx": 0.793918918918919,
+      "ny": 0.7994157740993184,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.08277027027027027,
+      "ny": 0.4878286270691334,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.6131756756756757,
+      "ny": 0.3894839337877313,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    }
+  ]
+}

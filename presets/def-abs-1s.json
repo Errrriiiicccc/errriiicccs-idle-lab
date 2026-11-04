@@ -1,0 +1,34 @@
+{
+  "name": "Def Abs 1S",
+  "version": 1,
+  "timing_mode": "one_second",
+  "loop": true,
+  "loop_count": null,
+  "notes": "",
+  "points": [
+    {
+      "nx": 0.30405405405405406,
+      "ny": 0.7166504381694255,
+      "delay_ms": 950,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.05574324324324324,
+      "ny": 0.495618305744888,
+      "delay_ms": 950,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.38175675675675674,
+      "ny": 0.38656280428432327,
+      "delay_ms": 950,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    }
+  ]
+}

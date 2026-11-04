@@ -1,0 +1,13 @@
+{
+  "name": "sample three points",
+  "version": 1,
+  "timing_mode": "instantaneous",
+  "loop": true,
+  "loop_count": null,
+  "notes": "Center column. Labels are for you, not the clicker. Aimed at the click logger.",
+  "points": [
+    {"nx": 0.25, "ny": 0.25, "delay_ms": 50, "hold_ms": 50, "button": "left", "label": "upper"},
+    {"nx": 0.50, "ny": 0.50, "delay_ms": 50, "hold_ms": 50, "button": "left", "label": "middle"},
+    {"nx": 0.75, "ny": 0.75, "delay_ms": 50, "hold_ms": 50, "button": "left", "label": "lower"}
+  ]
+}

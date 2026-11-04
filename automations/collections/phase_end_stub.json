@@ -1,0 +1,9 @@
+{
+  "id": "phase_end_stub",
+  "title": "Phase: Endgame (stub)",
+  "version": 1,
+  "children": [],
+  "branches": {},
+  "loop": false,
+  "notes": "Placeholder collection for Main Gameplay Loop branching."
+}

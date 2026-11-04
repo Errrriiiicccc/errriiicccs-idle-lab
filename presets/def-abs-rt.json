@@ -1,0 +1,34 @@
+{
+  "name": "Def Abs RT",
+  "version": 1,
+  "timing_mode": "realtime",
+  "loop": true,
+  "loop_count": null,
+  "notes": "",
+  "points": [
+    {
+      "nx": 0.8057432432432432,
+      "ny": 0.7887049659201558,
+      "delay_ms": 1427,
+      "hold_ms": 90,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.09628378378378379,
+      "ny": 0.49659201557935734,
+      "delay_ms": 968,
+      "hold_ms": 91,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.4864864864864865,
+      "ny": 0.41382667964946446,
+      "delay_ms": 720,
+      "hold_ms": 90,
+      "button": "left",
+      "label": ""
+    }
+  ]
+}

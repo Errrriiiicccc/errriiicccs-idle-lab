@@ -1,0 +1,58 @@
+{
+  "name": "Test 4 Kyrel",
+  "version": 1,
+  "timing_mode": "instantaneous",
+  "loop": true,
+  "loop_count": null,
+  "notes": "",
+  "points": [
+    {
+      "nx": 0.7972972972972973,
+      "ny": 0.8120740019474196,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.09628378378378379,
+      "ny": 0.5043816942551119,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.4510135135135135,
+      "ny": 0.4040895813047712,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.5422297297297297,
+      "ny": 0.9707887049659202,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.8074324324324325,
+      "ny": 0.7312560856864654,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    },
+    {
+      "nx": 0.3885135135135135,
+      "ny": 0.9737098344693281,
+      "delay_ms": 50,
+      "hold_ms": 50,
+      "button": "left",
+      "label": ""
+    }
+  ]
+}

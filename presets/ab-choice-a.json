@@ -1,0 +1,11 @@
+{
+  "name": "ab choice a",
+  "version": 1,
+  "timing_mode": "instantaneous",
+  "loop": false,
+  "loop_count": 1,
+  "notes": "POC Automations branch A — clicks the upper click-logger target once.",
+  "points": [
+    {"nx": 0.25, "ny": 0.25, "delay_ms": 50, "hold_ms": 50, "button": "left", "label": "branch-a"}
+  ]
+}

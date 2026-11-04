@@ -1,0 +1,9 @@
+{
+  "id": "wave_roi",
+  "version": 1,
+  "nx": 0.28,
+  "ny": 0.84,
+  "nw": 0.44,
+  "nh": 0.08,
+  "notes": "Click-logger WAVE band. For The Tower, retune nx/ny/nw/nh against a screenshot of the wave HUD."
+}
