@@ -41,3 +41,50 @@ def foreground_click(
             win32_api.send_left_button(False)
         if restore_cursor:
             win32_api.set_cursor_pos(saved_x, saved_y)
+
+
+def foreground_drag(
+    start_x: int,
+    start_y: int,
+    end_x: int,
+    end_y: int,
+    *,
+    restore_cursor: bool,
+    steps: int = 10,
+    step_ms: int = 25,
+    hold_end_ms: int = 350,
+    stop: threading.Event | None = None,
+) -> None:
+    """Press → slow drag → hold still → release.
+
+    Holding at the end before release kills Android/BlueStacks fling momentum
+    that a wheel flick or fast swipe would cause.
+    """
+
+    saved_x, saved_y = win32_api.cursor_pos()
+    released = False
+    move_steps = max(2, int(steps))
+    try:
+        win32_api.set_cursor_pos(start_x, start_y)
+        _sleep_ms(20, stop)
+        win32_api.send_left_button(True)
+        _sleep_ms(30, stop)
+        for index in range(1, move_steps + 1):
+            if stop is not None and stop.is_set():
+                break
+            t = index / move_steps
+            x = int(round(start_x + (end_x - start_x) * t))
+            y = int(round(start_y + (end_y - start_y) * t))
+            win32_api.set_cursor_pos(x, y)
+            _sleep_ms(max(1, step_ms), stop)
+        # Hard stop: finger stays put so the list settles instead of flying.
+        win32_api.set_cursor_pos(end_x, end_y)
+        _sleep_ms(max(50, hold_end_ms), stop)
+        win32_api.send_left_button(False)
+        released = True
+        _sleep_ms(30, None)
+    finally:
+        if not released:
+            win32_api.send_left_button(False)
+        if restore_cursor:
+            win32_api.set_cursor_pos(saved_x, saved_y)
