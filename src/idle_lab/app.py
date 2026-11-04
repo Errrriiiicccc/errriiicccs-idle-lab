@@ -15,20 +15,36 @@ from idle_lab.automations.mouse_sync import play_points_sync
 from idle_lab.automations.runtime import AutomationRuntime
 from idle_lab.automations.store import AutomationStore
 from idle_lab.automations.capture import CaptureError, grab_anchor
+from idle_lab.ai_batch.schema import AiBatch, BatchRequest, RequestResult, now_iso
+from idle_lab.ai_batch.store import AiBatchError, AiBatchStore
+from idle_lab.ai_batch.runner import AiBatchRunner, AiBatchRunnerError
+from idle_lab.ai_batch.ui import AiBatchPanel
 from idle_lab.automations.ui import AutomationsPanel
 from idle_lab.automations.walkthrough import Walkthrough
 from idle_lab.automations.schema import Collection
 from idle_lab.click_logger import ClickLogger
 from idle_lab.hotkeys import InputHooks
+from idle_lab.humanize import HUMANIZE_LEVELS, HumanizeProfile, normalize_level
+from idle_lab.image_viewer import open_image_viewer
 from idle_lab.models import ClickPoint, Preset, normalized_to_screen, screen_to_normalized
 from idle_lab.overlay import Overlay
 from idle_lab.player import Player
 from idle_lab.presets import PresetError, PresetStore, load_preset, preset_to_dict, project_root, slug
 from idle_lab.recorder import Recorder
 from idle_lab.screen_map.batch import ScreenMapController, ScreenMapError, add_shot, create_batch
+from idle_lab.screen_map.catalog import BatchSummary, list_batches as list_screen_map_batches
 from idle_lab.screen_map.ui import ScreenMapPanel
+from idle_lab.scroll_memory import ScrollMemory
 from idle_lab.settings_store import load_settings, save_settings
 from idle_lab import win32_api
+
+_HUMANIZE_LABELS = {
+    "off": "Off",
+    "light": "Light",
+    "medium": "Medium",
+    "heavy": "Heavy",
+}
+_HUMANIZE_FROM_LABEL = {label: key for key, label in _HUMANIZE_LABELS.items()}
 
 MODE_FROM_LABEL = {
     "Instantaneous": "instantaneous",
@@ -61,12 +77,29 @@ class App(ctk.CTk):
             store=self.auto_store,
             runs_dir=root / "runs",
             get_anchor_rect=self._automation_anchor_rect,
+            get_anchor_hwnd=self._automation_anchor_hwnd,
+            get_humanize=self._humanize_profile,
+            restore_cursor=bool(self.settings.restore_cursor),
             play_preset=self._automation_play_preset,
         )
         self.auto_panel: AutomationsPanel | None = None
         self.screen_map_panel: ScreenMapPanel | None = None
+        self.ai_batch_panel: AiBatchPanel | None = None
         self.screen_map = ScreenMapController()
         self.screen_maps_root = root / "screen-maps"
+        self.ai_batches_root = root / "ai-batches"
+        self.ai_batch_store = AiBatchStore(self.ai_batches_root)
+        ai_errors = self.ai_batch_store.load_all()
+        self.ai_batch_runner = AiBatchRunner(
+            store=self.ai_batch_store,
+            screen_maps_root=self.screen_maps_root,
+            get_anchor=self._ai_batch_anchor_snapshot,
+            play_preset=self._automation_play_preset,
+            restore_cursor=bool(self.settings.restore_cursor),
+            get_humanize=self._humanize_profile,
+        )
+        self.scroll_memory = ScrollMemory()
+        self._current_tab = "Clicker"
         self.walkthrough: Walkthrough | None = None
         self.guide_overlay: GuideOverlay | None = None
         self.anchor_target = Anchor()
@@ -93,6 +126,7 @@ class App(ctk.CTk):
         else:
             self._rebuild_preset_list()
             self._rebuild_points()
+        self._refresh_screen_map_catalog()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         try:
             self.hooks.start()
@@ -102,12 +136,15 @@ class App(ctk.CTk):
         self.after(30, self._drain_hooks)
         self.after(50, self._drain_player)
         self.after(80, self._drain_automations)
+        self.after(100, self._drain_ai_batch_runner)
         if settings_error:
             self._status(settings_error, "warn")
         elif errors:
             self._status("Skipped preset files: " + "; ".join(errors), "error")
         elif auto_errors:
             self._status("Skipped automation files: " + "; ".join(auto_errors), "error")
+        elif ai_errors:
+            self._status("Skipped AI batch files: " + "; ".join(ai_errors), "error")
         else:
             self._status("Set anchor, then click the emulator window.", "info")
 
@@ -117,15 +154,18 @@ class App(ctk.CTk):
 
         self._build_chrome()
 
-        self.tabs = ctk.CTkTabview(self)
+        self.tabs = ctk.CTkTabview(self, command=self._on_tab_changed)
         self.tabs.pack(fill="both", expand=True, padx=8, pady=(4, 0))
         clicker = self.tabs.add("Clicker")
         automations = self.tabs.add("Automations")
         screen_map = self.tabs.add("Screen Map")
+        ai_batches = self.tabs.add("AI Batches")
 
         self.body = ctk.CTkScrollableFrame(clicker, fg_color="transparent")
         self.body.pack(fill="both", expand=True, padx=4, pady=(4, 0))
+        self.scroll_memory.register("clicker.body", self.body)
         self._build_clicker_body()
+        self.scroll_memory.register("clicker.presets", self.preset_list)
 
         self.auto_panel = AutomationsPanel(
             automations,
@@ -135,6 +175,7 @@ class App(ctk.CTk):
             on_stop=self._stop_automations,
             on_walkthrough=self._start_collection_walkthrough,
             on_walkthrough_stop=self._stop_collection_walkthrough,
+            scroll=self.scroll_memory,
         )
         self.auto_panel.pack(fill="both", expand=True)
 
@@ -143,8 +184,32 @@ class App(ctk.CTk):
             on_start_batch=self._start_screen_map_batch,
             on_end_batch=self._end_screen_map_batch,
             on_open_folder=self._open_screen_map_folder,
+            on_refresh_catalog=self._refresh_screen_map_catalog,
+            on_view_shot=self._view_screen_map_shot,
+            on_view_batch=self._view_screen_map_batch,
+            scroll=self.scroll_memory,
         )
         self.screen_map_panel.pack(fill="both", expand=True)
+
+        self.ai_batch_panel = AiBatchPanel(
+            ai_batches,
+            store=self.ai_batch_store,
+            scroll=self.scroll_memory,
+            screen_maps_root=self.screen_maps_root,
+            on_reload=self._reload_ai_batches,
+            on_new_batch=self._new_ai_batch,
+            on_open_folder=self._open_ai_batch_folder,
+            on_view_screenshots=self._view_ai_batch_screenshots,
+            on_link_screen_map=self._link_ai_batch_screen_map,
+            on_mark_request=self._mark_ai_request,
+            on_add_feedback=self._add_ai_feedback,
+            on_open_screen_map_batch=self._goto_screen_map_batch,
+            on_snapshot_event=self._snapshot_event_into_ai_batch,
+            on_start_run=self._start_ai_batch_run,
+            on_stop_run=self._stop_ai_batch_run,
+        )
+        self.ai_batch_panel.pack(fill="both", expand=True)
+        self._current_tab = self.tabs.get()
 
     def _build_chrome(self) -> None:
         """Global top bar: brand, shared anchor, reserved action tray (Settings later)."""
@@ -247,6 +312,15 @@ class App(ctk.CTk):
         )
         self.method_menu.set("Background" if self.settings.click_method == "background" else "Foreground")
         self.method_menu.pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(options, text="Humanize").pack(side="left", padx=(8, 4))
+        self.humanize_menu = ctk.CTkOptionMenu(
+            options,
+            values=[_HUMANIZE_LABELS[level] for level in HUMANIZE_LEVELS],
+            command=self._on_humanize,
+            width=100,
+        )
+        self.humanize_menu.set(_HUMANIZE_LABELS.get(normalize_level(self.settings.humanize_level), "Medium"))
+        self.humanize_menu.pack(side="left", padx=(0, 8))
         ctk.CTkLabel(options, text="Countdown").pack(side="left", padx=(8, 4))
         self.countdown_menu = ctk.CTkOptionMenu(
             options,
@@ -384,10 +458,19 @@ class App(ctk.CTk):
     def _save_settings(self) -> None:
         save_settings(self.settings_path, self.settings)
 
+    def _humanize_profile(self) -> HumanizeProfile:
+        return HumanizeProfile.from_level(self.settings.humanize_level)
+
     def _on_method(self, value: str) -> None:
         if self._loading():
             return
         self.settings.click_method = "background" if value == "Background" else "foreground"
+        self._save_settings()
+
+    def _on_humanize(self, value: str) -> None:
+        if self._loading():
+            return
+        self.settings.humanize_level = _HUMANIZE_FROM_LABEL.get(value, normalize_level(value))
         self._save_settings()
 
     def _on_countdown(self, value: str) -> None:
@@ -519,18 +602,36 @@ class App(ctk.CTk):
         self.store.save(self.current)
 
     def _rebuild_preset_list(self) -> None:
-        for child in self.preset_list.winfo_children():
-            child.destroy()
-        for preset in self.store.presets:
-            selected = self.current is not None and preset.path == self.current.path
-            button = ctk.CTkButton(
-                self.preset_list,
-                text=preset.name,
-                anchor="w",
-                fg_color="#1f6aa5" if selected else "transparent",
-                command=lambda item=preset: self._select(item),
-            )
-            button.pack(fill="x", pady=2)
+        def rebuild() -> None:
+            for child in self.preset_list.winfo_children():
+                child.destroy()
+            for preset in self.store.presets:
+                selected = self.current is not None and preset.path == self.current.path
+                button = ctk.CTkButton(
+                    self.preset_list,
+                    text=preset.name,
+                    anchor="w",
+                    fg_color="#1f6aa5" if selected else "transparent",
+                    command=lambda item=preset: self._select(item),
+                )
+                button.pack(fill="x", pady=2)
+
+        self.scroll_memory.around_rebuild("clicker.presets", rebuild)
+
+    def _on_tab_changed(self) -> None:
+        previous = self._current_tab
+        self.scroll_memory.remember_prefix(self._tab_scroll_prefix(previous))
+        self._current_tab = self.tabs.get()
+        prefix = self._tab_scroll_prefix(self._current_tab)
+        self.after(80, lambda p=prefix: self.scroll_memory.restore_prefix(p))
+
+    def _tab_scroll_prefix(self, tab_name: str) -> str:
+        return {
+            "Clicker": "clicker.",
+            "Automations": "automations.",
+            "Screen Map": "screen_map.",
+            "AI Batches": "ai.",
+        }.get(tab_name, tab_name.lower().replace(" ", "_") + ".")
 
     def _select(self, preset: Preset) -> None:
         if self.recorder.active:
@@ -957,6 +1058,7 @@ class App(ctk.CTk):
             countdown=self.settings.countdown_seconds,
             hwnd=hwnd,
             snapshot=self.anchor_target.snapshot,
+            humanize=self._humanize_profile(),
         )
 
     def _stop_playback(self) -> None:
@@ -1200,6 +1302,7 @@ class App(ctk.CTk):
         self.hooks.state.screenshot_busy = False
         self._screen_map_busy = False
         self._refresh_screen_map_panel()
+        self._refresh_screen_map_catalog()
         self._status(f"Screenshot mode ON. Space captures, then title. Batch: {session.folder}", "run")
 
     def _end_screen_map_batch(self) -> None:
@@ -1215,6 +1318,7 @@ class App(ctk.CTk):
         session = self.screen_map.end()
         self.hooks.state.screenshot_mode = False
         self._refresh_screen_map_panel()
+        self._refresh_screen_map_catalog()
         if session is None:
             self._status("Screenshot mode OFF.", "warn")
             return
@@ -1225,7 +1329,12 @@ class App(ctk.CTk):
 
     def _open_screen_map_folder(self) -> None:
         session = self.screen_map.session
-        folder = session.folder if session else self.screen_maps_root
+        if session is not None:
+            folder = session.folder
+        elif self.screen_map_panel is not None and self.screen_map_panel.selected_batch is not None:
+            folder = self.screen_map_panel.selected_batch.folder
+        else:
+            folder = self.screen_maps_root
         if not folder.exists():
             self._status("No batch folder to open yet.", "warn")
             return
@@ -1233,6 +1342,39 @@ class App(ctk.CTk):
             os.startfile(folder)  # type: ignore[attr-defined]
         except OSError as exc:
             self._status(f"Could not open folder: {exc}", "error")
+
+    def _refresh_screen_map_catalog(self) -> None:
+        if self.screen_map_panel is None:
+            return
+        batches = list_screen_map_batches(self.screen_maps_root)
+        focus = None
+        if self.screen_map.session is not None:
+            focus = self.screen_map.session.folder.name
+        self.screen_map_panel.set_catalog(batches, focus_slug=focus)
+
+    def _view_screen_map_shot(self, batch: BatchSummary, index: int) -> None:
+        paths = [batch.shot_path(shot) for shot in batch.manifest.shots]
+        titles = [shot.title for shot in batch.manifest.shots]
+        viewer = open_image_viewer(
+            self,
+            paths,
+            titles=titles,
+            start_index=index,
+            title=f"Screen Map — {batch.title}",
+        )
+        if viewer is None:
+            self._status("No screenshot files found for that shot.", "warn")
+
+    def _view_screen_map_batch(self, batch: BatchSummary) -> None:
+        self._view_screen_map_shot(batch, 0)
+
+    def _goto_screen_map_batch(self, slug: str) -> None:
+        self._refresh_screen_map_catalog()
+        if self.screen_map_panel is not None:
+            self.screen_map_panel.focus_batch(slug)
+        self.tabs.set("Screen Map")
+        self._on_tab_changed()
+        self._status(f"Opened Screen Map batch: {slug}", "info")
 
     def _screen_map_space(self) -> None:
         if not self.screen_map.active or self.screen_map.dialog_open or self._screen_map_busy:
@@ -1319,7 +1461,333 @@ class App(ctk.CTk):
             return
         self._set_screen_map_busy(False)
         self._refresh_screen_map_panel()
+        self._refresh_screen_map_catalog()
         self._status(f"Saved {shot.filename} — ready for Space.", "ok")
+
+    def _ai_batch_anchor_snapshot(self):
+        return self.anchor_target.snapshot()
+
+    def _start_ai_batch_run(self, batch: AiBatch) -> None:
+        if self.recorder.active or self.player.is_active or self.screen_map.active:
+            self._status("Stop recording/playback/Screen Map before running an AI batch.", "warn")
+            return
+        if self.ai_batch_runner.is_running:
+            self._status("An AI batch is already running.", "warn")
+            return
+        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+        if status != "ok":
+            self._status("Anchor a window before starting an AI batch run.", "error")
+            return
+        # Re-load so steps from disk are current.
+        self.ai_batch_store.load_all()
+        live = self.ai_batch_store.batches.get(batch.slug)
+        if live is None:
+            self._status("Batch missing on disk — Reload.", "error")
+            return
+        try:
+            self.ai_batch_runner.start(live)
+        except AiBatchRunnerError as exc:
+            self._status(str(exc), "error")
+            if self.ai_batch_panel is not None:
+                self.ai_batch_panel.set_run_message(str(exc), level="error")
+            return
+        if self.ai_batch_panel is not None:
+            self.ai_batch_panel.set_running(True, f"Runner: starting {live.name}…")
+        self._status(f"AI batch running: {live.name}", "run")
+
+    def _stop_ai_batch_run(self) -> None:
+        self.ai_batch_runner.stop()
+        if self.ai_batch_panel is not None:
+            self.ai_batch_panel.set_run_message("Runner: stop requested…", level="warn")
+        self._status("Stopping AI batch…", "warn")
+
+    def _drain_ai_batch_runner(self) -> None:
+        try:
+            while True:
+                try:
+                    event = self.ai_batch_runner.events_out.get_nowait()
+                except Exception:
+                    break
+                kind = event.get("kind")
+                if kind == "status":
+                    message = event.get("message") or ""
+                    level = event.get("level") or "info"
+                    self._status(message, level if level in STATUS_COLOR else "info")
+                    if self.ai_batch_panel is not None:
+                        self.ai_batch_panel.set_run_message(message, level=level)
+                elif kind == "refresh":
+                    self.ai_batch_store.load_all()
+                    if self.ai_batch_panel is not None:
+                        self.ai_batch_panel.refresh_list()
+                    self._refresh_screen_map_catalog()
+                elif kind == "finished":
+                    if self.ai_batch_panel is not None:
+                        self.ai_batch_panel.set_running(False, "Runner: idle — tell the AI chat this batch ran.")
+                    self._refresh_screen_map_catalog()
+                    report = event.get("report") or {}
+                    sm = report.get("screen_map_batch")
+                    if sm:
+                        self._status(f"AI batch finished. Screen Map: screen-maps/{sm}/ (+ run_report.json)", "ok")
+        except Exception as exc:
+            self._status(f"AI batch runner update failed: {exc}", "error")
+        if self._alive:
+            self.after(100, self._drain_ai_batch_runner)
+
+    def _reload_ai_batches(self) -> None:
+        errors = self.ai_batch_store.load_all()
+        if self.ai_batch_panel is not None:
+            self.ai_batch_panel.refresh_list()
+        if errors:
+            self._status("Skipped AI batch files: " + "; ".join(errors), "error")
+        else:
+            self._status(f"AI batches reloaded ({len(self.ai_batch_store.batches)}).", "ok")
+
+    def _new_ai_batch(self) -> None:
+        name = self._ask_name("New AI information batch", "info-pass")
+        if not name:
+            return
+        goal = self._ask_text("Batch goal (optional)", "What should this batch gather?") or ""
+        try:
+            batch = self.ai_batch_store.create(
+                name,
+                goal=goal,
+                created_by="human",
+                requests=[
+                    {
+                        "id": "req-1",
+                        "kind": "screen_map_batch",
+                        "label": "Link a Screen Map batch",
+                        "detail": "Capture or attach screenshots via Screen Map, then link them here.",
+                    },
+                    {
+                        "id": "req-2",
+                        "kind": "note",
+                        "label": "Notes / gaps",
+                        "detail": "Record anything the AI still needs after this pass.",
+                    },
+                ],
+            )
+        except AiBatchError as exc:
+            self._status(str(exc), "error")
+            return
+        except OSError as exc:
+            self._status(f"Could not create AI batch: {exc}", "error")
+            return
+        if self.ai_batch_panel is not None:
+            self.ai_batch_panel.refresh_list()
+        self._status(f"Created AI batch: {batch.slug}", "ok")
+
+    def _ask_text(self, title: str, prompt: str) -> str | None:
+        result: dict[str, str | None] = {"value": None}
+        dialog = self._modal(title, 420, 200)
+        ctk.CTkLabel(dialog, text=prompt, wraplength=380, justify="left").pack(anchor="w", padx=16, pady=(16, 6))
+        entry = ctk.CTkEntry(dialog, width=380)
+        entry.pack(padx=16)
+
+        def ok(_event=None) -> None:
+            result["value"] = entry.get().strip()
+            dialog.destroy()
+
+        def cancel(_event=None) -> None:
+            result["value"] = None
+            dialog.destroy()
+
+        buttons = ctk.CTkFrame(dialog, fg_color="transparent")
+        buttons.pack(fill="x", padx=16, pady=16)
+        ctk.CTkButton(buttons, text="Skip", width=90, command=cancel).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(buttons, text="OK", width=90, command=ok).pack(side="right")
+        entry.bind("<Return>", ok)
+        dialog.bind("<Escape>", cancel)
+        dialog.after(1, lambda: self._arm_dialog_focus(dialog, entry))
+        self.wait_window(dialog)
+        return result["value"]
+
+    def _open_ai_batch_folder(self, batch: AiBatch) -> None:
+        folder = self.ai_batch_store.folder_for(batch.slug) or (self.ai_batches_root / batch.slug)
+        if not folder.exists():
+            self._status("Batch folder missing.", "warn")
+            return
+        try:
+            os.startfile(folder)  # type: ignore[attr-defined]
+        except OSError as exc:
+            self._status(f"Could not open folder: {exc}", "error")
+
+    def _view_ai_batch_screenshots(self, batch: AiBatch) -> None:
+        paths: list[Path] = []
+        titles: list[str] = []
+        folder = self.ai_batch_store.folder_for(batch.slug)
+        for req in batch.requests:
+            if req.result is None:
+                continue
+            if req.result.path:
+                candidate = Path(req.result.path)
+                if not candidate.is_absolute() and folder is not None:
+                    candidate = folder / candidate
+                if candidate.exists():
+                    paths.append(candidate)
+                    titles.append(req.label)
+                    continue
+            if req.result.screen_map_batch:
+                batch_folder = self.screen_maps_root / req.result.screen_map_batch
+                shot_name = req.result.screen_map_shot
+                if shot_name:
+                    candidate = batch_folder / shot_name
+                    if candidate.exists():
+                        paths.append(candidate)
+                        titles.append(req.label)
+                elif batch_folder.exists():
+                    for png in sorted(batch_folder.glob("*.png")):
+                        paths.append(png)
+                        titles.append(f"{req.label}: {png.stem}")
+        for slug in batch.linked_screen_map_batches:
+            batch_folder = self.screen_maps_root / slug
+            if not batch_folder.exists():
+                continue
+            for png in sorted(batch_folder.glob("*.png")):
+                if png not in paths:
+                    paths.append(png)
+                    titles.append(f"{slug}: {png.stem}")
+        viewer = open_image_viewer(self, paths, titles=titles, title=f"AI batch — {batch.name}")
+        if viewer is None:
+            self._status("No screenshots linked to this batch yet.", "warn")
+
+    def _link_ai_batch_screen_map(self, batch: AiBatch) -> None:
+        catalogs = list_screen_map_batches(self.screen_maps_root)
+        if not catalogs:
+            self._status("No Screen Map batches on disk to link.", "warn")
+            return
+        choice = self._ask_choice(
+            "Link Screen Map batch",
+            "Pick a Screen Map batch to attach:",
+            [f"{item.slug}  ({item.shot_count} shots)" for item in catalogs],
+        )
+        if choice is None:
+            return
+        slug = catalogs[choice].slug
+        try:
+            self.ai_batch_store.link_screen_map(batch, slug)
+            # Also mark first pending screen_map request done if present.
+            pending = next(
+                (
+                    req
+                    for req in batch.requests
+                    if req.status == "pending" and req.kind in ("screen_map_batch", "screenshot", "screen_map_shot")
+                ),
+                None,
+            )
+            if pending is not None:
+                self.ai_batch_store.mark_request(
+                    batch,
+                    pending.id,
+                    status="done",
+                    result=RequestResult(
+                        summary=f"Linked Screen Map batch {slug}",
+                        screen_map_batch=slug,
+                        captured_at=now_iso(),
+                    ),
+                )
+        except AiBatchError as exc:
+            self._status(str(exc), "error")
+            return
+        if self.ai_batch_panel is not None:
+            self.ai_batch_panel.refresh_list()
+        self._status(f"Linked Screen Map '{slug}' to AI batch '{batch.name}'.", "ok")
+
+    def _ask_choice(self, title: str, prompt: str, options: list[str]) -> int | None:
+        if not options:
+            return None
+        result: dict[str, int | None] = {"value": None}
+        dialog = self._modal(title, 460, min(120 + 36 * len(options), 420))
+        ctk.CTkLabel(dialog, text=prompt, wraplength=420, justify="left").pack(anchor="w", padx=16, pady=(16, 8))
+        box = ctk.CTkScrollableFrame(dialog, height=min(36 * len(options), 260))
+        box.pack(fill="both", expand=True, padx=16)
+
+        def pick(index: int) -> None:
+            result["value"] = index
+            dialog.destroy()
+
+        for index, label in enumerate(options):
+            ctk.CTkButton(box, text=label, anchor="w", command=lambda i=index: pick(i)).pack(fill="x", pady=2)
+
+        def cancel(_event=None) -> None:
+            result["value"] = None
+            dialog.destroy()
+
+        buttons = ctk.CTkFrame(dialog, fg_color="transparent")
+        buttons.pack(fill="x", padx=16, pady=12)
+        ctk.CTkButton(buttons, text="Cancel", width=90, command=cancel).pack(side="right")
+        dialog.bind("<Escape>", cancel)
+        self.wait_window(dialog)
+        return result["value"]
+
+    def _mark_ai_request(self, batch: AiBatch, request: BatchRequest, status: str) -> None:
+        result = request.result
+        if status == "done" and result is None:
+            result = RequestResult(summary="Marked done in Idle Lab UI", captured_at=now_iso())
+        try:
+            self.ai_batch_store.mark_request(batch, request.id, status=status, result=result)
+        except AiBatchError as exc:
+            self._status(str(exc), "error")
+            return
+        if self.ai_batch_panel is not None:
+            self.ai_batch_panel.refresh_list()
+        self._status(f"Request '{request.label}' → {status} ({batch.name}).", "ok")
+
+    def _add_ai_feedback(self, batch: AiBatch) -> None:
+        text = self._ask_text("Feedback for AI", "What did this batch miss / what should the next pass grab?")
+        if text is None:
+            return
+        try:
+            self.ai_batch_store.add_feedback(batch, text, author="human")
+        except AiBatchError as exc:
+            self._status(str(exc), "error")
+            return
+        if self.ai_batch_panel is not None:
+            self.ai_batch_panel.refresh_list()
+        self._status("Feedback saved on batch.", "ok")
+
+    def _snapshot_event_into_ai_batch(self, batch: AiBatch, request: BatchRequest) -> None:
+        events = sorted(self.auto_store.events.values(), key=lambda event: event.title.lower())
+        if not events:
+            self._status("No automation events loaded.", "warn")
+            return
+        choice = self._ask_choice(
+            "Snapshot event",
+            "Which event should be recorded into this request?",
+            [f"{event.title} ({event.id})" for event in events],
+        )
+        if choice is None:
+            return
+        event = events[choice]
+        try:
+            payload = self.ai_batch_store.snapshot_event(self.auto_store.events, event.id)
+            folder = self.ai_batch_store.folder_for(batch.slug)
+            rel = f"captures/{event.id}.json"
+            if folder is not None:
+                capture_dir = folder / "captures"
+                capture_dir.mkdir(parents=True, exist_ok=True)
+                (capture_dir / f"{event.id}.json").write_text(
+                    json.dumps(payload, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            self.ai_batch_store.mark_request(
+                batch,
+                request.id,
+                status="done",
+                result=RequestResult(
+                    summary=f"Event snapshot: {event.title}",
+                    path=rel,
+                    event_id=event.id,
+                    captured_at=now_iso(),
+                    payload=payload,
+                ),
+            )
+        except (AiBatchError, OSError) as exc:
+            self._status(str(exc), "error")
+            return
+        if self.ai_batch_panel is not None:
+            self.ai_batch_panel.refresh_list()
+        self._status(f"Captured event '{event.title}' into AI batch.", "ok")
 
     def _ask_screen_map_title(self) -> str | None:
         """Title dialog after a capture. Esc cancels; Space types normally."""
@@ -1361,6 +1829,12 @@ class App(ctk.CTk):
             return None
         return rect
 
+    def _automation_anchor_hwnd(self):
+        status, hwnd, rect, _title = self.anchor_target.snapshot()
+        if status != "ok":
+            return None, None
+        return hwnd, rect
+
     def _automation_play_preset(self, name: str) -> None:
         preset = next((item for item in self.store.presets if item.name == name), None)
         if preset is None:
@@ -1375,6 +1849,7 @@ class App(ctk.CTk):
             hwnd=hwnd,
             focus=self.settings.focus_before_run,
             restore_cursor=self.settings.restore_cursor,
+            humanize=self._humanize_profile(),
         )
 
     def _reload_automations(self) -> None:
