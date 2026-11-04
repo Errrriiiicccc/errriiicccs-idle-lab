@@ -23,7 +23,7 @@ Idle Lab also looks for Tesseract under `C:\Program Files\Tesseract-OCR\` even i
 
 ## Clicker (unchanged workflows)
 
-1. **Set anchor** → left-click BlueStacks or the click logger.
+1. Use the top **ANCHOR** bar (visible on every tab) → **Set anchor** → left-click BlueStacks or the click logger.
 2. Load or create a preset under **Presets**.
 3. Choose Foreground/Background, countdown, loops.
 4. **Start** or **F6**. Use the click logger to verify hits before trusting the game.
@@ -55,7 +55,7 @@ Schema: [automation-schema.md](automation-schema.md).
 
 ### Recommended first demo
 
-1. Clicker → **Click logger** → **Set anchor** on that window.
+1. **Click logger**, then top bar **Set anchor** on that window.
 2. Countdown **0**, method **Foreground**.
 3. Automations → **Reload** → **Start**.
 4. Watch console for 10s A/B ticks; toggle SIGNAL A/B on the logger.

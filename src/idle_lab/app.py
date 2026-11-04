@@ -109,8 +109,10 @@ class App(ctk.CTk):
         self.status_label = ctk.CTkLabel(self, text="", anchor="w", justify="left", wraplength=980)
         self.status_label.pack(side="bottom", fill="x", padx=12, pady=(4, 10))
 
+        self._build_chrome()
+
         self.tabs = ctk.CTkTabview(self)
-        self.tabs.pack(fill="both", expand=True, padx=8, pady=(8, 0))
+        self.tabs.pack(fill="both", expand=True, padx=8, pady=(4, 0))
         clicker = self.tabs.add("Clicker")
         automations = self.tabs.add("Automations")
         screen_map = self.tabs.add("Screen Map")
@@ -136,10 +138,86 @@ class App(ctk.CTk):
         )
         self.screen_map_panel.pack(fill="both", expand=True)
 
+    def _build_chrome(self) -> None:
+        """Global top bar: brand, shared anchor, reserved action tray (Settings later)."""
+
+        chrome = ctk.CTkFrame(self, corner_radius=12)
+        chrome.pack(fill="x", padx=8, pady=(8, 4))
+
+        left = ctk.CTkFrame(chrome, fg_color="transparent")
+        left.pack(side="left", fill="y", padx=(14, 10), pady=10)
+        ctk.CTkLabel(
+            left,
+            text="Errriiiccc's Idle Lab",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            left,
+            text="Shared window anchor for every tab",
+            text_color="#9AA4B2",
+            font=ctk.CTkFont(size=12),
+        ).pack(anchor="w")
+
+        # Right-side action tray first so anchor can expand into remaining space.
+        self.header_actions = ctk.CTkFrame(chrome, fg_color="transparent")
+        self.header_actions.pack(side="right", padx=(8, 12), pady=10)
+        self.settings_button = ctk.CTkButton(
+            self.header_actions,
+            text="Settings",
+            width=96,
+            state="disabled",
+            fg_color="#2A3140",
+            text_color="#7E8796",
+            hover=False,
+        )
+        self.settings_button.pack(side="right")
+
+        anchor_cluster = ctk.CTkFrame(chrome, fg_color="#1A2030", corner_radius=10)
+        anchor_cluster.pack(side="left", fill="both", expand=True, padx=(4, 8), pady=8)
+
+        anchor_top = ctk.CTkFrame(anchor_cluster, fg_color="transparent")
+        anchor_top.pack(fill="x", padx=10, pady=(8, 2))
+        ctk.CTkLabel(
+            anchor_top,
+            text="ANCHOR",
+            text_color="#8EE0C2",
+            font=ctk.CTkFont(size=11, weight="bold"),
+        ).pack(side="left")
+        self.anchor_dot = ctk.CTkLabel(anchor_top, text="●", text_color="#5A6474", width=18)
+        self.anchor_dot.pack(side="left", padx=(8, 0))
+
+        self.anchor_label = ctk.CTkLabel(
+            anchor_cluster,
+            text="No window anchored",
+            anchor="w",
+            justify="left",
+            text_color="#C5D0DC",
+        )
+        self.anchor_label.pack(fill="x", padx=10, pady=(0, 4))
+
+        anchor_buttons = ctk.CTkFrame(anchor_cluster, fg_color="transparent")
+        anchor_buttons.pack(fill="x", padx=10, pady=(0, 8))
+        self.anchor_button = ctk.CTkButton(
+            anchor_buttons,
+            text="Set anchor",
+            width=118,
+            command=self._toggle_anchor_mode,
+        )
+        self.anchor_button.pack(side="left", padx=(0, 6))
+        self.clear_button = ctk.CTkButton(
+            anchor_buttons,
+            text="Clear",
+            width=78,
+            fg_color="#2A3140",
+            hover_color="#3A4558",
+            command=self._clear_anchor,
+        )
+        self.clear_button.pack(side="left")
+
     def _build_clicker_body(self) -> None:
         header = ctk.CTkFrame(self.body, fg_color="transparent")
         header.pack(fill="x", padx=12, pady=(12, 4))
-        ctk.CTkLabel(header, text="Errriiiccc's Idle Lab", font=ctk.CTkFont(size=22, weight="bold")).pack(anchor="w")
+        ctk.CTkLabel(header, text="Clicker", font=ctk.CTkFont(size=20, weight="bold")).pack(anchor="w")
         ctk.CTkLabel(
             header,
             text="Presets are fractions of the anchored window, so they follow moves and resizes.",
@@ -147,18 +225,6 @@ class App(ctk.CTk):
             wraplength=520,
             justify="left",
         ).pack(anchor="w")
-
-        anchor_frame = ctk.CTkFrame(self.body)
-        anchor_frame.pack(fill="x", padx=12, pady=6)
-        ctk.CTkLabel(anchor_frame, text="Anchor", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=10, pady=(8, 2))
-        self.anchor_label = ctk.CTkLabel(anchor_frame, text="No window anchored", anchor="w")
-        self.anchor_label.pack(fill="x", padx=10)
-        anchor_buttons = ctk.CTkFrame(anchor_frame, fg_color="transparent")
-        anchor_buttons.pack(fill="x", padx=10, pady=(6, 10))
-        self.anchor_button = ctk.CTkButton(anchor_buttons, text="Set anchor", width=140, command=self._toggle_anchor_mode)
-        self.anchor_button.pack(side="left", padx=(0, 8))
-        self.clear_button = ctk.CTkButton(anchor_buttons, text="Clear", width=90, command=self._clear_anchor)
-        self.clear_button.pack(side="left")
 
         play_frame = ctk.CTkFrame(self.body)
         play_frame.pack(fill="x", padx=12, pady=6)
@@ -281,8 +347,13 @@ class App(ctk.CTk):
 
     def _sync_controls(self) -> None:
         busy = self._busy()
-        self.anchor_button.configure(text="Cancel anchor" if self._anchor_waiting else "Set anchor")
+        waiting = self._anchor_waiting
+        self.anchor_button.configure(text="Cancel anchor" if waiting else "Set anchor")
         self.anchor_button.configure(state="disabled" if busy else "normal")
+        if waiting:
+            self.anchor_button.configure(fg_color="#C9A227", hover_color="#E0B93A", text_color="#161616")
+        else:
+            self.anchor_button.configure(fg_color=["#3B8ED0", "#1F6AA5"], hover_color=["#36719F", "#144870"], text_color="#DCE4EE")
         self.clear_button.configure(state="disabled" if busy else "normal")
         self.create_button.configure(state="disabled" if busy else "normal")
         can_edit = self.current is not None and not busy
@@ -347,13 +418,18 @@ class App(ctk.CTk):
     def _render_anchor(self, status: str, rect, title: str) -> None:
         if status == "ok" and rect is not None:
             text = f"{title}   {rect.width} x {rect.height}"
+            dot = "#8EE0C2"
         elif status == "minimized":
             text = f"{title} is minimized"
+            dot = "#E7C36A"
         elif status == "closed":
             text = "Anchored window closed"
+            dot = "#F09595"
         else:
             text = "No window anchored"
+            dot = "#5A6474"
         self.anchor_label.configure(text=text)
+        self.anchor_dot.configure(text_color=dot)
 
     def _toggle_anchor_mode(self) -> None:
         if self._busy():

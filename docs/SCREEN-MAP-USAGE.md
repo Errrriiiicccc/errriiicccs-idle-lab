@@ -5,7 +5,7 @@ Manual screenshot batches for mapping game screens. Same Idle Lab window as Clic
 ## Setup
 
 1. Launch Idle Lab (`pythonw -m idle_lab` from the venv).
-2. On the **Clicker** tab: **Set anchor**, then click the emulator/game window.
+2. Use the top **ANCHOR** bar: **Set anchor**, then click the emulator/game window.
 3. Open the **Screen Map** tab.
 
 ## Capture a batch

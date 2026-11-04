@@ -2,7 +2,7 @@
 
 ## Clicker tab
 
-- Set anchor, then left-click a window. The click is swallowed. Esc cancels.
+- Shared top **ANCHOR** bar on every tab: Set / Clear, live window title + size. Left-click a window after Set; Esc cancels.
 - Click-through cyan frame follows that window (including negative monitor coords).
 - Create presets (instantaneous / one second / realtime); Space/Esc recording.
 - Foreground and background clicks; focus; cursor restore; countdown.

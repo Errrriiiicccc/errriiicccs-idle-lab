@@ -13,7 +13,7 @@ Expect `test_screen_map` (sanitize, manifest, mode machine) to pass with the res
 
 ## Manual: three titled shots
 
-1. Start Idle Lab. **Clicker** → Set anchor → click a visible window (BlueStacks or Notepad is fine).
+1. Start Idle Lab. Top **ANCHOR** bar → Set anchor → click a visible window (BlueStacks or Notepad is fine).
 2. **Screen Map** → **Start batch…** → title `smoke-three`.
 3. Confirm status shows `Screenshot mode: ON` and a path under `screen-maps/smoke-three` (or `smoke-three-N` if reused).
 4. Press **Space**, title `Alpha`, Capture. Status shows saved `01_alpha.png`. List shows the title.

@@ -14,7 +14,7 @@ Expect OK (33+ tests).
 ## 1. Clicker still works
 
 1. Launch `pythonw -m idle_lab`.
-2. Open **Click logger**. **Set anchor** on it.
+2. Open **Click logger**. Use the top **ANCHOR** bar → **Set anchor** on it.
 3. Load **sample three points**. Foreground, countdown 0, loops 1 → **Start**.
 4. Logger reports hits on upper/middle/lower.
 5. Confirm cyan frame follows move/resize; hides when minimized.
