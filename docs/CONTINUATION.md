@@ -38,6 +38,15 @@ For the next chat working on **Errriiiccc's Idle Lab** (`c:\DEV\Projects\Cursor\
 
 Local commits anytime. **`git push` only outside Mon–Fri 09:00–17:00 Eastern** unless Eric overrides in-message.
 
+**Ready to push after 17:00 Eastern (2026-11-04):** public empty remote exists; local `main` has commit `b1ce5a0`.
+
+```powershell
+cd c:\DEV\Projects\Cursor\errriiicccs-idle-lab
+git push -u origin main
+```
+
+Repo: https://github.com/Errrriiiicccc/errriiicccs-idle-lab
+
 ## Suggested next tasks
 
 1. Tune Tower `wave_roi` from a real screenshot; keep click-logger samples as regression harness.

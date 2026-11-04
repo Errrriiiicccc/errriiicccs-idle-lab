@@ -46,6 +46,12 @@ Next chat: [docs/CONTINUATION.md](docs/CONTINUATION.md).
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
+## Repo
+
+https://github.com/Errrriiiicccc/errriiicccs-idle-lab
+
+If you finish work during business hours (Mon–Fri 09:00–17:00 Eastern), leave commits local and push after 17:00.
+
 ## Origin
 
 Forked from `tower-autoclicker` (left untouched). Vision notes for the wider Idle Lab idea live separately under the workspace `idle-lab/` docs tree.
