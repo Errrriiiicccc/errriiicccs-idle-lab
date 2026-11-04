@@ -48,8 +48,18 @@ def ffmpeg_available() -> bool:
     return find_ffmpeg() is not None
 
 
-def clip_name(run_number: int | str, wave_number: int | str) -> str:
-    return f"run_{run_number}_wave_{wave_number}"
+def clip_name(
+    run_number: int | str,
+    wave_number: int | str,
+    *,
+    kind: str = "",
+    stamp: str = "",
+) -> str:
+    """Build a clip stem. Optional ``kind`` / ``stamp`` avoid overwrites on long runs."""
+
+    base = f"run_{run_number}_wave_{wave_number}"
+    parts = [part for part in (kind.strip(), base, stamp.strip()) if part]
+    return "_".join(parts) if kind.strip() or stamp.strip() else base
 
 
 def record_clip(

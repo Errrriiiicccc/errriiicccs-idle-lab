@@ -17,11 +17,24 @@ from idle_lab.automations.ocr import OcrError, ocr_field
 from idle_lab.automations.scheduler import Scheduler
 from idle_lab.automations.schema import Event, Roi
 from idle_lab.automations.store import AutomationStore
+from idle_lab.automations.tower_nav import (
+    BUY_CLICK,
+    TAB_CLICK,
+    check_list_top,
+    click_normalized,
+    observe_panel,
+    panel_status_vars,
+    seek_list_top,
+)
 from idle_lab.automations.video import VideoError, clip_name, record_clip
+from idle_lab.humanize import HumanizeProfile
 from idle_lab.models import Rect
 
 
 LogFn = Callable[[str, str], None]  # message, level
+AnchorFn = Callable[[], Rect | None]
+AnchorHwndFn = Callable[[], tuple[int | None, Rect | None]]
+HumanizeFn = Callable[[], HumanizeProfile]
 
 
 @dataclass
@@ -38,13 +51,19 @@ class AutomationRuntime:
         *,
         store: AutomationStore,
         runs_dir: Path,
-        get_anchor_rect: Callable[[], Rect | None],
+        get_anchor_rect: AnchorFn,
         play_preset: Callable[[str], None] | None = None,
+        get_anchor_hwnd: AnchorHwndFn | None = None,
+        get_humanize: HumanizeFn | None = None,
+        restore_cursor: bool = True,
         events_out: queue.Queue | None = None,
     ) -> None:
         self.store = store
         self.runs_dir = Path(runs_dir)
         self.get_anchor_rect = get_anchor_rect
+        self.get_anchor_hwnd = get_anchor_hwnd
+        self.get_humanize = get_humanize
+        self.restore_cursor = restore_cursor
         self.play_preset = play_preset
         self.events_out: queue.Queue = events_out or queue.Queue()
         self.scheduler = Scheduler()
@@ -83,6 +102,16 @@ class AutomationRuntime:
         self.emit("queue", items=[item.__dict__ for item in self.scheduler.queue_snapshot()])
         self.log("Scheduler reloaded from files.", "ok")
 
+    def _profile(self) -> HumanizeProfile:
+        if self.get_humanize is not None:
+            return self.get_humanize()
+        return HumanizeProfile.from_level("medium")
+
+    def _anchor(self) -> tuple[int | None, Rect | None]:
+        if self.get_anchor_hwnd is not None:
+            return self.get_anchor_hwnd()
+        return None, self.get_anchor_rect()
+
     def _loop(self) -> None:
         while not self._stop.is_set():
             if not self._enabled:
@@ -105,7 +134,6 @@ class AutomationRuntime:
                 self._run_event(chosen)
             except Exception as exc:  # noqa: BLE001
                 self.log(f"event {chosen.id} failed: {exc}", "error")
-                # Known dependency/setup errors: keep console readable (no full traceback).
                 message = str(exc).lower()
                 if not any(
                     tip in message
@@ -124,38 +152,47 @@ class AutomationRuntime:
 
     def _run_event(self, event: Event) -> None:
         self.log(f"▶ {event.title} ({event.id})", "run")
-        branch_actions: list | None = None
         for action in event.actions:
-            if branch_actions is not None:
-                # Skip siblings after a decide that selected a branch list inline.
-                break
-            if action.type == "decide":
-                branch_actions = self._action_decide(action.raw)
-                if branch_actions:
-                    for nested in branch_actions:
-                        self._dispatch(nested if isinstance(nested, dict) else nested.raw)
-                continue
             self._dispatch(action.raw)
         self.log(f"✔ finished {event.id}", "ok")
 
     def _dispatch(self, raw: dict[str, Any]) -> None:
         action_type = raw.get("type")
+        if action_type == "decide":
+            branch_actions = self._action_decide(raw)
+            if branch_actions:
+                for nested in branch_actions:
+                    nested_raw = nested if isinstance(nested, dict) else nested.raw
+                    self._dispatch(nested_raw)
+            return
         handlers = {
             "screenshot": self._action_screenshot,
             "ocr": self._action_ocr,
-            "decide": lambda data: self._action_decide(data),
             "mouse": self._action_play_preset,
             "play_preset": self._action_play_preset,
             "record_clip": self._action_record_clip,
             "csv_append": self._action_csv_append,
             "log": self._action_log,
             "set_variable": self._action_set_variable,
+            "wait": self._action_wait,
+            "click": self._action_click,
+            "detect_panel": self._action_detect_panel,
+            "ensure_upgrade_tab": self._action_ensure_upgrade_tab,
+            "seek_list_top": self._action_seek_list_top,
         }
         handler = handlers.get(str(action_type))
         if handler is None:
             self.log(f"unknown action type: {action_type}", "error")
             return
         handler(raw)
+
+    def _fresh_image(self, rect: Rect | None = None) -> Any:
+        anchor = rect if rect is not None else self.get_anchor_rect()
+        image = grab_anchor(anchor)
+        self.state.last_image = image
+        self.state.states["capture_failed"] = False
+        self.state.states["anchor_missing"] = anchor is None
+        return image
 
     def _action_screenshot(self, raw: dict[str, Any]) -> None:
         rect = self.get_anchor_rect()
@@ -198,6 +235,11 @@ class AutomationRuntime:
             self.state.variables["wave_number"] = result.inference or self.state.variables.get("wave_number", "xx")
         if parse_as == "signal":
             self.state.states["signal_a_vs_b"] = result.inference in {"A", "B"}
+        if parse_as == "game_over":
+            self.state.states["game_over"] = result.inference == "GAME_OVER"
+            self.state.variables["game_over"] = result.inference
+        if parse_as == "presence":
+            self.state.states[f"{variable}_present"] = result.inference == "PRESENT"
         self.log(
             f"OCR {roi_id}: observation={result.observation!r} inference={result.inference!r} → {variable}",
             "info",
@@ -243,17 +285,27 @@ class AutomationRuntime:
         self.log(f"finished preset {name!r}", "ok")
 
     def _action_record_clip(self, raw: dict[str, Any]) -> None:
+        from datetime import datetime
+
         rect = self.get_anchor_rect()
         if rect is None:
             raise VideoError("anchor missing")
         duration_s = float(raw.get("duration_s") or 10)
         run_number = self.store.runtime.run_number
         wave = self.state.variables.get("wave_number") or "xx"
-        name = clip_name(run_number, wave)
+        kind = str(raw.get("kind") or raw.get("name_prefix") or "").strip()
+        # Stamp b-roll (and any kinded clip) so same-wave repeats do not overwrite.
+        stamp = ""
+        if kind or bool(raw.get("stamp", False)):
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        name = clip_name(run_number, wave, kind=kind, stamp=stamp)
         dest = self.runs_dir / "clips" / f"{name}.mp4"
         self.log(f"recording clip {dest.name} ({duration_s:.0f}s)…", "warn")
         record_clip(rect, dest, duration_s=duration_s, should_abort=self._stop.is_set)
         self.state.variables["last_clip"] = str(dest)
+        self.state.variables["clip_name"] = dest.name
+        self.state.variables["clip_duration_s"] = str(int(duration_s) if duration_s == int(duration_s) else duration_s)
+        self.state.variables["clip_kind"] = kind or "clip"
         self.log(f"clip saved {dest}", "ok")
 
     def _action_csv_append(self, raw: dict[str, Any]) -> None:
@@ -261,13 +313,22 @@ class AutomationRuntime:
         path = self.runs_dir / path_name
         run_number = self.store.runtime.run_number
         wave = self.state.variables.get("wave_number") or "xx"
-        row = append_run_row(path, run_number=run_number, wave_number=wave)
+        extras: dict[str, Any] = {}
+        fields = raw.get("fields")
+        if isinstance(fields, list):
+            for field_name in fields:
+                if not isinstance(field_name, str) or not field_name.strip():
+                    continue
+                key = field_name.strip()
+                if key in {"datetime", "run_number", "wave_number"}:
+                    continue
+                extras[key] = self.state.variables.get(key, "")
+        row = append_run_row(path, run_number=run_number, wave_number=wave, extras=extras or None)
         self.log(f"csv append {path.name}: {row}", "ok")
 
     def _action_log(self, raw: dict[str, Any]) -> None:
         message = str(raw.get("message") or "")
         level = str(raw.get("level") or "info")
-        # Tiny template substitution for variables.
         for key, value in self.state.variables.items():
             message = message.replace("{" + key + "}", str(value))
         self.log(message, level)
@@ -278,3 +339,222 @@ class AutomationRuntime:
             return
         self.state.variables[name] = raw.get("value")
         self.log(f"set {name}={raw.get('value')!r}", "info")
+
+    def _action_wait(self, raw: dict[str, Any]) -> None:
+        ms = int(raw.get("ms") or raw.get("wait_ms") or 0)
+        if ms > 0:
+            self.log(f"wait {ms}ms", "info")
+            time.sleep(ms / 1000.0)
+
+    def _action_click(self, raw: dict[str, Any]) -> None:
+        hwnd, rect = self._anchor()
+        if rect is None or not hwnd:
+            raise CaptureError("anchor missing")
+        target = str(raw.get("target") or "").strip().lower()
+        if target in BUY_CLICK:
+            nx, ny = BUY_CLICK[target]
+        elif target in TAB_CLICK:
+            nx, ny = TAB_CLICK[target]
+        else:
+            if "nx" not in raw or "ny" not in raw:
+                raise CaptureError("click needs nx/ny or target=health|damage|attack|defense|utility")
+            nx = float(raw["nx"])
+            ny = float(raw["ny"])
+        hold_ms = int(raw.get("hold_ms") or 70)
+        label = target or f"({nx:.2f},{ny:.2f})"
+        self.log(f"click {label}", "run")
+        click_normalized(
+            hwnd=hwnd,
+            rect=rect,
+            nx=nx,
+            ny=ny,
+            hold_ms=hold_ms,
+            restore_cursor=self.restore_cursor,
+            profile=self._profile(),
+            stop=self._stop,
+        )
+        # Clicks change UI — force a fresh frame next observe.
+        self.state.last_image = None
+
+    def _action_detect_panel(self, raw: dict[str, Any]) -> None:
+        rect = self.get_anchor_rect()
+        if rect is None:
+            raise CaptureError("anchor missing")
+        refresh = bool(raw.get("refresh", True))
+        image = self._fresh_image(rect) if refresh or self.state.last_image is None else self.state.last_image
+        state = observe_panel(image)
+        vars_map = panel_status_vars(state)
+        self.state.variables.update(vars_map)
+        self.state.states["panel_open"] = state.panel_open
+        prefix = str(raw.get("prefix") or "")
+        if prefix:
+            path = save_screenshot(image, self.runs_dir / "screenshots", prefix=prefix)
+            self.state.last_screenshot_path = path
+            self.state.variables["last_screenshot"] = str(path)
+        open_label = "open" if state.panel_open else "closed"
+        tab_label = state.tab or "none"
+        self.log(
+            f"status: panel {open_label}, tab={tab_label} — {state.reason} (rgb={vars_map['panel_rgb']})",
+            "ok",
+        )
+
+    def _action_ensure_upgrade_tab(self, raw: dict[str, Any]) -> None:
+        tab = str(raw.get("tab") or "").strip().lower()
+        if tab not in TAB_CLICK:
+            raise CaptureError(f"ensure_upgrade_tab needs tab=attack|defense|utility (got {tab!r})")
+        hwnd, rect = self._anchor()
+        if rect is None or not hwnd:
+            raise CaptureError("anchor missing")
+        wait_ms = max(0, int(raw.get("wait_ms") or 550))
+        hold_ms = int(raw.get("hold_ms") or 70)
+        prefix = str(raw.get("prefix") or f"ensure_{tab}")
+
+        before = self._fresh_image(rect)
+        before_state = observe_panel(before)
+        path = save_screenshot(before, self.runs_dir / "screenshots", prefix=f"{prefix}_before")
+        self.state.variables.update(panel_status_vars(before_state))
+        self.log(
+            f"ensure {tab}: before panel={'open' if before_state.panel_open else 'closed'} "
+            f"tab={before_state.tab or 'none'} — {before_state.reason}",
+            "info",
+        )
+
+        if before_state.panel_open and before_state.tab == tab:
+            self.log(f"ensure {tab}: already open — skipped click (retap would close)", "ok")
+            self.state.variables["ensure_clicked"] = "no"
+            self.state.variables["ensure_tab"] = tab
+            self.state.variables["last_screenshot"] = str(path)
+            return
+
+        # Panel looks open but color did not match Attack/Defense/Utility.
+        # Clicking the target tab might be a retap → accidental close. Stay put.
+        if before_state.panel_open and before_state.tab is None:
+            self.log(
+                f"ensure {tab}: panel open but tab unmatched — skipping click to avoid closing it "
+                f"({before_state.reason})",
+                "warn",
+            )
+            self.state.variables["ensure_clicked"] = "no"
+            self.state.variables["ensure_tab"] = "unknown"
+            self.state.variables["last_screenshot"] = str(path)
+            return
+
+        nx, ny = TAB_CLICK[tab]
+        if "nx" in raw:
+            nx = float(raw["nx"])
+        if "ny" in raw:
+            ny = float(raw["ny"])
+        self.log(
+            f"ensure {tab}: clicking tab "
+            f"(was {before_state.tab or 'closed'})",
+            "run",
+        )
+        click_normalized(
+            hwnd=hwnd,
+            rect=rect,
+            nx=nx,
+            ny=ny,
+            hold_ms=hold_ms,
+            restore_cursor=self.restore_cursor,
+            profile=self._profile(),
+            stop=self._stop,
+        )
+        if wait_ms:
+            time.sleep(wait_ms / 1000.0)
+        after = self._fresh_image(rect)
+        after_state = observe_panel(after)
+
+        # Accidental close recovery: one reopen click (never a third — that would close again).
+        if not after_state.panel_open:
+            self.log(
+                f"ensure {tab}: panel closed after click — reopening once (keep-open policy)",
+                "warn",
+            )
+            click_normalized(
+                hwnd=hwnd,
+                rect=rect,
+                nx=nx,
+                ny=ny,
+                hold_ms=hold_ms,
+                restore_cursor=self.restore_cursor,
+                profile=self._profile(),
+                stop=self._stop,
+            )
+            if wait_ms:
+                time.sleep(wait_ms / 1000.0)
+            after = self._fresh_image(rect)
+            after_state = observe_panel(after)
+
+        after_path = save_screenshot(after, self.runs_dir / "screenshots", prefix=f"{prefix}_after")
+        self.state.variables.update(panel_status_vars(after_state))
+        self.state.variables["ensure_clicked"] = "yes"
+        self.state.variables["ensure_tab"] = tab
+        self.state.variables["last_screenshot"] = str(after_path)
+        open_ok = after_state.panel_open and after_state.tab == tab
+        self.log(
+            f"ensure {tab}: after panel={'open' if after_state.panel_open else 'closed'} "
+            f"tab={after_state.tab or 'none'} — {after_state.reason}",
+            "ok" if open_ok else "warn",
+        )
+
+    def _action_seek_list_top(self, raw: dict[str, Any]) -> None:
+        look_for = str(raw.get("look_for") or raw.get("keyword") or "").strip()
+        hwnd, rect = self._anchor()
+        if rect is None or not hwnd:
+            raise CaptureError("anchor missing")
+        prefix = str(raw.get("prefix") or "seek_top")
+
+        # Status snapshot before deciding whether to scroll.
+        before = self._fresh_image(rect)
+        panel = observe_panel(before)
+        self.state.variables.update(panel_status_vars(panel))
+        path = save_screenshot(before, self.runs_dir / "screenshots", prefix=f"{prefix}_before")
+        self.state.variables["last_screenshot"] = str(path)
+        if look_for:
+            check = check_list_top(before, look_for)
+            self.state.variables["list_top_raw"] = check.observation
+            self.state.variables["list_at_top"] = "yes" if check.at_top else "no"
+            self.log(
+                f"seek_list_top ({look_for}): panel tab={panel.tab or 'none'}; {check.reason}",
+                "info",
+            )
+            if check.at_top:
+                self.log(f"list already shows {look_for!r} — no scroll", "ok")
+                self.state.variables["seek_steps"] = "0"
+                self.state.variables["seek_reason"] = "ocr_match"
+                return
+        else:
+            self.log(
+                f"seek_list_top: panel tab={panel.tab or 'none'}; scrolling up until unchanged",
+                "info",
+            )
+
+        def save_status(image: Any, stem: str) -> None:
+            save_screenshot(image, self.runs_dir / "screenshots", prefix=f"{prefix}_{stem}")
+
+        result = seek_list_top(
+            hwnd=hwnd,
+            rect=rect,
+            look_for=look_for,
+            max_steps=int(raw.get("max_steps") or 12),
+            settle_ms=int(raw.get("settle_ms") or 800),
+            settle_confirm_ms=int(raw.get("settle_confirm_ms") or 400),
+            unchanged_threshold=float(raw.get("unchanged_threshold") or 0.015),
+            drag_fraction=float(raw.get("drag_fraction") or 0.10),
+            hold_end_ms=int(raw.get("hold_end_ms") or 450),
+            restore_cursor=self.restore_cursor,
+            stop=self._stop,
+            log=self.log,
+            save_status=save_status,
+        )
+        self.state.last_image = None
+        self.state.variables["seek_steps"] = str(result.get("steps", 0))
+        self.state.variables["seek_reason"] = str(result.get("stop_reason") or "")
+        self.state.variables["list_at_top"] = "yes" if result.get("at_top") else "no"
+        if result.get("observation"):
+            self.state.variables["list_top_raw"] = str(result["observation"])
+        self.log(
+            f"seek_list_top done: steps={result.get('steps')} reason={result.get('stop_reason')} "
+            f"at_top={result.get('at_top')}",
+            "ok" if result.get("at_top") else "warn",
+        )

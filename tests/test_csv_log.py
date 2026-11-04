@@ -26,6 +26,23 @@ class CsvLogTests(unittest.TestCase):
             lines = path.read_text(encoding="utf-8").strip().splitlines()
             self.assertEqual(len(lines), 3)
 
+    def test_extras_add_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "endgame_stats.csv"
+            row = append_run_row(
+                path,
+                run_number=1,
+                wave_number=600,
+                when="t1",
+                extras={"coins": "1.2e9", "coins_per_min": "3.4M", "cash_per_min": "12K", "diamonds": "42", "game_over": "RUNNING"},
+            )
+            self.assertEqual(row["coins"], "1.2e9")
+            self.assertIn("diamonds", row)
+            with path.open(encoding="utf-8", newline="") as handle:
+                headers = next(csv.reader(handle))
+            self.assertEqual(headers[:3], list(CSV_FIELDS))
+            self.assertIn("coins_per_min", headers)
+
 
 if __name__ == "__main__":
     unittest.main()

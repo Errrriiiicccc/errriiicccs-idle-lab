@@ -21,6 +21,11 @@ ACTION_TYPES = frozenset(
         "csv_append",
         "log",
         "set_variable",
+        "wait",
+        "click",
+        "detect_panel",
+        "ensure_upgrade_tab",
+        "seek_list_top",
     }
 )
 

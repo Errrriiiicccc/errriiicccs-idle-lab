@@ -72,7 +72,30 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertIn("ocr_ab_tick", store.events)
         self.assertIn("minute_clip", store.events)
+        self.assertIn("humanize_upgrade_loop", store.events)
         self.assertIn("demo_poc", store.collections)
+        self.assertIn("endgame_tier1", store.collections)
+        self.assertIn("stat_collecting", store.collections)
+        self.assertIn("endgame_phase_loop", store.collections)
+        self.assertEqual(store.collections["stat_collecting"].title, "Stat collecting")
+        self.assertEqual(store.collections["endgame_phase_loop"].title, "Endgame Phase Loop")
+        self.assertEqual(
+            store.collections["endgame_phase_loop"].children,
+            ["endgame_status_buy", "stat_collect_30s", "stat_broll_5m"],
+        )
+        self.assertIn("endgame_status_buy", store.events)
+        self.assertIn("endgame_minute_stats", store.events)
+        self.assertIn("stat_collect_30s", store.events)
+        self.assertIn("stat_broll_5m", store.events)
+        self.assertTrue(store.events["endgame_status_buy"].enabled)
+        self.assertFalse(store.events["humanize_upgrade_loop"].enabled)
+        self.assertTrue(store.events["stat_collect_30s"].enabled)
+        self.assertTrue(store.events["stat_broll_5m"].enabled)
+        self.assertEqual(store.events["stat_collect_30s"].every_ms, 30000)
+        self.assertEqual(store.events["stat_broll_5m"].every_ms, 300000)
+        self.assertEqual(store.collections["stat_collecting"].children, ["stat_collect_30s", "stat_broll_5m"])
+        types = {action.type for action in store.events["endgame_status_buy"].actions}
+        self.assertIn("detect_panel", types)
         self.assertEqual(store.runtime.run_number, 1)
 
     def test_bad_file_reported(self) -> None:

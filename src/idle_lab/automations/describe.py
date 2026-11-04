@@ -48,6 +48,9 @@ def _action_basic(action: Action) -> str:
         return f"Play click preset “{preset}” on the anchored window."
     if kind == "record_clip":
         duration = raw.get("duration_s") or 10
+        clip_kind = raw.get("kind") or raw.get("name_prefix")
+        if clip_kind:
+            return f"Record a {duration}s {clip_kind} video clip of the anchored window."
         return f"Record a {duration}s video clip of the anchored window."
     if kind == "csv_append":
         path = raw.get("path") or "run_log.csv"
@@ -58,6 +61,24 @@ def _action_basic(action: Action) -> str:
     if kind == "set_variable":
         name = raw.get("name") or "?"
         return f"Set variable {name} to {raw.get('value')!r}."
+    if kind == "wait":
+        ms = raw.get("ms") or raw.get("wait_ms") or 0
+        return f"Wait {ms} ms."
+    if kind == "click":
+        target = raw.get("target")
+        if target:
+            return f"Click the {target} control on the anchored window."
+        return f"Click at ({raw.get('nx')}, {raw.get('ny')})."
+    if kind == "detect_panel":
+        return "Observe upgrade-panel status (open/closed + Attack/Defense/Utility tab)."
+    if kind == "ensure_upgrade_tab":
+        tab = raw.get("tab") or "?"
+        return f"Ensure the {tab} upgrade tab is open (skip click if already active — retap would close it)."
+    if kind == "seek_list_top":
+        look = raw.get("look_for") or raw.get("keyword")
+        if look:
+            return f"Check whether “{look}” is on the first upgrade row; scroll up if not."
+        return "Scroll the upgrade list up until it stops moving (top edge)."
     return f"Run action “{kind}”."
 
 
@@ -96,19 +117,49 @@ def _action_detailed(action: Action, *, indent: str = "") -> list[str]:
         lines.append(f"{indent}  → clicks use the current Clicker method (foreground/background)")
     elif kind == "record_clip":
         duration = raw.get("duration_s") or 10
+        clip_kind = raw.get("kind") or raw.get("name_prefix") or ""
         lines.append(f"{indent}  → duration: {duration}s")
-        lines.append(f"{indent}  → output: runs/clips/run_{{run_number}}_wave_{{wave_number}}.mp4")
+        if clip_kind:
+            lines.append(
+                f"{indent}  → output: runs/clips/{clip_kind}_run_{{run}}_wave_{{wave}}_{{timestamp}}.mp4"
+            )
+        else:
+            lines.append(f"{indent}  → output: runs/clips/run_{{run_number}}_wave_{{wave_number}}.mp4")
         lines.append(f"{indent}  → wave_number comes from OCR taken just before recording")
         lines.append(f"{indent}  → while recording, lower-priority events are deferred")
     elif kind == "csv_append":
         path = raw.get("path") or "run_log.csv"
         lines.append(f"{indent}  → file: runs/{path}")
-        lines.append(f"{indent}  → columns: datetime, run_number, wave_number")
+        extra = raw.get("fields")
+        if isinstance(extra, list) and extra:
+            cols = ["datetime", "run_number", "wave_number", *[str(c) for c in extra]]
+            lines.append(f"{indent}  → columns: {', '.join(cols)}")
+        else:
+            lines.append(f"{indent}  → columns: datetime, run_number, wave_number")
     elif kind == "log":
         lines.append(f"{indent}  → level: {raw.get('level') or 'info'}")
         lines.append(f"{indent}  → message template: {raw.get('message')!r}")
     elif kind == "set_variable":
         lines.append(f"{indent}  → {raw.get('name')} = {raw.get('value')!r}")
+    elif kind == "wait":
+        lines.append(f"{indent}  → ms: {raw.get('ms') or raw.get('wait_ms')}")
+    elif kind == "click":
+        if raw.get("target"):
+            lines.append(f"{indent}  → target: {raw.get('target')}")
+        else:
+            lines.append(f"{indent}  → nx={raw.get('nx')} ny={raw.get('ny')}")
+        lines.append(f"{indent}  → hold_ms: {raw.get('hold_ms') or 70}")
+    elif kind == "detect_panel":
+        lines.append(f"{indent}  → sets panel_open, upgrade_tab, panel_reason")
+        if raw.get("prefix"):
+            lines.append(f"{indent}  → status shot prefix: {raw.get('prefix')}")
+    elif kind == "ensure_upgrade_tab":
+        lines.append(f"{indent}  → tab: {raw.get('tab')}")
+        lines.append(f"{indent}  → observe → click only if needed → re-observe")
+        lines.append(f"{indent}  → never retaps an already-active tab")
+    elif kind == "seek_list_top":
+        lines.append(f"{indent}  → look_for: {raw.get('look_for') or raw.get('keyword') or '(unchanged edge)'}")
+        lines.append(f"{indent}  → controlled drag up (fraction≈0.10) until OCR match or unchanged")
     return lines
 
 

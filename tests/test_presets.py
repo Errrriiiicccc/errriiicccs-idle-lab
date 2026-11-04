@@ -86,6 +86,7 @@ class PresetTests(unittest.TestCase):
         errors = store.load_all()
         self.assertEqual(errors, [])
         self.assertTrue(any(preset.name == "sample three points" for preset in store.presets))
+        self.assertTrue(any(preset.name == "humanize atk def loop" for preset in store.presets))
 
     def test_project_root_finds_this_repo(self) -> None:
         root = project_root()
@@ -96,12 +97,22 @@ class SettingsTests(unittest.TestCase):
     def test_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "settings.json"
-            save_settings(path, Settings(click_method="background", focus_before_run=False, restore_cursor=True, countdown_seconds=3))
+            save_settings(
+                path,
+                Settings(
+                    click_method="background",
+                    focus_before_run=False,
+                    restore_cursor=True,
+                    countdown_seconds=3,
+                    humanize_level="light",
+                ),
+            )
             loaded, error = load_settings(path)
             self.assertIsNone(error)
             self.assertEqual(loaded.click_method, "background")
             self.assertFalse(loaded.focus_before_run)
             self.assertEqual(loaded.countdown_seconds, 3)
+            self.assertEqual(loaded.humanize_level, "light")
 
     def test_corrupt_file_falls_back(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
@@ -110,6 +121,19 @@ class SettingsTests(unittest.TestCase):
             loaded, error = load_settings(path)
             self.assertIsNotNone(error)
             self.assertEqual(loaded.click_method, "foreground")
+            self.assertEqual(loaded.humanize_level, "medium")
+
+    def test_missing_humanize_defaults_to_medium(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            path.write_text(
+                '{"click_method":"foreground","focus_before_run":true,'
+                '"restore_cursor":true,"countdown_seconds":0}\n',
+                encoding="utf-8",
+            )
+            loaded, error = load_settings(path)
+            self.assertIsNone(error)
+            self.assertEqual(loaded.humanize_level, "medium")
 
 
 if __name__ == "__main__":
