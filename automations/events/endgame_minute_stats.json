@@ -1,0 +1,171 @@
+{
+  "id": "endgame_minute_stats",
+  "title": "Endgame minute stats",
+  "version": 1,
+  "enabled": false,
+  "priority": 80,
+  "timing": {"type": "interval", "every_ms": 60000},
+  "description": "Once a minute: observe panel status, confirm the run is not over, piggyback a gem-box check, OCR coins / coins-per-min / cash-per-min / diamonds, and append a spreadsheet row. Does not close the upgrade menu.",
+  "notes": "Higher priority than the 15s buy tick. Currency toggle preset flips balances ↔ /min (playbook). Diamond ROI should stay readable in both modes. Disabled until ROIs are tuned. CSV: runs/endgame_stats.csv.",
+  "actions": [
+    {
+      "type": "detect_panel",
+      "prefix": "endgame_stats",
+      "description": "Observe current panel status before stats OCR (open/closed + which tab)."
+    },
+    {
+      "type": "log",
+      "message": "minute status: panel_open={panel_open} tab={upgrade_tab}",
+      "level": "info",
+      "description": "Log which upgrade tab is showing during the stats pass."
+    },
+    {
+      "type": "ocr",
+      "roi": "game_over_roi",
+      "variable": "game_over",
+      "parse_as": "game_over",
+      "description": "Check the center dialog for end-of-run text before recording stats."
+    },
+    {
+      "type": "decide",
+      "variable": "game_over",
+      "match_a": "GAME_OVER",
+      "mode": "equals",
+      "description": "If the run ended, still log a final CSV row later; skip gem collect and rate toggles.",
+      "explain_a": "game over — skip gem tap and currency toggles; still write what we can",
+      "explain_b": "run active — gem check + currency OCR",
+      "on_a": [
+        {
+          "type": "log",
+          "message": "minute stats: GAME OVER — final instrumentation pass",
+          "level": "warn",
+          "description": "Flag that this minute row may be the last of the run."
+        }
+      ],
+      "on_b": [
+        {
+          "type": "log",
+          "message": "minute stats: run active",
+          "level": "info",
+          "description": "Continue full stats OCR."
+        }
+      ]
+    },
+    {
+      "type": "ocr",
+      "roi": "gem_box_roi",
+      "variable": "gem_box",
+      "parse_as": "presence",
+      "description": "Same opportunistic gem-box check used on the buy tick (not a dedicated 10–15 min timer)."
+    },
+    {
+      "type": "decide",
+      "variable": "gem_box",
+      "match_a": "PRESENT",
+      "mode": "equals",
+      "description": "Collect gems if the box is visible during this OCR pass.",
+      "explain_a": "tap gem box via preset 'gem box tap'",
+      "explain_b": "no gem box — continue to stats",
+      "on_a": [
+        {"type": "log", "message": "minute stats: gem box PRESENT — tapping", "level": "ok"},
+        {"type": "play_preset", "preset": "gem box tap", "description": "Tap the gem box."}
+      ],
+      "on_b": [
+        {"type": "log", "message": "minute stats: gem box ABSENT", "level": "info"}
+      ]
+    },
+    {
+      "type": "ocr",
+      "roi": "wave_tower_roi",
+      "variable": "wave_number",
+      "parse_as": "wave",
+      "description": "Read the in-run wave for the CSV row."
+    },
+    {
+      "type": "ocr",
+      "roi": "coins_roi",
+      "variable": "coins",
+      "parse_as": "currency",
+      "description": "Read coin balance (assumes HUD is in balances mode)."
+    },
+    {
+      "type": "ocr",
+      "roi": "diamonds_roi",
+      "variable": "diamonds",
+      "parse_as": "currency",
+      "description": "Read diamond / gem stock (playbook: stays stock across toggle)."
+    },
+    {
+      "type": "decide",
+      "variable": "game_over",
+      "match_a": "GAME_OVER",
+      "mode": "equals",
+      "description": "Only toggle the currency HUD while the run is still up.",
+      "explain_a": "skip /min toggle — death dialog may cover the HUD",
+      "explain_b": "toggle to /min, OCR rates, toggle back to balances",
+      "on_a": [
+        {
+          "type": "log",
+          "message": "minute stats: skipping currency toggle (game over)",
+          "level": "warn",
+          "description": "Avoid clicking through the end-of-run dialog."
+        },
+        {
+          "type": "set_variable",
+          "name": "coins_per_min",
+          "value": "",
+          "description": "Leave rates blank on the final row."
+        },
+        {
+          "type": "set_variable",
+          "name": "cash_per_min",
+          "value": "",
+          "description": "Leave rates blank on the final row."
+        }
+      ],
+      "on_b": [
+        {
+          "type": "play_preset",
+          "preset": "currency toggle",
+          "description": "Flip currency HUD to /min rates."
+        },
+        {
+          "type": "screenshot",
+          "prefix": "endgame_rates",
+          "description": "Fresh frame after the currency toggle so rate OCR is not stale."
+        },
+        {
+          "type": "ocr",
+          "roi": "coins_per_min_roi",
+          "variable": "coins_per_min",
+          "parse_as": "currency",
+          "description": "Read coins per minute."
+        },
+        {
+          "type": "ocr",
+          "roi": "cash_per_min_roi",
+          "variable": "cash_per_min",
+          "parse_as": "currency",
+          "description": "Read cash per minute."
+        },
+        {
+          "type": "play_preset",
+          "preset": "currency toggle",
+          "description": "Flip currency HUD back toward balances for the next buy tick."
+        }
+      ]
+    },
+    {
+      "type": "log",
+      "message": "stats wave={wave_number} coins={coins} cpm={coins_per_min} cash/min={cash_per_min} diamonds={diamonds} game_over={game_over}",
+      "level": "ok",
+      "description": "Echo the parsed minute snapshot to the console."
+    },
+    {
+      "type": "csv_append",
+      "path": "endgame_stats.csv",
+      "fields": ["coins", "coins_per_min", "cash_per_min", "diamonds", "game_over"],
+      "description": "Append datetime, run, wave, coins, coins/min, cash/min, diamonds, game_over to runs/endgame_stats.csv."
+    }
+  ]
+}

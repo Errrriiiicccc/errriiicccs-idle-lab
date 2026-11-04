@@ -1,0 +1,55 @@
+{
+  "id": "stat_broll_5m",
+  "title": "B-roll every 5 minutes",
+  "version": 1,
+  "enabled": true,
+  "priority": 100,
+  "timing": {"type": "interval", "every_ms": 300000},
+  "description": "Every five minutes: read the wave, record 20 seconds of anchored-window footage for b-roll, and append a row to the b-roll spreadsheet. Higher priority than the 30s stat tick — stats wait while recording.",
+  "notes": "Clips land in runs/clips/broll_run_{n}_wave_{w}_{timestamp}.mp4. CSV: runs/stat_broll.csv. Does not touch upgrade tabs. Requires ffmpeg on PATH.",
+  "actions": [
+    {
+      "type": "detect_panel",
+      "prefix": "broll_pre",
+      "description": "Read-only panel status before recording (leave upgrade menu as-is)."
+    },
+    {
+      "type": "ocr",
+      "roi": "wave_tower_roi",
+      "variable": "wave_number",
+      "parse_as": "wave",
+      "description": "Read the wave used in the clip filename and CSV row."
+    },
+    {
+      "type": "log",
+      "message": "b-roll starting — wave={wave_number} panel={upgrade_tab} (20s)",
+      "level": "warn",
+      "description": "Announce the recording in the console."
+    },
+    {
+      "type": "record_clip",
+      "duration_s": 20,
+      "kind": "broll",
+      "description": "Record 20 seconds of the anchored window to runs/clips/."
+    },
+    {
+      "type": "log",
+      "message": "b-roll saved {clip_name} ({clip_duration_s}s)",
+      "level": "ok",
+      "description": "Confirm the clip path."
+    },
+    {
+      "type": "csv_append",
+      "path": "stat_broll.csv",
+      "fields": [
+        "clip_name",
+        "clip_duration_s",
+        "clip_kind",
+        "last_clip",
+        "panel_open",
+        "upgrade_tab"
+      ],
+      "description": "Append datetime, run, wave, clip name/path/duration, and panel status to runs/stat_broll.csv."
+    }
+  ]
+}

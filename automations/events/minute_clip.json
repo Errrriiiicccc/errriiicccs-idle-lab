@@ -2,7 +2,7 @@
   "id": "minute_clip",
   "title": "Minute clip",
   "version": 1,
-  "enabled": true,
+  "enabled": false,
   "priority": 100,
   "timing": {"type": "interval", "every_ms": 60000},
   "description": "About once a minute, read the wave number, record a 10-second clip of the game, and append a spreadsheet row. Outranks the A/B tick while recording.",

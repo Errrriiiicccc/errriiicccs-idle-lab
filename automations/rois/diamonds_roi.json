@@ -1,0 +1,9 @@
+{
+  "id": "diamonds_roi",
+  "version": 1,
+  "nx": 0.02,
+  "ny": 0.120,
+  "nw": 0.24,
+  "nh": 0.032,
+  "notes": "Tuned on live shot: third row of top-left stack (pink diamond), under coins. Stays stock across /min toggle."
+}

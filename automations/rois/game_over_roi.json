@@ -1,0 +1,9 @@
+{
+  "id": "game_over_roi",
+  "version": 1,
+  "nx": 0.12,
+  "ny": 0.30,
+  "nw": 0.76,
+  "nh": 0.28,
+  "notes": "Front-and-center end-of-run dialog. Placeholder until a real death-screen Screen Map shot exists — retune to the popup text block."
+}

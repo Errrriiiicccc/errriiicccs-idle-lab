@@ -2,7 +2,7 @@
   "id": "ocr_ab_tick",
   "title": "OCR A/B tick",
   "version": 1,
-  "enabled": true,
+  "enabled": false,
   "priority": 10,
   "timing": {"type": "interval", "every_ms": 10000},
   "description": "Every 10 seconds, look at the click-logger SIGNAL band and either click UPPER (path A) or LOWER (path B).",

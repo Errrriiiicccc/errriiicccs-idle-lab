@@ -1,0 +1,12 @@
+{
+  "id": "stat_collecting",
+  "title": "Stat collecting",
+  "version": 1,
+  "description": "Instrumentation + b-roll pack: every 30s log wave/coins/rates/diamonds to CSV; every 5 minutes record 20s of footage and log the clip. Does not open, switch, or close upgrade tabs.",
+  "children": ["stat_collect_30s", "stat_broll_5m"],
+  "branch_variable": "phase",
+  "branches": {},
+  "loop": true,
+  "stop_when": null,
+  "notes": "Walkthrough reviews both ticks. B-roll outranks the 30s stat event while ffmpeg is recording. Clips: runs/clips/; sheets: runs/stat_collect.csv + runs/stat_broll.csv."
+}

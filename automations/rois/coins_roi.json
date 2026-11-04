@@ -1,0 +1,9 @@
+{
+  "id": "coins_roi",
+  "version": 1,
+  "nx": 0.045,
+  "ny": 0.082,
+  "nw": 0.28,
+  "nh": 0.030,
+  "notes": "Tuned on live shot: gold coin row in top-left stack (balances mode), under cash. Example OCR: 566.99K."
+}

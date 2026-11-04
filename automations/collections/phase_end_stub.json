@@ -1,10 +1,10 @@
 {
   "id": "phase_end_stub",
-  "title": "Phase: Endgame (stub)",
+  "title": "Phase: Endgame (Tier 1)",
   "version": 1,
-  "description": "Placeholder for late-run behavior. Shown as a branch target from Demo POC.",
-  "children": [],
+  "description": "Late-run Tier-1 behavior — delegates to Endgame Phase Loop (buys + 30s stats + 5-min b-roll).",
+  "children": ["endgame_phase_loop"],
   "branches": {},
   "loop": false,
-  "notes": "Fill with endgame events in a later chat."
+  "notes": "Wired from the Demo POC end branch. Open Endgame Phase Loop in Walkthrough for the full step tour."
 }

@@ -1,0 +1,9 @@
+{
+  "id": "wave_tower_roi",
+  "version": 1,
+  "nx": 0.52,
+  "ny": 0.555,
+  "nw": 0.22,
+  "nh": 0.035,
+  "notes": "Tuned on stat_collect 593×1028 shot: 'Wave ###' in the Tier panel just above ATTACK UPGRADES (mid-right). Not the top chrome."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "endgame_tier1",
+  "title": "Endgame Tier 1",
+  "version": 1,
+  "description": "First real Tower gameplay pack for late Tier-1 (wave 600+): observe panel status before acting, opportunistic gem collects, Health then Attack buys with list-top seeks, menus left open, and once-a-minute coin/cash/diamond instrumentation.",
+  "children": ["endgame_status_buy", "endgame_minute_stats"],
+  "branch_variable": "phase",
+  "branches": {},
+  "loop": true,
+  "stop_when": "game_over",
+  "notes": "Walkthrough this collection in Automations to review the flow. Enable both events in their JSON after ROI retune; disable humanize_upgrade_loop while testing. Collection stop_when is schema-ready — full collection runner still pending."
+}

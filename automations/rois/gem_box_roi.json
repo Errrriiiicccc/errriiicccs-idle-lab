@@ -1,0 +1,9 @@
+{
+  "id": "gem_box_roi",
+  "version": 1,
+  "nx": 0.32,
+  "ny": 0.28,
+  "nw": 0.36,
+  "nh": 0.18,
+  "notes": "Periodic gem / free-gem box (~every 10–15 min). Placeholder — retune from a Screen Map shot with the box visible. Presence OCR is weak on icon-only UI; refine ROI or add template match later."
+}

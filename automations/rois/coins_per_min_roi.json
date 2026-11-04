@@ -1,0 +1,9 @@
+{
+  "id": "coins_per_min_roi",
+  "version": 1,
+  "nx": 0.055,
+  "ny": 0.083,
+  "nw": 0.28,
+  "nh": 0.028,
+  "notes": "Tuned on rates shot: coin ###K/min under cash/min. OCR often splits decimals ('5 76K'); parser rejoins to 5.76K."
+}

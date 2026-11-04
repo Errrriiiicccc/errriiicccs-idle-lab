@@ -1,0 +1,95 @@
+{
+  "id": "stat_collect_30s",
+  "title": "Stat collect 30s",
+  "version": 1,
+  "enabled": true,
+  "priority": 50,
+  "timing": {"type": "interval", "every_ms": 30000},
+  "description": "Every 30 seconds: observe panel status (read-only), OCR wave / coins / diamonds, toggle currency HUD for coins-per-min and cash-per-min, write a CSV row. Never clicks upgrade tabs — leaves the menu however it already is.",
+  "notes": "CSV: runs/stat_collect.csv. Currency toggle only touches the top HUD cluster (nx≈0.15, ny≈0.09), not Attack/Defense/Utility. Keep humanize_upgrade_loop disabled.",
+  "actions": [
+    {
+      "type": "detect_panel",
+      "prefix": "stat_collect",
+      "description": "Read-only status: is the upgrade panel open, and which tab? (No tab clicks.)"
+    },
+    {
+      "type": "log",
+      "message": "stat collect: panel_open={panel_open} tab={upgrade_tab} — leaving it as-is",
+      "level": "info",
+      "description": "Confirm we will not touch the upgrade footer."
+    },
+    {
+      "type": "ocr",
+      "roi": "wave_tower_roi",
+      "variable": "wave_number",
+      "parse_as": "wave",
+      "description": "Read the current wave."
+    },
+    {
+      "type": "ocr",
+      "roi": "coins_roi",
+      "variable": "coins",
+      "parse_as": "currency",
+      "description": "Read coin balance (balances mode)."
+    },
+    {
+      "type": "ocr",
+      "roi": "diamonds_roi",
+      "variable": "diamonds",
+      "parse_as": "currency",
+      "description": "Read diamond count."
+    },
+    {
+      "type": "play_preset",
+      "preset": "currency toggle",
+      "description": "Flip top currency HUD to /min rates (does not touch upgrade tabs)."
+    },
+    {
+      "type": "wait",
+      "ms": 450,
+      "description": "Let the HUD settle after the toggle."
+    },
+    {
+      "type": "screenshot",
+      "prefix": "stat_rates",
+      "description": "Fresh frame for rate OCR."
+    },
+    {
+      "type": "ocr",
+      "roi": "coins_per_min_roi",
+      "variable": "coins_per_min",
+      "parse_as": "currency",
+      "description": "Read coins per minute."
+    },
+    {
+      "type": "ocr",
+      "roi": "cash_per_min_roi",
+      "variable": "cash_per_min",
+      "parse_as": "currency",
+      "description": "Read cash per minute."
+    },
+    {
+      "type": "play_preset",
+      "preset": "currency toggle",
+      "description": "Flip currency HUD back to balances."
+    },
+    {
+      "type": "detect_panel",
+      "prefix": "stat_collect_after",
+      "description": "Confirm upgrade panel is still in the same open/closed state after HUD toggles."
+    },
+    {
+      "type": "log",
+      "message": "stat row wave={wave_number} coins={coins} cpm={coins_per_min} cash/min={cash_per_min} diamonds={diamonds} panel={upgrade_tab}",
+      "level": "ok",
+      "description": "Echo the row to the Automations console."
+    },
+    {
+      "type": "csv_append",
+      "path": "stat_collect.csv",
+      "fields": ["coins", "coins_per_min", "cash_per_min", "diamonds", "panel_open", "upgrade_tab"],
+      "description": "Append datetime, run, wave, coins, coins/min, cash/min, diamonds, panel status to runs/stat_collect.csv."
+    }
+  ]
+}

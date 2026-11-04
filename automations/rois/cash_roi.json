@@ -1,0 +1,9 @@
+{
+  "id": "cash_roi",
+  "version": 1,
+  "nx": 0.02,
+  "ny": 0.048,
+  "nw": 0.34,
+  "nh": 0.030,
+  "notes": "Tuned on live shot: top row of top-left stack ($ balance). Same band as cash_per_min_roi after toggle."
+}

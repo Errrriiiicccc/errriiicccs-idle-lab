@@ -1,0 +1,9 @@
+{
+  "id": "upgrade_first_card_roi",
+  "version": 1,
+  "nx": 0.08,
+  "ny": 0.67,
+  "nw": 0.55,
+  "nh": 0.08,
+  "notes": "First upgrade card title band (Damage on Attack top / Health on Defense top). seek_list_top uses the same defaults internally; this ROI is for manual OCR/debug."
+}
