@@ -23,6 +23,8 @@ VK_SPACE = 0x20
 VK_ESCAPE = 0x1B
 VK_F6 = 0x75
 VK_F7 = 0x76
+VK_A = 0x41
+VK_Z = 0x5A
 LLKHF_UP = 0x80
 
 
@@ -55,6 +57,8 @@ class HookFlags:
         self.playback = False
         self.screenshot_mode = False
         self.title_dialog_open = False
+        self.screenshot_busy = False
+        self.walkthrough_active = False
         self.our_pid = os.getpid()
 
 
@@ -75,6 +79,7 @@ class InputHooks:
         self._f6_down = False
         self._f7_down = False
         self._swallow_up = False
+        self._letter_down: set[int] = set()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -153,6 +158,13 @@ class InputHooks:
             # Pass Space through while a title dialog is open so titles can include spaces.
             if self.state.title_dialog_open:
                 pass
+            elif self.state.walkthrough_active:
+                swallow = True
+                if is_up:
+                    self._space_down = False
+                elif not self._space_down:
+                    self._space_down = True
+                    self.events.put(("walkthrough_space",))
             elif self.state.recording:
                 swallow = True
                 if is_up:
@@ -168,7 +180,9 @@ class InputHooks:
                     self._space_down = False
                 elif not self._space_down:
                     self._space_down = True
-                    self.events.put(("screen_map_space",))
+                    # Ignore Space while capturing/saving so presses do not pile up.
+                    if not self.state.screenshot_busy:
+                        self.events.put(("screen_map_space",))
         elif vk == VK_ESCAPE:
             # Pass Esc through while a title dialog is open so the dialog can cancel first.
             if self.state.title_dialog_open:
@@ -179,6 +193,7 @@ class InputHooks:
                     or self.state.recording
                     or self.state.playback
                     or self.state.screenshot_mode
+                    or self.state.walkthrough_active
                 )
                 if is_up:
                     self._esc_down = False
@@ -188,6 +203,14 @@ class InputHooks:
                     self.events.put(("escape",))
                 elif armed:
                     swallow = True
+        elif self.state.walkthrough_active and VK_A <= vk <= VK_Z:
+            swallow = True
+            if is_up:
+                self._letter_down.discard(vk)
+            elif vk not in self._letter_down:
+                self._letter_down.add(vk)
+                letter = chr(vk)
+                self.events.put(("walkthrough_key", letter))
         elif vk == VK_F6:
             swallow = True
             if is_up:

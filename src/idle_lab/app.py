@@ -10,11 +10,14 @@ from tkinter import filedialog
 import customtkinter as ctk
 
 from idle_lab.anchor import Anchor
+from idle_lab.automations.guide_overlay import GuideOverlay
 from idle_lab.automations.mouse_sync import play_points_sync
 from idle_lab.automations.runtime import AutomationRuntime
 from idle_lab.automations.store import AutomationStore
 from idle_lab.automations.capture import CaptureError, grab_anchor
 from idle_lab.automations.ui import AutomationsPanel
+from idle_lab.automations.walkthrough import Walkthrough
+from idle_lab.automations.schema import Collection
 from idle_lab.click_logger import ClickLogger
 from idle_lab.hotkeys import InputHooks
 from idle_lab.models import ClickPoint, Preset, normalized_to_screen, screen_to_normalized
@@ -64,6 +67,8 @@ class App(ctk.CTk):
         self.screen_map_panel: ScreenMapPanel | None = None
         self.screen_map = ScreenMapController()
         self.screen_maps_root = root / "screen-maps"
+        self.walkthrough: Walkthrough | None = None
+        self.guide_overlay: GuideOverlay | None = None
         self.anchor_target = Anchor()
         self.recorder = Recorder()
         self.player = Player()
@@ -76,6 +81,7 @@ class App(ctk.CTk):
         self._logger: ClickLogger | None = None
         self._active_index: int | None = None
         self._screen_map_title_dialog = None
+        self._screen_map_busy = False
         self._begin_load()
         self._build()
         self._end_load()
@@ -127,6 +133,8 @@ class App(ctk.CTk):
             on_reload=self._reload_automations,
             on_start=self._start_automations,
             on_stop=self._stop_automations,
+            on_walkthrough=self._start_collection_walkthrough,
+            on_walkthrough_stop=self._stop_collection_walkthrough,
         )
         self.auto_panel.pack(fill="both", expand=True)
 
@@ -410,6 +418,8 @@ class App(ctk.CTk):
                 self._place_markers(rect)
             else:
                 self.overlay.set_visible(False)
+            if self.guide_overlay is not None and self.walkthrough is not None and self.walkthrough.active:
+                self.guide_overlay.set_anchor(rect if status == "ok" else None)
         except Exception as exc:
             self._status(f"Anchor poll failed: {exc}", "error")
         if self._alive:
@@ -668,7 +678,7 @@ class App(ctk.CTk):
         if changed and not self.recorder.active:
             self._persist_current()
 
-    def _modal(self, title: str, width: int, height: int) -> ctk.CTkToplevel:
+    def _modal(self, title: str, width: int, height: int, *, keep_topmost: bool = False) -> ctk.CTkToplevel:
         dialog = ctk.CTkToplevel(self)
         dialog.title(title)
         dialog.geometry(f"{width}x{height}")
@@ -677,8 +687,34 @@ class App(ctk.CTk):
         dialog.grab_set()
         dialog.lift()
         dialog.attributes("-topmost", True)
-        dialog.after(250, lambda: dialog.attributes("-topmost", False))
+        if not keep_topmost:
+            dialog.after(250, lambda: dialog.attributes("-topmost", False) if dialog.winfo_exists() else None)
         return dialog
+
+    def _arm_dialog_focus(self, dialog: ctk.CTkToplevel, entry: ctk.CTkEntry) -> None:
+        """Steal focus from BlueStacks / other apps into the dialog entry."""
+
+        def focus_once() -> None:
+            if not dialog.winfo_exists():
+                return
+            try:
+                dialog.lift()
+                dialog.attributes("-topmost", True)
+                dialog.focus_force()
+                hwnd = win32_api.widget_hwnd(dialog)
+                win32_api.focus_window(hwnd)
+                entry.focus_force()
+                entry.icursor("end")
+            except Exception:
+                try:
+                    entry.focus_force()
+                except Exception:
+                    pass
+
+        dialog.after(1, focus_once)
+        dialog.after(50, focus_once)
+        dialog.after(150, focus_once)
+        dialog.after(300, focus_once)
 
     def _ask_name(self, title: str, initial: str) -> str | None:
         result: dict[str, str | None] = {"value": None}
@@ -705,7 +741,7 @@ class App(ctk.CTk):
         ctk.CTkButton(buttons, text="Save", width=90, command=ok).pack(side="right")
         entry.bind("<Return>", ok)
         dialog.bind("<Escape>", cancel)
-        entry.focus()
+        self._arm_dialog_focus(dialog, entry)
         self.wait_window(dialog)
         return result["value"]
 
@@ -954,17 +990,25 @@ class App(ctk.CTk):
                         self._status(f"Point {len(self.recorder.points)} added.", "warn")
                 elif kind == "screen_map_space":
                     self._screen_map_space()
+                elif kind == "walkthrough_space":
+                    self._walkthrough_space()
+                elif kind == "walkthrough_key":
+                    self._walkthrough_key(str(event[1]))
                 elif kind == "escape":
                     if self._anchor_waiting or self.hooks.state.anchor_armed:
                         self._cancel_anchor_mode()
+                    elif self.walkthrough is not None and self.walkthrough.active:
+                        self._stop_collection_walkthrough()
                     elif self.recorder.active:
                         self._finish_recording()
                     elif self.player.is_active:
                         self._stop_playback()
-                    elif self.screen_map.active:
+                    elif self.screen_map.active and not self._screen_map_busy:
                         self._end_screen_map_batch()
                 elif kind == "f6":
-                    if self.player.is_active:
+                    if self.walkthrough is not None and self.walkthrough.active:
+                        pass
+                    elif self.player.is_active:
                         self._stop_playback()
                     elif not self.recorder.active and not self.screen_map.active:
                         self._start_playback()
@@ -1016,6 +1060,12 @@ class App(ctk.CTk):
         self.hooks.state.playback = False
         self.hooks.state.screenshot_mode = False
         self.hooks.state.title_dialog_open = False
+        self.hooks.state.screenshot_busy = False
+        self.hooks.state.walkthrough_active = False
+        try:
+            self._stop_collection_walkthrough()
+        except Exception:
+            pass
         try:
             self.auto_runtime.stop()
         except Exception:
@@ -1026,7 +1076,73 @@ class App(ctk.CTk):
             self.overlay.destroy()
         except Exception:
             pass
+        try:
+            if self.guide_overlay is not None:
+                self.guide_overlay.destroy()
+        except Exception:
+            pass
         self.destroy()
+
+    def _start_collection_walkthrough(self, collection: Collection) -> None:
+        if self.recorder.active or self.player.is_active or self.screen_map.active:
+            self._status("Stop recording/playback/screen-map before Walkthrough.", "warn")
+            return
+        if self.guide_overlay is None:
+            self.guide_overlay = GuideOverlay(self)
+        self.walkthrough = Walkthrough(self.auto_store, collection)
+        step = self.walkthrough.start()
+        self.hooks.state.walkthrough_active = True
+        if self.auto_panel is not None:
+            self.auto_panel.set_walkthrough_active(True)
+            self.auto_panel.append_console(
+                f"Walkthrough started: {collection.title}. Space = next, A/B/C = branches, Esc = exit.",
+                "ok",
+            )
+        self._show_walkthrough_step(step)
+        self._status(f"Walkthrough: {collection.title}", "run")
+
+    def _stop_collection_walkthrough(self) -> None:
+        self.hooks.state.walkthrough_active = False
+        if self.walkthrough is not None:
+            self.walkthrough.stop()
+        self.walkthrough = None
+        if self.guide_overlay is not None:
+            self.guide_overlay.hide()
+        if self.auto_panel is not None:
+            self.auto_panel.set_walkthrough_active(False)
+            self.auto_panel.append_console("Walkthrough ended.", "warn")
+        self._status("Walkthrough ended.", "info")
+
+    def _show_walkthrough_step(self, step) -> None:
+        if self.walkthrough is None or self.guide_overlay is None or step is None:
+            return
+        card = self.walkthrough.to_card()
+        if card is None:
+            return
+        status, _hwnd, rect, _title = self.anchor_target.snapshot()
+        anchor = rect if status == "ok" else None
+        self.guide_overlay.show(card, anchor)
+        if self.auto_panel is not None:
+            self.auto_panel.append_console(f"Tour: {step.title}", "info")
+
+    def _walkthrough_space(self) -> None:
+        if self.walkthrough is None or not self.walkthrough.active:
+            return
+        step = self.walkthrough.advance_space()
+        if step is None:
+            self._stop_collection_walkthrough()
+            return
+        self._show_walkthrough_step(step)
+        if step.kind == "done":
+            self._status("Walkthrough complete — Space or Esc to close.", "ok")
+
+    def _walkthrough_key(self, letter: str) -> None:
+        if self.walkthrough is None or not self.walkthrough.active:
+            return
+        step = self.walkthrough.choose(letter)
+        if step is None:
+            return
+        self._show_walkthrough_step(step)
 
     def _refresh_screen_map_panel(self) -> None:
         if self.screen_map_panel is None:
@@ -1035,7 +1151,25 @@ class App(ctk.CTk):
         if session is None:
             self.screen_map_panel.set_idle()
         else:
-            self.screen_map_panel.set_active(session.folder, session.titles)
+            self.screen_map_panel.set_active(
+                session.folder,
+                session.titles,
+                ready=not self._screen_map_busy,
+            )
+
+    def _set_screen_map_busy(self, busy: bool, message: str | None = None) -> None:
+        self._screen_map_busy = busy
+        self.hooks.state.screenshot_busy = busy
+        if self.screen_map_panel is not None:
+            self.screen_map_panel.set_busy(message if busy else None)
+            session = self.screen_map.session
+            if session is not None:
+                self.screen_map_panel.set_active(session.folder, session.titles, ready=not busy)
+        self.update_idletasks()
+        try:
+            self.update()
+        except Exception:
+            pass
 
     def _start_screen_map_batch(self) -> None:
         if self.screen_map.active:
@@ -1063,8 +1197,10 @@ class App(ctk.CTk):
             return
         self.hooks.state.screenshot_mode = True
         self.hooks.state.title_dialog_open = False
+        self.hooks.state.screenshot_busy = False
+        self._screen_map_busy = False
         self._refresh_screen_map_panel()
-        self._status(f"Screenshot mode ON. Space titles a shot. Batch: {session.folder}", "run")
+        self._status(f"Screenshot mode ON. Space captures, then title. Batch: {session.folder}", "run")
 
     def _end_screen_map_batch(self) -> None:
         if self._screen_map_title_dialog is not None:
@@ -1075,6 +1211,7 @@ class App(ctk.CTk):
                 pass
             self._screen_map_title_dialog = None
         self.hooks.state.title_dialog_open = False
+        self._set_screen_map_busy(False)
         session = self.screen_map.end()
         self.hooks.state.screenshot_mode = False
         self._refresh_screen_map_panel()
@@ -1098,53 +1235,38 @@ class App(ctk.CTk):
             self._status(f"Could not open folder: {exc}", "error")
 
     def _screen_map_space(self) -> None:
-        if not self.screen_map.active or self.screen_map.dialog_open:
+        if not self.screen_map.active or self.screen_map.dialog_open or self._screen_map_busy:
             return
         if self.recorder.active or self.player.is_active:
             self._status("Cannot capture while recording or playing back.", "warn")
             return
-        try:
-            self.screen_map.begin_title_dialog()
-        except ScreenMapError as exc:
-            self._status(str(exc), "error")
-            return
-        self.hooks.state.title_dialog_open = True
-        title = self._ask_screen_map_title()
-        self.hooks.state.title_dialog_open = False
-        if not self.screen_map.active:
-            # Batch ended while the dialog was open (End batch / close).
-            return
-        if title is None:
-            self.screen_map.cancel_title_dialog()
-            self._status("Shot cancelled.", "warn")
-            return
-        try:
-            self.screen_map.finish_title_dialog()
-        except ScreenMapError:
-            self.screen_map.cancel_title_dialog()
-            return
+
+        # Capture first so the PNG matches the frame when Space was pressed.
+        self._set_screen_map_busy(True, "Capturing…")
         status, _hwnd, rect, window_title = self.anchor_target.snapshot()
         if status == "missing":
+            self._set_screen_map_busy(False)
             self._status("No window anchored — capture refused.", "error")
             return
         if status == "closed":
+            self._set_screen_map_busy(False)
             self._status("Anchored window is gone — capture refused.", "error")
             return
         if status == "minimized":
+            self._set_screen_map_busy(False)
             self._status("Anchored window is minimized — capture refused.", "error")
             return
         if status != "ok" or rect is None:
+            self._set_screen_map_busy(False)
             self._status(f"Anchor not ready ({status}) — capture refused.", "error")
             return
         try:
             image = grab_anchor(rect)
         except CaptureError as exc:
+            self._set_screen_map_busy(False)
             self._status(f"Capture failed: {exc}", "error")
             return
-        session = self.screen_map.session
-        if session is None:
-            self._status("Batch session missing.", "error")
-            return
+
         anchor_meta = {
             "window_title": window_title,
             "width": rect.width,
@@ -1152,24 +1274,60 @@ class App(ctk.CTk):
             "left": rect.left,
             "top": rect.top,
         }
+
+        try:
+            self.screen_map.begin_title_dialog()
+        except ScreenMapError as exc:
+            self._set_screen_map_busy(False)
+            self._status(str(exc), "error")
+            return
+
+        # Title dialog needs keyboard input — clear busy so Space types normally.
+        self._set_screen_map_busy(False)
+        self.hooks.state.title_dialog_open = True
+        title = self._ask_screen_map_title()
+        self.hooks.state.title_dialog_open = False
+        if not self.screen_map.active:
+            return
+        if title is None:
+            self.screen_map.cancel_title_dialog()
+            self._status("Shot cancelled (bitmap discarded).", "warn")
+            self._refresh_screen_map_panel()
+            return
+        try:
+            self.screen_map.finish_title_dialog()
+        except ScreenMapError:
+            self.screen_map.cancel_title_dialog()
+            self._refresh_screen_map_panel()
+            return
+
+        session = self.screen_map.session
+        if session is None:
+            self._status("Batch session missing.", "error")
+            return
+
+        self._set_screen_map_busy(True, "Saving…")
         try:
             shot = add_shot(session, title=title, image=image, anchor=anchor_meta)
         except ScreenMapError as exc:
+            self._set_screen_map_busy(False)
             self._status(str(exc), "error")
             return
         except OSError as exc:
+            self._set_screen_map_busy(False)
             self._status(f"Could not save shot: {exc}", "error")
             return
+        self._set_screen_map_busy(False)
         self._refresh_screen_map_panel()
-        self._status(f"Saved {shot.filename}", "ok")
+        self._status(f"Saved {shot.filename} — ready for Space.", "ok")
 
     def _ask_screen_map_title(self) -> str | None:
-        """Title dialog for Space captures. Esc cancels; Space types normally."""
+        """Title dialog after a capture. Esc cancels; Space types normally."""
 
         result: dict[str, str | None] = {"value": None}
-        dialog = self._modal("Screenshot title", 420, 160)
+        dialog = self._modal("Screenshot title", 420, 170, keep_topmost=True)
         self._screen_map_title_dialog = dialog
-        ctk.CTkLabel(dialog, text="Title for this screen").pack(anchor="w", padx=16, pady=(16, 6))
+        ctk.CTkLabel(dialog, text="Shot captured — name this screen").pack(anchor="w", padx=16, pady=(16, 6))
         entry = ctk.CTkEntry(dialog, width=380)
         entry.pack(padx=16)
 
@@ -1187,11 +1345,11 @@ class App(ctk.CTk):
         buttons = ctk.CTkFrame(dialog, fg_color="transparent")
         buttons.pack(fill="x", padx=16, pady=16)
         ctk.CTkButton(buttons, text="Cancel", width=90, command=cancel).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(buttons, text="Capture", width=100, command=ok).pack(side="right")
+        ctk.CTkButton(buttons, text="Save", width=100, command=ok).pack(side="right")
         entry.bind("<Return>", ok)
         dialog.bind("<Escape>", cancel)
-        entry.focus_set()
-        dialog.after(50, entry.focus_set)
+        dialog.after(1, lambda: self._arm_dialog_focus(dialog, entry))
+        self._arm_dialog_focus(dialog, entry)
         self.wait_window(dialog)
         self._screen_map_title_dialog = None
         return result["value"]

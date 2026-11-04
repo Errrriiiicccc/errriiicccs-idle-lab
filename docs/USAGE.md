@@ -51,8 +51,12 @@ Schema: [automation-schema.md](automation-schema.md).
 3. In **Details**, switch **Basic** (plain language + branch contention) vs **Detailed** (exact paths, outputs, nested steps).
 4. **Reload** after editing JSON files. Optional `description` fields on events/collections/actions feed the Basic view.
 5. **Start** begins the scheduler; **Stop** ends it.
-6. **Queue** shows running / waiting / deferred (e.g. A/B deferred while recording).
-7. **Console** shows OCR observations/inferences, branches, preemption, errors.
+6. **Walkthrough** (select a Collection first): guided on-screen tour with drawings.
+   - **Space** — next linear step
+   - **A / B / C…** — choose a branch to preview
+   - **Esc** or **End tour** — exit
+7. **Queue** shows running / waiting / deferred (e.g. A/B deferred while recording).
+8. **Console** shows OCR observations/inferences, branches, preemption, errors.
 
 ### Recommended first demo
 

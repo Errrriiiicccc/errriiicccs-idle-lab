@@ -20,12 +20,16 @@ class AutomationsPanel(ctk.CTkFrame):
         on_reload: Callable[[], None],
         on_start: Callable[[], None],
         on_stop: Callable[[], None],
+        on_walkthrough: Callable[[Collection], None] | None = None,
+        on_walkthrough_stop: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(master, fg_color="transparent")
         self.store = store
         self.on_reload = on_reload
         self.on_start = on_start
         self.on_stop = on_stop
+        self.on_walkthrough = on_walkthrough
+        self.on_walkthrough_stop = on_walkthrough_stop
         self._mode = ctk.StringVar(value="Events")
         self._detail_mode = ctk.StringVar(value="Basic")
         self._selected_event: Event | None = None
@@ -41,7 +45,26 @@ class AutomationsPanel(ctk.CTkFrame):
         self.stop_button = ctk.CTkButton(toolbar, text="Stop", width=80, command=self.on_stop)
         self.stop_button.pack(side="right", padx=(6, 0))
         self.start_button = ctk.CTkButton(toolbar, text="Start", width=80, command=self.on_start)
-        self.start_button.pack(side="right")
+        self.start_button.pack(side="right", padx=(0, 6))
+        self.walkthrough_button = ctk.CTkButton(
+            toolbar,
+            text="Walkthrough",
+            width=110,
+            fg_color="#2A3140",
+            hover_color="#3A4558",
+            command=self._start_walkthrough,
+        )
+        self.walkthrough_button.pack(side="right", padx=(0, 6))
+        self.walkthrough_stop_button = ctk.CTkButton(
+            toolbar,
+            text="End tour",
+            width=90,
+            fg_color="#5A3030",
+            hover_color="#7A4040",
+            command=self._stop_walkthrough,
+            state="disabled",
+        )
+        self.walkthrough_stop_button.pack(side="right", padx=(0, 6))
 
         columns = ctk.CTkFrame(self, fg_color="transparent")
         columns.pack(fill="both", expand=True, padx=8, pady=4)
@@ -171,6 +194,22 @@ class AutomationsPanel(ctk.CTkFrame):
         self._selected_collection = collection
         self._selected_event = None
         self._refresh_details()
+
+    def _start_walkthrough(self) -> None:
+        if self.on_walkthrough is None:
+            return
+        if self._selected_collection is None:
+            self.append_console("Select a Collection first, then click Walkthrough.", "warn")
+            return
+        self.on_walkthrough(self._selected_collection)
+
+    def _stop_walkthrough(self) -> None:
+        if self.on_walkthrough_stop is not None:
+            self.on_walkthrough_stop()
+
+    def set_walkthrough_active(self, active: bool) -> None:
+        self.walkthrough_button.configure(state="disabled" if active else "normal")
+        self.walkthrough_stop_button.configure(state="normal" if active else "disabled")
 
     def _refresh_details(self) -> None:
         detailed = self._detail_mode.get() == "Detailed"
