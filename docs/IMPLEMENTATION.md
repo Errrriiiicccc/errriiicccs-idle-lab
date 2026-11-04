@@ -15,3 +15,5 @@ Copied from `tower-autoclicker`, rebranded to Errriiiccc's Idle Lab / `idle_lab`
 3. Scheduler priority (clip > A/B) — done.
 4. A/B via click-logger SIGNAL + presets — done.
 5. Clips + CSV — done (ffmpeg required on PATH).
+6. Humanize layer (`humanize.py`, default Medium) on Player / Automations presets / AI Batch — done.
+7. POC event `humanize_upgrade_loop` + preset `humanize atk def loop` — done.

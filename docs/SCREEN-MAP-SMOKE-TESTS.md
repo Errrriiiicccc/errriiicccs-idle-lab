@@ -16,12 +16,13 @@ Expect `test_screen_map` (sanitize, manifest, mode machine) to pass with the res
 1. Start Idle Lab. Top **ANCHOR** bar → Set anchor → click a visible window (BlueStacks or Notepad is fine).
 2. **Screen Map** → **Start batch…** → title `smoke-three`.
 3. Confirm status shows `Screenshot mode: ON` and a path under `screen-maps/smoke-three` (or `smoke-three-N` if reused).
-4. Press **Space**, title `Alpha`, Capture. Status shows saved `01_alpha.png`. List shows the title.
-5. Press **Space**, title `Beta with spaces`, Capture → `02_beta-with-spaces.png`.
+4. Press **Space** — Capturing… overlay appears briefly, then title dialog should accept typing **without clicking**. Title `Alpha`, Save. Saving… then Ready. List shows the title / `01_alpha.png`.
+5. Press **Space**, title `Beta with spaces`, Save → `02_beta-with-spaces.png`.
 6. Press **Space**, then **Esc** on the dialog → shot cancelled; mode still ON; shot count unchanged.
-7. Press **Space**, title `Gamma`, Capture.
+7. Press **Space**, title `Gamma`, Save.
 8. Press **Esc** (no dialog) → mode OFF; status reports 3 shots.
 9. Open the batch folder. Confirm three PNGs + `manifest.json` with matching titles, filenames, timestamps, null review fields.
+10. Mash Space during Capturing…/Saving… — no piled-up dialogs after Ready.
 
 ## Manual: refuse bad anchor
 

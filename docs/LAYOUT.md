@@ -14,9 +14,12 @@ errriiicccs-idle-lab/
     collections/
   runs/                    # gitignored output
   screen-maps/             # gitignored Screen Map batches
+  ai-batches/              # gitignored AI information batches
+  examples/
+    ai-batch-spec.json
   src/idle_lab/
     __main__.py
-    app.py                 # Clicker | Automations | Screen Map tabs
+    app.py                 # Clicker | Automations | Screen Map | AI Batches
     overlay.py
     anchor.py
     recorder.py
@@ -29,10 +32,17 @@ errriiicccs-idle-lab/
     settings_store.py
     models.py
     win32_api.py
+    scroll_memory.py       # drag scroll + in-session scroll persistence
+    image_viewer.py
+    ai_batch/
+      schema.py
+      store.py
+      ui.py
     screen_map/
       names.py
       manifest.py
       batch.py
+      catalog.py
       ui.py
     automations/
       schema.py

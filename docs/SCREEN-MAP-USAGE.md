@@ -13,20 +13,19 @@ Manual screenshot batches for mapping game screens. Same Idle Lab window as Clic
 1. Click **Start batch…** and enter a folder title (e.g. `tower-menus`).
 2. A folder is created under `screen-maps/<batch-slug>/` (project root). Screenshot mode turns **ON**.
 3. Navigate the game to a screen you care about.
-4. Press **Space** → type a short title → **Capture** (or Enter). Idle Lab grabs the anchored window as PNG and appends a manifest row.
+4. Press **Space** → Idle Lab **captures immediately** (loading overlay: Capturing…), then a title dialog opens already focused → type a name → **Save** / Enter (Saving… overlay). Wait until status says Ready before the next Space.
 5. Repeat for every important screen.
 6. Press **Esc** (with no title dialog open) or click **End batch** to finish.
 
 ### Esc hierarchy
 
-- Title dialog open → Esc **cancels the dialog only** (no capture).
+- Title dialog open → Esc **cancels the dialog only** (bitmap discarded, nothing saved).
 - Otherwise in screenshot mode → Esc **ends the batch**.
 
-### Focus strategy (BlueStacks)
+### Responsiveness / focus
 
-Title dialogs use the same pattern as other Idle Lab modals: transient window, brief topmost, `grab_set`, and focus on the entry. While the dialog is open, Space/Esc are **not** swallowed by the global hook so you can type spaces and cancel with Esc. When screenshot mode is on and no dialog is open, Space/Esc are swallowed so BlueStacks does not see them.
-
-If the dialog does not appear focused, click it once and type — capture still uses the anchored window, not whichever window has focus.
+- While Capturing… or Saving…, a loading overlay covers the Screen Map tab and Space is ignored (no backlog of shots).
+- Title dialogs stay topmost and use Win32 focus steal so you can type without clicking the field first. Space/Esc pass through to the dialog while it is open.
 
 ## Batch folder contents
 
@@ -38,6 +37,13 @@ screen-maps/<batch-slug>/
 ```
 
 `manifest.json` holds batch metadata and one object per shot: `index`, `title`, `filename`, `captured_at`, optional `anchor` hints, plus null placeholders `classification`, `how_opened`, `notes` for a review chat to fill.
+
+## Browse + screenshot viewer
+
+- Left column lists every batch under `screen-maps/` (Refresh after captures outside this session).
+- Select a batch → right column lists each captured screen. Click a row to open the viewer (←/→ to flip).
+- **View all screenshots** opens the same viewer at the first shot.
+- AI Batches can **Link Screen Map…** and jump here to inspect what was captured.
 
 ## After the batch
 

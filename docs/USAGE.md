@@ -25,8 +25,10 @@ Idle Lab also looks for Tesseract under `C:\Program Files\Tesseract-OCR\` even i
 
 1. Use the top **ANCHOR** bar (visible on every tab) → **Set anchor** → left-click BlueStacks or the click logger.
 2. Load or create a preset under **Presets**.
-3. Choose Foreground/Background, countdown, loops.
+3. Choose Foreground/Background, **Humanize** (default Medium), countdown, loops.
 4. **Start** or **F6**. Use the click logger to verify hits before trusting the game.
+
+Humanize only affects playback/execution (jitter + timing). Preset JSON stays exact.
 
 Preset JSON format: [preset-format.md](preset-format.md).
 
@@ -58,19 +60,24 @@ Schema: [automation-schema.md](automation-schema.md).
 7. **Queue** shows running / waiting / deferred (e.g. A/B deferred while recording).
 8. **Console** shows OCR observations/inferences, branches, preemption, errors.
 
-### Recommended first demo
+### Recommended first demo — humanize upgrade loop
+
+1. Anchor BlueStacks / The Tower (upgrade panel closed).
+2. Clicker: method **Foreground**, **Humanize → Medium**.
+3. Automations → select **Humanize upgrade loop** → **Reload** → **Start**.
+4. Every ~10s the console should log Attack → Damage → Defense → Health → Attack, with slightly uneven timing/aim.
+5. If Damage/Health miss, open preset `humanize atk def loop` in the Clicker tab and nudge those points, then Reload.
+
+### Older OCR A/B demo
+
+Re-enable `automations/events/ocr_ab_tick.json` and `minute_clip.json` (`"enabled": true`), Reload, then:
 
 1. **Click logger**, then top bar **Set anchor** on that window.
 2. Countdown **0**, method **Foreground**.
 3. Automations → **Reload** → **Start**.
 4. Watch console for 10s A/B ticks; toggle SIGNAL A/B on the logger.
-
-   **What A/B means (Demo POC):** OCR reads the yellow **SIGNAL** band on the click logger.
-   - If parsed value **equals** `A` → **PATH A** → one click on the **UPPER** circle (`ab choice a`).
-   - Otherwise → **PATH B** → one click on the **LOWER** circle (`ab choice b`).
-   Console prints the OCR raw/parsed values, the rule, why A/B was chosen, and what that path does.
-5. Wait for the 60s clip (or temporarily edit `minute_clip.json` `every_ms` to `20000` for a faster smoke, then Reload).
-6. Inspect `runs/screenshots/`, `runs/clips/run_1_wave_*.mp4`, `runs/run_log.csv`.
+   - SIGNAL **A** → UPPER (`ab choice a`); otherwise LOWER (`ab choice b`).
+5. Inspect `runs/screenshots/`, `runs/clips/`, `runs/run_log.csv` when minute_clip is enabled.
 
 ### Adding a new automation (no Python)
 
@@ -86,3 +93,11 @@ Schema: [automation-schema.md](automation-schema.md).
 - CSV columns: `datetime,run_number,wave_number`
 
 If OCR misses the wave, the name uses `xx` and the CSV stores `xx`.
+
+## AI Batches
+
+Named information-gathering passes for review chats. See [AI-BATCH-USAGE.md](AI-BATCH-USAGE.md) and [examples/ai-batch-spec.json](../examples/ai-batch-spec.json).
+
+## Scrolling
+
+Wheel or middle-drag long lists. Leaving a tab keeps its scroll until you return or restart.
