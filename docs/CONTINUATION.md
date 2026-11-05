@@ -2,7 +2,11 @@
 
 For the next chat working on **Errriiiccc's Idle Lab** (`c:\DEV\Projects\Cursor\errriiicccs-idle-lab`).
 
-**Active focus right now:** [HANDOFF-AI-BATCH-RUN.md](HANDOFF-AI-BATCH-RUN.md) — Eric runs AI Batches with **Start**; the next chat analyzes `run_report.json` + Screen Map shots from his feedback.
+**Active focus right now:** Idle Lab **redesign** (organic shell: Refresh / Restart / Stop all, workspaces Bench·Observe·Missions·Loops). Critique UI on the persistent canvas **before** implementing visual changes:
+
+`C:\Users\alexa\.cursor\projects\c-DEV-Projects-Cursor-errriiicccs-idle-lab\canvases\idle-lab-shell.canvas.tsx`
+
+Secondary / prior: [HANDOFF-AI-BATCH-RUN.md](HANDOFF-AI-BATCH-RUN.md) — AI Batches Start → analyze `run_report.json` + Screen Map shots.
 
 ## What works
 
