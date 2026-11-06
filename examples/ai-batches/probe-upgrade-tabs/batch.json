@@ -1,0 +1,52 @@
+{
+  "name": "Probe: upgrade tabs open",
+  "slug": "probe-upgrade-tabs",
+  "status": "pending",
+  "genre": "probe",
+  "goal": "Confirm ensure_upgrade_tab can land Attack, Defense, and Utility panels with evidence shots (skip click when already open).",
+  "created_by": "ai",
+  "auto_rerun": true,
+  "requests": [
+    {
+      "id": "req-attack",
+      "kind": "screen_map_shot",
+      "label": "Ensure Attack tab",
+      "detail": "Color-detect + optional tap; shot proves panel state.",
+      "status": "pending",
+      "steps": [
+        {"action": "ensure_upgrade_tab", "tab": "attack", "nx": 0.20, "ny": 0.955, "title_prefix": "attack-ensure"},
+        {"action": "wait", "ms": 400},
+        {"action": "screenshot", "title": "attack-open"}
+      ]
+    },
+    {
+      "id": "req-defense",
+      "kind": "screen_map_shot",
+      "label": "Ensure Defense tab",
+      "status": "pending",
+      "steps": [
+        {"action": "ensure_upgrade_tab", "tab": "defense", "nx": 0.40, "ny": 0.955, "title_prefix": "defense-ensure"},
+        {"action": "wait", "ms": 400},
+        {"action": "screenshot", "title": "defense-open"}
+      ]
+    },
+    {
+      "id": "req-utility",
+      "kind": "screen_map_shot",
+      "label": "Ensure Utility tab",
+      "status": "pending",
+      "steps": [
+        {"action": "ensure_upgrade_tab", "tab": "utility", "nx": 0.60, "ny": 0.955, "title_prefix": "utility-ensure"},
+        {"action": "wait", "ms": 400},
+        {"action": "screenshot", "title": "utility-open"}
+      ]
+    },
+    {
+      "id": "req-note",
+      "kind": "note",
+      "label": "After run",
+      "detail": "Tell the chat this probe ran. Check result.payload.ensures + Screen Map titles. Chat fills reflection.md.",
+      "status": "pending"
+    }
+  ]
+}

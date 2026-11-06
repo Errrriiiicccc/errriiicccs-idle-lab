@@ -11,24 +11,34 @@ from pathlib import Path
 from typing import Any, Callable
 
 from idle_lab.automations.capture import CaptureError, crop_roi, grab_anchor, save_screenshot
+from idle_lab.automations.collections_runner import run_collection
 from idle_lab.automations.csv_log import append_run_row
 from idle_lab.automations.decide import decide_ab_with_reason
 from idle_lab.automations.ocr import OcrError, ocr_field
 from idle_lab.automations.scheduler import Scheduler
 from idle_lab.automations.schema import Event, Roi
 from idle_lab.automations.store import AutomationStore
+from idle_lab.automations.template_match import (
+    TemplateMatchError,
+    match_template,
+    resolve_template_path,
+)
 from idle_lab.automations.tower_nav import (
     BUY_CLICK,
     TAB_CLICK,
     check_list_top,
     click_normalized,
+    drag_list,
     observe_panel,
     panel_status_vars,
     seek_list_top,
 )
 from idle_lab.automations.video import VideoError, clip_name, record_clip
-from idle_lab.humanize import HumanizeProfile
+from idle_lab.evidence import write_failure_pack
+from idle_lab.humanize import HumanizeProfile, interruptible_sleep
+from idle_lab.lab_mode import SuperviseGate
 from idle_lab.models import Rect
+from idle_lab.trace_log import TraceLog
 
 
 LogFn = Callable[[str, str], None]  # message, level
@@ -57,6 +67,9 @@ class AutomationRuntime:
         get_humanize: HumanizeFn | None = None,
         restore_cursor: bool = True,
         events_out: queue.Queue | None = None,
+        supervise_gate: SuperviseGate | None = None,
+        trace_level: str = "failure",
+        templates_dir: Path | None = None,
     ) -> None:
         self.store = store
         self.runs_dir = Path(runs_dir)
@@ -71,6 +84,13 @@ class AutomationRuntime:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._enabled = False
+        self.supervise_gate = supervise_gate or SuperviseGate()
+        self.trace = TraceLog(self.runs_dir, level=trace_level)
+        self.templates_dir = Path(templates_dir) if templates_dir else self.runs_dir.parent / "automations" / "templates"
+        self._current_event_id: str | None = None
+        self._action_index: int = 0
+        self._collection_thread: threading.Thread | None = None
+        self._session_events: list[Event] | None = None
 
     def emit(self, kind: str, **payload: Any) -> None:
         self.events_out.put({"kind": kind, **payload})
@@ -78,15 +98,59 @@ class AutomationRuntime:
     def log(self, message: str, level: str = "info") -> None:
         self.emit("console", message=message, level=level)
 
-    def start(self) -> None:
+    @property
+    def is_running(self) -> bool:
+        return bool(self._enabled and self._thread is not None and self._thread.is_alive())
+
+    def start(self, event_ids: list[str] | None = None) -> None:
+        """Start the interval scheduler.
+
+        ``event_ids`` — if set, only those events run (selection), even if
+        ``enabled`` is false in JSON. If omitted, every file-``enabled`` event runs.
+        """
+
         if self._thread and self._thread.is_alive():
             return
+        if self.collection_running:
+            raise RuntimeError("stop the collection pack before starting interval Loops")
         self._stop.clear()
         self._enabled = True
-        self.scheduler.reset(list(self.store.events.values()))
+        self.trace.configure(run_number=self.store.runtime.run_number)
+        if event_ids:
+            wanted = {eid.strip() for eid in event_ids if eid and eid.strip()}
+            selected = [self.store.events[eid] for eid in wanted if eid in self.store.events]
+            missing = sorted(wanted - set(self.store.events))
+            if missing:
+                raise KeyError(f"unknown event id(s): {', '.join(missing)}")
+            if not selected:
+                raise RuntimeError("no events to start")
+            # Clone with enabled=True so the scheduler accepts them for this session.
+            session_events = [
+                Event(
+                    id=event.id,
+                    title=event.title,
+                    priority=event.priority,
+                    every_ms=event.every_ms,
+                    actions=list(event.actions),
+                    enabled=True,
+                    version=event.version,
+                    description=event.description,
+                    notes=event.notes,
+                    overdue_policy=event.overdue_policy,
+                    path=event.path,
+                )
+                for event in selected
+            ]
+            self._session_events = session_events
+            self.scheduler.reset(session_events)
+            labels = ", ".join(event.id for event in session_events)
+            self.log(f"Automations runtime started (selection): {labels}", "ok")
+        else:
+            self._session_events = None
+            self.scheduler.reset(list(self.store.events.values()))
+            self.log("Automations runtime started (all file-enabled events).", "ok")
         self._thread = threading.Thread(target=self._loop, name="idle-lab-automations", daemon=True)
         self._thread.start()
-        self.log("Automations runtime started.", "ok")
 
     def stop(self) -> None:
         self._enabled = False
@@ -95,6 +159,10 @@ class AutomationRuntime:
         if thread and thread.is_alive():
             thread.join(timeout=2.0)
         self._thread = None
+        coll = self._collection_thread
+        if coll and coll.is_alive():
+            coll.join(timeout=2.0)
+        self._collection_thread = None
         self.log("Automations runtime stopped.", "warn")
 
     def reload_schedule(self) -> None:
@@ -102,6 +170,109 @@ class AutomationRuntime:
         self.emit("queue", items=[item.__dict__ for item in self.scheduler.queue_snapshot()])
         self.log("Scheduler reloaded from files.", "ok")
 
+    def operator_snapshot(self) -> dict[str, Any]:
+        """For Activity honesty: running / blocked / deferred summary."""
+
+        active = self.scheduler.active_id
+        deferred = self.scheduler.deferred_summary()
+        if not self.is_running and not (self._collection_thread and self._collection_thread.is_alive()):
+            return {"phase": "idle", "detail": "", "blocking_id": None, "deferred_summary": ""}
+        if active:
+            detail = f"running {active}"
+            if deferred:
+                detail += f" · deferred: {deferred}"
+            return {
+                "phase": "blocked" if deferred else "running",
+                "detail": detail,
+                "blocking_id": active,
+                "deferred_summary": deferred,
+            }
+        if self._collection_thread and self._collection_thread.is_alive():
+            return {
+                "phase": "running",
+                "detail": "collection runner",
+                "blocking_id": "collection",
+                "deferred_summary": deferred,
+            }
+        return {
+            "phase": "running",
+            "detail": "scheduler idle tick",
+            "blocking_id": None,
+            "deferred_summary": deferred,
+        }
+
+    def run_event_once(self, event_id: str) -> None:
+        """Run one atom's actions immediately (no interval wait). Exclusive runway."""
+
+        event = self.store.events.get(event_id)
+        if event is None:
+            raise KeyError(f"unknown event: {event_id}")
+        if self._collection_thread and self._collection_thread.is_alive():
+            raise RuntimeError("stop the running atom/molecule job first")
+        if self.is_running:
+            raise RuntimeError("stop interval Loops before running an atom once (single mouse runway)")
+
+        self._stop.clear()
+        self.trace.configure(run_number=self.store.runtime.run_number)
+
+        def worker() -> None:
+            try:
+                self._run_event(event)
+            except Exception as exc:  # noqa: BLE001
+                self.log(f"atom {event_id} failed: {exc}", "error")
+                self._write_failure(str(exc), meta={"event_id": event_id})
+                self.log(traceback.format_exc(), "error")
+            finally:
+                self.emit("queue", items=[item.__dict__ for item in self.scheduler.queue_snapshot()])
+
+        self._collection_thread = threading.Thread(
+            target=worker, name=f"idle-lab-atom-once-{event_id}", daemon=True
+        )
+        self._collection_thread.start()
+        self.log(f"Atom once started: {event_id}", "ok")
+
+    def start_collection(self, collection_id: str) -> None:
+        """Run a once-molecule on a worker thread (exclusive with interval loop ownership)."""
+
+        collection = self.store.collections.get(collection_id)
+        if collection is None:
+            raise KeyError(f"unknown collection: {collection_id}")
+        if self._collection_thread and self._collection_thread.is_alive():
+            raise RuntimeError("a collection is already running")
+        if self.is_running:
+            # Interval loop owns the runway — stop it first or refuse.
+            raise RuntimeError("stop interval Loops before starting a collection (single mouse runway)")
+
+        self._stop.clear()
+        self.trace.configure(run_number=self.store.runtime.run_number)
+
+        def worker() -> None:
+            try:
+                run_collection(
+                    collection,
+                    store=self.store,
+                    variables=self.state.variables,
+                    states=self.state.states,
+                    run_event=self._run_event,
+                    log=self.log,
+                    should_abort=self._stop.is_set,
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.log(f"collection {collection_id} failed: {exc}", "error")
+                self._write_failure(str(exc), meta={"collection_id": collection_id})
+                self.log(traceback.format_exc(), "error")
+            finally:
+                self.emit("queue", items=[item.__dict__ for item in self.scheduler.queue_snapshot()])
+
+        self._collection_thread = threading.Thread(
+            target=worker, name=f"idle-lab-collection-{collection_id}", daemon=True
+        )
+        self._collection_thread.start()
+        self.log(f"Collection runner started: {collection_id}", "ok")
+
+    @property
+    def collection_running(self) -> bool:
+        return bool(self._collection_thread and self._collection_thread.is_alive())
     def _profile(self) -> HumanizeProfile:
         if self.get_humanize is not None:
             return self.get_humanize()
@@ -112,12 +283,17 @@ class AutomationRuntime:
             return self.get_anchor_hwnd()
         return None, self.get_anchor_rect()
 
+    def _loop_events(self) -> list[Event]:
+        if self._session_events is not None:
+            return list(self._session_events)
+        return [event for event in self.store.events.values() if event.enabled]
+
     def _loop(self) -> None:
         while not self._stop.is_set():
             if not self._enabled:
                 time.sleep(0.1)
                 continue
-            events = [event for event in self.store.events.values() if event.enabled]
+            events = self._loop_events()
             chosen = self.scheduler.pick_due(events)
             self.emit("queue", items=[item.__dict__ for item in self.scheduler.queue_snapshot()])
             if chosen is None:
@@ -130,10 +306,33 @@ class AutomationRuntime:
                     f"scheduled recording ({chosen.id}) — priority {chosen.priority}; lower events deferred",
                     "warn",
                 )
+            for skip_msg in self.scheduler.take_skip_messages():
+                self.log(skip_msg, "warn")
             try:
                 self._run_event(chosen)
             except Exception as exc:  # noqa: BLE001
                 self.log(f"event {chosen.id} failed: {exc}", "error")
+                pack = self._write_failure(
+                    str(exc),
+                    meta={
+                        "event_id": chosen.id,
+                        "action_index": self._action_index,
+                        "variables": dict(self.state.variables),
+                    },
+                )
+                if pack is not None:
+                    self.log(f"failure pack: {pack}", "warn")
+                self.trace.append(
+                    {
+                        "source": "loops",
+                        "event_id": chosen.id,
+                        "action_index": self._action_index,
+                        "ok": False,
+                        "error": str(exc),
+                        "failure_pack": str(pack) if pack else None,
+                    },
+                    is_failure=True,
+                )
                 message = str(exc).lower()
                 if not any(
                     tip in message
@@ -143,6 +342,7 @@ class AutomationRuntime:
                         "anchor missing",
                         "not found on path",
                         "not installed",
+                        "opencv",
                     )
                 ):
                     self.log(traceback.format_exc(), "error")
@@ -150,11 +350,40 @@ class AutomationRuntime:
                 self.scheduler.mark_finished(chosen, events)
                 self.emit("queue", items=[item.__dict__ for item in self.scheduler.queue_snapshot()])
 
+    def _write_failure(self, error: str, *, meta: dict[str, Any]) -> Path | None:
+        try:
+            return write_failure_pack(
+                self.runs_dir,
+                error=error,
+                meta=meta,
+                window_image=self.state.last_image,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"could not write failure pack: {exc}", "warn")
+            return None
+
+    def _supervise(self, description: str) -> bool:
+        ok = self.supervise_gate.request(description, stop=self._stop)
+        if not ok:
+            self.log(f"supervised: declined/stopped — {description}", "warn")
+        return ok
+
     def _run_event(self, event: Event) -> None:
+        self._current_event_id = event.id
+        self._action_index = 0
         self.log(f"▶ {event.title} ({event.id})", "run")
-        for action in event.actions:
+        self.trace.append(
+            {"source": "loops", "event_id": event.id, "action_type": "event_start", "ok": True},
+            is_failure=False,
+        )
+        for index, action in enumerate(event.actions):
+            if self._stop.is_set():
+                self.log(f"event {event.id} interrupted", "warn")
+                break
+            self._action_index = index
             self._dispatch(action.raw)
         self.log(f"✔ finished {event.id}", "ok")
+        self._current_event_id = None
 
     def _dispatch(self, raw: dict[str, Any]) -> None:
         action_type = raw.get("type")
@@ -175,16 +404,42 @@ class AutomationRuntime:
             "log": self._action_log,
             "set_variable": self._action_set_variable,
             "wait": self._action_wait,
+            "wait_until": self._action_wait_until,
             "click": self._action_click,
             "detect_panel": self._action_detect_panel,
             "ensure_upgrade_tab": self._action_ensure_upgrade_tab,
+            "scroll_list": self._action_scroll_list,
             "seek_list_top": self._action_seek_list_top,
+            "match_template": self._action_match_template,
         }
         handler = handlers.get(str(action_type))
         if handler is None:
             self.log(f"unknown action type: {action_type}", "error")
             return
-        handler(raw)
+        try:
+            handler(raw)
+            self.trace.append(
+                {
+                    "source": "loops",
+                    "event_id": self._current_event_id,
+                    "action_index": self._action_index,
+                    "action_type": action_type,
+                    "ok": True,
+                },
+                is_failure=False,
+            )
+        except Exception:
+            self.trace.append(
+                {
+                    "source": "loops",
+                    "event_id": self._current_event_id,
+                    "action_index": self._action_index,
+                    "action_type": action_type,
+                    "ok": False,
+                },
+                is_failure=True,
+            )
+            raise
 
     def _fresh_image(self, rect: Rect | None = None) -> Any:
         anchor = rect if rect is not None else self.get_anchor_rect()
@@ -277,6 +532,8 @@ class AutomationRuntime:
         if not name:
             self.log("play_preset missing preset name", "error")
             return
+        if not self._supervise(f"Play preset {name!r}"):
+            return
         if self.play_preset is None:
             self.log(f"play_preset stub: would run {name!r}", "warn")
             return
@@ -344,7 +601,127 @@ class AutomationRuntime:
         ms = int(raw.get("ms") or raw.get("wait_ms") or 0)
         if ms > 0:
             self.log(f"wait {ms}ms", "info")
-            time.sleep(ms / 1000.0)
+            if not interruptible_sleep(ms, self._stop):
+                self.log("wait interrupted", "warn")
+
+    def _action_wait_until(self, raw: dict[str, Any]) -> None:
+        timeout_ms = int(raw.get("timeout_ms") or 5000)
+        poll_ms = max(50, int(raw.get("poll_ms") or 200))
+        check = str(raw.get("check") or "variable").strip().lower()
+        equals = raw.get("equals")
+        variable = str(raw.get("variable") or "")
+        roi_id = str(raw.get("roi") or "")
+        parse_as = str(raw.get("parse_as") or "raw")
+        self.log(
+            f"wait_until check={check} variable={variable or '-'} roi={roi_id or '-'} "
+            f"equals={equals!r} timeout_ms={timeout_ms}",
+            "info",
+        )
+        deadline = time.monotonic() + timeout_ms / 1000.0
+        while time.monotonic() < deadline:
+            if self._stop.is_set():
+                raise CaptureError("wait_until interrupted")
+            ok = False
+            if check in {"variable", "var"} and variable:
+                current = self.state.variables.get(variable)
+                if equals is None:
+                    ok = current not in (None, "", "ABSENT")
+                else:
+                    ok = str(current).strip().lower() == str(equals).strip().lower()
+            elif check in {"ocr", "roi"} or (check == "variable" and roi_id):
+                if not roi_id:
+                    raise CaptureError("wait_until ocr/roi needs roi")
+                # Fresh OCR sample
+                self._action_ocr(
+                    {"roi": roi_id, "variable": variable or roi_id, "parse_as": parse_as}
+                )
+                current = self.state.variables.get(variable or roi_id)
+                if equals is None:
+                    ok = bool(current)
+                else:
+                    ok = str(current).strip().lower() == str(equals).strip().lower()
+            elif check in {"panel_open", "panel"}:
+                self._action_detect_panel({"refresh": True})
+                want = True if equals is None else str(equals).strip().lower() in {"1", "true", "yes", "open"}
+                ok = bool(self.state.states.get("panel_open")) is want
+            elif check in {"template", "match_template"}:
+                self._action_match_template(
+                    {
+                        "template": raw.get("template"),
+                        "roi": roi_id or None,
+                        "threshold": raw.get("threshold", 0.85),
+                        "variable": variable or "template",
+                        "click": False,
+                    }
+                )
+                current = self.state.variables.get(variable or "template")
+                want = "PRESENT" if equals is None else str(equals).strip().upper()
+                ok = str(current).strip().upper() == want
+            else:
+                raise CaptureError(f"wait_until unknown check={check!r}")
+            if ok:
+                self.log("wait_until satisfied", "ok")
+                return
+            if not interruptible_sleep(poll_ms, self._stop):
+                raise CaptureError("wait_until interrupted")
+        raise CaptureError(f"wait_until timed out after {timeout_ms}ms")
+
+    def _action_match_template(self, raw: dict[str, Any]) -> None:
+        template_id = str(raw.get("template") or "")
+        variable = str(raw.get("variable") or "template")
+        threshold = float(raw.get("threshold") or 0.85)
+        do_click = bool(raw.get("click", False))
+        roi_id = str(raw.get("roi") or "")
+        rect = self.get_anchor_rect()
+        if rect is None:
+            raise CaptureError("anchor missing")
+        image = self.state.last_image
+        if image is None:
+            image = grab_anchor(rect)
+            self.state.last_image = image
+        scene = image
+        offset_x = offset_y = 0
+        if roi_id:
+            roi = self.store.rois.get(roi_id)
+            if roi is None:
+                raise TemplateMatchError(f"unknown roi: {roi_id}")
+            cropped = crop_roi(image, rect, roi)
+            scene = cropped
+            # crop_roi returns image already cropped; offsets approximated via normalized box
+            offset_x = int(round(roi.nx * image.width))
+            offset_y = int(round(roi.ny * image.height))
+        path = resolve_template_path(self.templates_dir, template_id)
+        result = match_template(scene, path, threshold=threshold)
+        label = "PRESENT" if result.present else "ABSENT"
+        self.state.variables[variable] = label
+        self.state.variables[f"{variable}_score"] = f"{result.score:.4f}"
+        self.state.states[f"{variable}_present"] = result.present
+        self.log(
+            f"match_template {template_id}: {label} score={result.score:.3f} "
+            f"threshold={threshold:.2f} at=({result.x + offset_x},{result.y + offset_y})",
+            "ok" if result.present else "warn",
+        )
+        if do_click and result.present:
+            hwnd, anchor = self._anchor()
+            if anchor is None or not hwnd:
+                raise CaptureError("anchor missing")
+            abs_x = result.x + offset_x
+            abs_y = result.y + offset_y
+            nx = abs_x / max(image.width, 1)
+            ny = abs_y / max(image.height, 1)
+            if not self._supervise(f"Template click {template_id} at ({nx:.3f},{ny:.3f})"):
+                return
+            click_normalized(
+                hwnd=hwnd,
+                rect=anchor,
+                nx=nx,
+                ny=ny,
+                hold_ms=int(raw.get("hold_ms") or 70),
+                restore_cursor=self.restore_cursor,
+                profile=self._profile(),
+                stop=self._stop,
+            )
+            self.state.last_image = None
 
     def _action_click(self, raw: dict[str, Any]) -> None:
         hwnd, rect = self._anchor()
@@ -362,6 +739,8 @@ class AutomationRuntime:
             ny = float(raw["ny"])
         hold_ms = int(raw.get("hold_ms") or 70)
         label = target or f"({nx:.2f},{ny:.2f})"
+        if not self._supervise(f"Click {label}"):
+            return
         self.log(f"click {label}", "run")
         click_normalized(
             hwnd=hwnd,
@@ -460,7 +839,7 @@ class AutomationRuntime:
             stop=self._stop,
         )
         if wait_ms:
-            time.sleep(wait_ms / 1000.0)
+            interruptible_sleep(wait_ms, self._stop)
         after = self._fresh_image(rect)
         after_state = observe_panel(after)
 
@@ -481,7 +860,7 @@ class AutomationRuntime:
                 stop=self._stop,
             )
             if wait_ms:
-                time.sleep(wait_ms / 1000.0)
+                interruptible_sleep(wait_ms, self._stop)
             after = self._fresh_image(rect)
             after_state = observe_panel(after)
 
@@ -558,3 +937,39 @@ class AutomationRuntime:
             f"at_top={result.get('at_top')}",
             "ok" if result.get("at_top") else "warn",
         )
+
+    def _action_scroll_list(self, raw: dict[str, Any]) -> None:
+        """Tab-agnostic controlled list scroll: ``direction`` + ``rows`` (playbook drag)."""
+
+        direction = str(raw.get("direction") or "down").strip().lower()
+        if direction not in ("up", "down"):
+            raise CaptureError(f"scroll_list needs direction=up|down (got {direction!r})")
+        rows = max(1, abs(int(raw.get("rows") or raw.get("amount") or 1)))
+        drag_fraction = float(raw.get("drag_fraction") or 0.10)
+        hold_end_ms = int(raw.get("hold_end_ms") or 450)
+        settle_ms = int(raw.get("settle_ms") or 800)
+        nx = float(raw.get("nx") or 0.45)
+        ny = float(raw.get("ny") or 0.72)
+        hwnd, rect = self._anchor()
+        if rect is None or not hwnd:
+            raise CaptureError("anchor missing")
+        self.log(f"scroll_list: {direction} × {rows} row(s)", "run")
+        for index in range(1, rows + 1):
+            if self._stop.is_set():
+                raise CaptureError("Stopped by user.")
+            drag_list(
+                hwnd=hwnd,
+                rect=rect,
+                direction=direction,
+                nx=nx,
+                ny=ny,
+                drag_fraction=drag_fraction,
+                hold_end_ms=hold_end_ms,
+                restore_cursor=self.restore_cursor,
+                stop=self._stop,
+            )
+            if settle_ms:
+                interruptible_sleep(settle_ms, self._stop)
+            self.log(f"scroll_list: row {index}/{rows} done", "ok")
+        self.state.variables["scroll_list_direction"] = direction
+        self.state.variables["scroll_list_rows"] = str(rows)

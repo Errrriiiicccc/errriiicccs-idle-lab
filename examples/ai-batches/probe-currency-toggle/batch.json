@@ -1,0 +1,41 @@
+{
+  "name": "Probe: currency toggle",
+  "slug": "probe-currency-toggle",
+  "status": "pending",
+  "genre": "probe",
+  "goal": "Learn whether one tap at the HUD currency cluster flips cash+coins balances ↔ /min (gems stay stock). Evidence: before/after Screen Map shots.",
+  "created_by": "ai",
+  "auto_rerun": true,
+  "requests": [
+    {
+      "id": "req-before",
+      "kind": "screen_map_shot",
+      "label": "Currency HUD before tap",
+      "detail": "Baseline balances or /min — read QUESTION.md.",
+      "status": "pending",
+      "steps": [
+        {"action": "wait", "ms": 400},
+        {"action": "screenshot", "title": "currency-before"}
+      ]
+    },
+    {
+      "id": "req-tap",
+      "kind": "screen_map_shot",
+      "label": "After first currency tap",
+      "detail": "nx≈0.15 ny≈0.09 — playbook currency cluster.",
+      "status": "pending",
+      "steps": [
+        {"action": "click", "nx": 0.15, "ny": 0.09, "hold_ms": 50},
+        {"action": "wait", "ms": 600},
+        {"action": "screenshot", "title": "currency-after-tap-1"}
+      ]
+    },
+    {
+      "id": "req-note",
+      "kind": "note",
+      "label": "After run",
+      "detail": "Tell the chat this probe ran. Point at run_report.json + screen-maps/ai-run-probe-currency-toggle/. Chat fills iterations/*/reflection.md.",
+      "status": "pending"
+    }
+  ]
+}

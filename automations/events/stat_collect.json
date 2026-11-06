@@ -1,11 +1,11 @@
 {
-  "id": "stat_collect_30s",
-  "title": "Stat collect 30s",
+  "id": "stat_collect",
+  "title": "Stat collect",
   "version": 1,
   "enabled": true,
   "priority": 50,
   "timing": {"type": "interval", "every_ms": 30000},
-  "description": "Every 30 seconds: observe panel status (read-only), OCR wave / coins / diamonds, toggle currency HUD for coins-per-min and cash-per-min, write a CSV row. Never clicks upgrade tabs — leaves the menu however it already is.",
+  "description": "Atom: observe panel (read-only), OCR wave / coins / diamonds, toggle currency HUD for rates, write a CSV row. Start selected runs once now; interval pool uses every 30s when enabled.",
   "notes": "CSV: runs/stat_collect.csv. Currency toggle only touches the top HUD cluster (nx≈0.15, ny≈0.09), not Attack/Defense/Utility. Keep humanize_upgrade_loop disabled.",
   "actions": [
     {
@@ -30,15 +30,15 @@
       "type": "ocr",
       "roi": "coins_roi",
       "variable": "coins",
-      "parse_as": "currency",
-      "description": "Read coin balance (balances mode)."
+      "parse_as": "currency_balance",
+      "description": "Read coin balance (balances mode; typed contract)."
     },
     {
       "type": "ocr",
       "roi": "diamonds_roi",
       "variable": "diamonds",
-      "parse_as": "currency",
-      "description": "Read diamond count."
+      "parse_as": "currency_int",
+      "description": "Read diamond count (plain int contract)."
     },
     {
       "type": "play_preset",
@@ -59,15 +59,15 @@
       "type": "ocr",
       "roi": "coins_per_min_roi",
       "variable": "coins_per_min",
-      "parse_as": "currency",
-      "description": "Read coins per minute."
+      "parse_as": "currency_rate",
+      "description": "Read coins per minute (rate contract; abstain on /min→m junk)."
     },
     {
       "type": "ocr",
       "roi": "cash_per_min_roi",
       "variable": "cash_per_min",
-      "parse_as": "currency",
-      "description": "Read cash per minute."
+      "parse_as": "currency_rate",
+      "description": "Read cash per minute (rate contract)."
     },
     {
       "type": "play_preset",

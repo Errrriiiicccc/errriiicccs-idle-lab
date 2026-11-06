@@ -1,9 +1,9 @@
 {
   "id": "coins_roi",
   "version": 1,
-  "nx": 0.045,
-  "ny": 0.082,
+  "nx": 0.040,
+  "ny": 0.080,
   "nw": 0.28,
-  "nh": 0.030,
-  "notes": "Tuned on live shot: gold coin row in top-left stack (balances mode), under cash. Example OCR: 566.99K."
+  "nh": 0.032,
+  "notes": "Slightly left of 0.050 so the leading digit (9 in 9.77K) is not clipped into a 0. Multi-strip scoring still handles the C icon. Target: 11.28K / 9.77K."
 }

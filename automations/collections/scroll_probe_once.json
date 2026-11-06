@@ -1,0 +1,13 @@
+{
+  "id": "scroll_probe_once",
+  "title": "Scroll probe once",
+  "version": 1,
+  "description": "Once-molecule smoke: ensure Attack, then scroll the list down one row. Composition demo for shared scroll atom.",
+  "children": ["ensure_attack_tab", "list_scroll_down_1"],
+  "branch_variable": "phase",
+  "branches": {},
+  "loop": false,
+  "stop_when": null,
+  "run": "once",
+  "notes": "Start selected runs both atoms serially with no interval wait."
+}

@@ -9,6 +9,8 @@ errriiicccs-idle-lab/
   presets/
   automations/
     runtime.json
+    taxonomy.json           # Lab Loops folder catalog (Atoms / Molecules)
+    flight_deck.json        # in-flight accordion hotkeys (O/C/N/A/M → digits)
     rois/
     events/
     collections/
@@ -19,7 +21,7 @@ errriiicccs-idle-lab/
     ai-batch-spec.json
   src/idle_lab/
     __main__.py
-    app.py                 # Clicker | Automations | Screen Map | AI Batches
+    app.py                 # Bench | Observe | Missions | Loops + chrome
     overlay.py
     anchor.py
     recorder.py
@@ -28,12 +30,17 @@ errriiicccs-idle-lab/
     click_background.py
     click_logger.py        # includes WAVE/SIGNAL OCR harness
     hotkeys.py
+    flight_deck/           # in-flight HUD (actions + movable deck window)
+    taxonomy/              # shared virtual taxonomy load/browse/deck adapt
     presets.py
     settings_store.py
     models.py
     win32_api.py
     scroll_memory.py       # drag scroll + in-session scroll persistence
     image_viewer.py
+    comments.py            # hierarchical lab-comments.json store
+    comment_ui.py          # Note button + dialog
+    lab_watch.py           # mtime fingerprint for Refresh badge
     ai_batch/
       schema.py
       store.py

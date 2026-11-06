@@ -311,6 +311,227 @@ class RunnerHappyPathTests(unittest.TestCase):
             self.assertTrue(maps[0]["at_bottom"])
             self.assertEqual(directions, ["up", "up", "down", "down"])
 
+    def test_scroll_map_seek_only_max_steps_zero(self) -> None:
+        """max_steps: 0 must not coerce to 12 (seek-only prepare steps)."""
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            store = AiBatchStore(root / "ai")
+            batch = store.create(
+                "Seek only",
+                created_by="ai",
+                requests=[
+                    {
+                        "id": "r1",
+                        "kind": "screen_map_batch",
+                        "label": "Seek",
+                        "steps": [
+                            {
+                                "action": "scroll_map",
+                                "seek_top_first": True,
+                                "amount": 1,
+                                "max_steps": 0,
+                                "max_seek_steps": 5,
+                                "settle_ms": 0,
+                                "settle_confirm_ms": 0,
+                                "method": "wheel",
+                                "title_prefix": "lab",
+                                "unchanged_threshold": 0.01,
+                                "roi": {"nx": 0.0, "ny": 0.0, "nw": 1.0, "nh": 1.0},
+                            }
+                        ],
+                    }
+                ],
+            )
+            rect = Rect(0, 0, 40, 40)
+            frames = [
+                Image.new("RGB", (20, 20), color=(30, 30, 30)),
+                Image.new("RGB", (20, 20), color=(80, 30, 30)),
+                Image.new("RGB", (20, 20), color=(80, 30, 30)),
+                Image.new("RGB", (20, 20), color=(80, 30, 30)),
+            ]
+            call_count = {"n": 0}
+            directions: list[str] = []
+
+            def fake_grab(_rect):
+                index = min(call_count["n"], len(frames) - 1)
+                call_count["n"] += 1
+                return frames[index].copy()
+
+            def fake_scroll(self, nx, ny, direction, amount, **kwargs):  # noqa: ANN001
+                directions.append(direction)
+
+            runner = AiBatchRunner(
+                store=store,
+                screen_maps_root=root / "sm",
+                get_anchor=lambda: ("ok", 1, rect, "Win"),
+            )
+            import idle_lab.ai_batch.runner as runner_mod
+
+            original_grab = runner_mod.grab_anchor
+            original_scroll = AiBatchRunner._scroll
+            runner_mod.grab_anchor = fake_grab  # type: ignore[assignment]
+            AiBatchRunner._scroll = fake_scroll  # type: ignore[method-assign]
+            try:
+                runner.start(batch)
+                runner._thread.join(timeout=5)  # noqa: SLF001
+            finally:
+                runner_mod.grab_anchor = original_grab  # type: ignore[assignment]
+                AiBatchRunner._scroll = original_scroll  # type: ignore[method-assign]
+
+            store.load_all()
+            again = store.batches[batch.slug]
+            payload = again.requests[0].result.payload if again.requests[0].result else None
+            assert payload is not None
+            maps = payload["scroll_maps"]
+            self.assertEqual(maps[0]["max_steps"], 0)
+            self.assertEqual(maps[0]["scrolls_applied"], 0)
+            self.assertEqual(maps[0]["seek_top_scrolls"], 2)
+            self.assertEqual(directions, ["up", "up"])
+            self.assertFalse(any(d == "down" for d in directions))
+
+
+class OcrFixtureBenchStepTests(unittest.TestCase):
+    def test_offline_ocr_fixture_bench_marks_done(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            store = AiBatchStore(root / "ai", examples_root=root / "no-examples")
+            batch = store.create(
+                "OCR bench",
+                created_by="ai",
+                requests=[
+                    {
+                        "id": "r1",
+                        "kind": "other",
+                        "label": "Fixtures",
+                        "steps": [
+                            {
+                                "action": "ocr_fixture_bench",
+                                "fixture_dir": "tests/fixtures/ocr",
+                            }
+                        ],
+                    }
+                ],
+            )
+            # Persist offline + auto_rerun flags like the seeded example.
+            batch.offline = True
+            batch.auto_rerun = True
+            store.save(batch)
+
+            runner = AiBatchRunner(
+                store=store,
+                screen_maps_root=root / "sm",
+                get_anchor=lambda: ("missing", None, None, None),
+            )
+            runner.start(batch)
+            runner._thread.join(timeout=120)  # noqa: SLF001
+
+            store.load_all()
+            again = store.batches[batch.slug]
+            self.assertEqual(again.requests[0].status, "done")
+            payload = again.requests[0].result.payload if again.requests[0].result else None
+            assert payload is not None
+            benches = payload.get("ocr_fixture_benches") or []
+            self.assertTrue(benches)
+            self.assertTrue(benches[0].get("ok"))
+            report = store.folder_for(batch.slug)
+            assert report is not None
+            self.assertTrue((report / "run_report.json").exists())
+            self.assertTrue((report / "ocr_fixture_bench.json").exists())
+
+    def test_auto_rerun_requeues_done_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            store = AiBatchStore(root / "ai", examples_root=root / "no-examples")
+            batch = store.create(
+                "Rerun me",
+                created_by="ai",
+                requests=[
+                    {
+                        "id": "r1",
+                        "kind": "other",
+                        "label": "Fixtures",
+                        "status": "done",
+                        "steps": [{"action": "ocr_fixture_bench"}],
+                    }
+                ],
+            )
+            batch.auto_rerun = True
+            batch.offline = True
+            store.save(batch)
+            prepared = store.prepare_for_start(store.batches[batch.slug])
+            self.assertEqual(prepared.requests[0].status, "pending")
+
+
+class ExampleSeedTests(unittest.TestCase):
+    def test_seeds_ocr_fixture_bench_example(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            examples = root / "examples" / "ai-batches" / "ocr-fixture-bench"
+            examples.mkdir(parents=True)
+            (examples / "batch.json").write_text(
+                '{"name":"OCR fixture bench","slug":"ocr-fixture-bench",'
+                '"auto_rerun":true,"offline":true,"requests":[]}\n',
+                encoding="utf-8",
+            )
+            store = AiBatchStore(root / "ai-batches", examples_root=root / "examples" / "ai-batches")
+            errors = store.load_all()
+            self.assertEqual(errors, [])
+            self.assertIn("ocr-fixture-bench", store.batches)
+            self.assertEqual(store.last_seeded, ["ocr-fixture-bench"])
+            # Second load does not overwrite.
+            store.load_all()
+            self.assertEqual(store.last_seeded, [])
+
+    def test_seeds_probe_example_with_genre(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            examples = root / "examples" / "ai-batches" / "probe-currency-toggle"
+            examples.mkdir(parents=True)
+            (examples / "batch.json").write_text(
+                '{"name":"Probe: currency","slug":"probe-currency-toggle",'
+                '"genre":"probe","auto_rerun":true,"requests":[]}\n',
+                encoding="utf-8",
+            )
+            (examples / "QUESTION.md").write_text("# Question\nDoes it flip?\n", encoding="utf-8")
+            store = AiBatchStore(root / "ai-batches", examples_root=root / "examples" / "ai-batches")
+            store.load_all()
+            batch = store.batches["probe-currency-toggle"]
+            self.assertEqual(batch.genre, "probe")
+            self.assertTrue((store.folders[batch.slug] / "QUESTION.md").is_file())
+
+
+class GenreAndProbeScaffoldTests(unittest.TestCase):
+    def test_genre_roundtrip(self) -> None:
+        from idle_lab.ai_batch.schema import AiBatch, new_batch
+
+        batch = new_batch(name="P", slug="p", genre="probe")
+        data = batch.to_dict()
+        self.assertEqual(data["genre"], "probe")
+        again = AiBatch.from_dict(data)
+        self.assertEqual(again.genre, "probe")
+        plain = new_batch(name="G", slug="g")
+        self.assertNotIn("genre", plain.to_dict())
+
+    def test_probe_iteration_scaffold(self) -> None:
+        from idle_lab.ai_batch.iterations import begin_iteration, finalize_iteration
+
+        with tempfile.TemporaryDirectory() as folder:
+            batch_dir = Path(folder) / "probe-x"
+            batch_dir.mkdir()
+            (batch_dir / "batch.json").write_text(
+                '{"name":"Probe X","slug":"probe-x","genre":"probe","requests":[]}\n',
+                encoding="utf-8",
+            )
+            iteration = begin_iteration(batch_dir)
+            self.assertTrue((batch_dir / "QUESTION.md").is_file())
+            self.assertTrue((batch_dir / "ACCEPTANCE.md").is_file())
+            self.assertIn("Probe acceptance", (batch_dir / "ACCEPTANCE.md").read_text(encoding="utf-8"))
+            finalize_iteration(iteration, run_report={"ok": True})
+            reflection = iteration / "reflection.md"
+            self.assertTrue(reflection.is_file())
+            self.assertIn("Verdict", reflection.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

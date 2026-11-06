@@ -1,0 +1,33 @@
+{
+  "name": "OCR fixture bench",
+  "slug": "ocr-fixture-bench",
+  "status": "pending",
+  "goal": "One-click perception regression: run committed HUD crops through typed OCR. No Anchor required. Tell the chat this mission ran and point at run_report.json.",
+  "created_by": "ai",
+  "genre": "bench",
+  "auto_rerun": true,
+  "offline": true,
+  "requests": [
+    {
+      "id": "req-ocr-fixtures",
+      "kind": "other",
+      "label": "Run OCR fixture manifest",
+      "detail": "tests/fixtures/ocr/manifest.json — pass/fail lands in result.payload and run_report.json.",
+      "status": "pending",
+      "steps": [
+        {
+          "action": "ocr_fixture_bench",
+          "fixture_dir": "tests/fixtures/ocr",
+          "manifest": "manifest.json"
+        }
+      ]
+    },
+    {
+      "id": "req-note",
+      "kind": "note",
+      "label": "After run",
+      "detail": "If FAIL: paste run_report.json failures to the perception chat. If PASS: optional live stat_collect smoke later.",
+      "status": "pending"
+    }
+  ]
+}

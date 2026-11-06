@@ -27,14 +27,12 @@ class DescribeTests(unittest.TestCase):
         self.assertIn("run_log.csv", text)
         self.assertIn("Exact steps", text)
 
-    def test_collection_shows_branch_contention(self) -> None:
-        collection = self.store.collections["demo_poc"]
+    def test_collection_lists_children(self) -> None:
+        collection = self.store.collections["endgame_phase_loop"]
         text = format_collection(collection, detailed=False, store=self.store)
-        self.assertIn("Branches in contention", text)
-        self.assertIn("phase", text)
-        self.assertIn("Phase: Beginning", text)
-        self.assertIn("Phase: Midgame", text)
-        self.assertIn("Phase: Endgame", text)
+        self.assertIn("Endgame Phase Loop", text)
+        self.assertIn("Endgame status + buy", text)
+        self.assertIn("Stat collect 30s", text)
 
 
 if __name__ == "__main__":

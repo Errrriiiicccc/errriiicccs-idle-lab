@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
+import time
 from pathlib import Path
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
+import threading
 
 import customtkinter as ctk
 
@@ -15,6 +19,12 @@ from idle_lab.automations.mouse_sync import play_points_sync
 from idle_lab.automations.runtime import AutomationRuntime
 from idle_lab.automations.store import AutomationStore
 from idle_lab.automations.capture import CaptureError, grab_anchor
+from idle_lab.automations.validate import (
+    dry_run_collection,
+    dry_run_event,
+    format_report,
+    validate_store,
+)
 from idle_lab.ai_batch.schema import AiBatch, BatchRequest, RequestResult, now_iso
 from idle_lab.ai_batch.store import AiBatchError, AiBatchStore
 from idle_lab.ai_batch.runner import AiBatchRunner, AiBatchRunnerError
@@ -23,16 +33,40 @@ from idle_lab.automations.ui import AutomationsPanel
 from idle_lab.automations.walkthrough import Walkthrough
 from idle_lab.automations.schema import Collection
 from idle_lab.click_logger import ClickLogger
+from idle_lab.comment_ui import make_comment_button, open_comment_dialog
+from idle_lab.comments import (
+    CommentStore,
+    collection_comment_path,
+    event_comment_path,
+    mission_comment_path,
+    mission_request_comment_path,
+    preset_comment_path,
+    screen_map_batch_comment_path,
+    screen_map_shot_comment_path,
+)
+from idle_lab.flight_deck.keys import DEFAULT_EXPAND_VK, vk_label
+from idle_lab.flight_deck.keymap import KeymapError, default_keymap_path, load_keymap
+from idle_lab.flight_deck.window import FlightDeckWindow
+from idle_lab.taxonomy import (
+    TaxonomyError,
+    default_taxonomy_path,
+    load_taxonomy,
+    resolve_taxonomy,
+)
 from idle_lab.hotkeys import InputHooks
 from idle_lab.humanize import HUMANIZE_LEVELS, HumanizeProfile, normalize_level
 from idle_lab.image_viewer import open_image_viewer
+from idle_lab.lab_mode import SuperviseGate, humanize_level_tooltip, normalize_lab_mode
+from idle_lab.lab_watch import dir_fingerprint
 from idle_lab.models import ClickPoint, Preset, normalized_to_screen, screen_to_normalized
 from idle_lab.overlay import Overlay
 from idle_lab.player import Player
 from idle_lab.presets import PresetError, PresetStore, load_preset, preset_to_dict, project_root, slug
+from idle_lab.prompt_packet import export_prompt_packet
 from idle_lab.recorder import Recorder
 from idle_lab.screen_map.batch import ScreenMapController, ScreenMapError, add_shot, create_batch
 from idle_lab.screen_map.catalog import BatchSummary, list_batches as list_screen_map_batches
+from idle_lab.screen_map.manifest import load_manifest, save_manifest
 from idle_lab.screen_map.ui import ScreenMapPanel
 from idle_lab.scroll_memory import ScrollMemory
 from idle_lab.settings_store import load_settings, save_settings
@@ -73,6 +107,11 @@ class App(ctk.CTk):
         self.settings, settings_error = load_settings(self.settings_path)
         self.auto_store = AutomationStore(root / "automations")
         auto_errors = self.auto_store.load_all()
+        (root / "automations" / "templates").mkdir(parents=True, exist_ok=True)
+        self.supervise_gate = SuperviseGate(
+            ask=self._supervised_ask,
+            enabled=normalize_lab_mode(self.settings.lab_mode) == "supervised",
+        )
         self.auto_runtime = AutomationRuntime(
             store=self.auto_store,
             runs_dir=root / "runs",
@@ -81,6 +120,9 @@ class App(ctk.CTk):
             get_humanize=self._humanize_profile,
             restore_cursor=bool(self.settings.restore_cursor),
             play_preset=self._automation_play_preset,
+            supervise_gate=self.supervise_gate,
+            trace_level=self.settings.trace_level,
+            templates_dir=root / "automations" / "templates",
         )
         self.auto_panel: AutomationsPanel | None = None
         self.screen_map_panel: ScreenMapPanel | None = None
@@ -99,7 +141,9 @@ class App(ctk.CTk):
             get_humanize=self._humanize_profile,
         )
         self.scroll_memory = ScrollMemory()
-        self._current_tab = "Clicker"
+        self.comment_store = CommentStore(root / "lab-comments.json")
+        self.comment_store.load()
+        self._current_tab = "Bench"
         self.walkthrough: Walkthrough | None = None
         self.guide_overlay: GuideOverlay | None = None
         self.anchor_target = Anchor()
@@ -115,28 +159,52 @@ class App(ctk.CTk):
         self._active_index: int | None = None
         self._screen_map_title_dialog = None
         self._screen_map_busy = False
+        self._last_refresh_at: float | None = None
+        self._watch_paths = [
+            root / "presets",
+            root / "automations",
+            root / "ai-batches",
+            root / "screen-maps",
+            root / "lab-comments.json",
+        ]
+        self._disk_fingerprint = dir_fingerprint(self._watch_paths)
         self._begin_load()
         self._build()
         self._end_load()
         self.update_idletasks()
         self.overlay = Overlay(self, self._on_marker_moved, self._on_marker_released)
+        self.flight_deck = FlightDeckWindow(
+            self,
+            on_close=self._flight_deck_user_close,
+            on_expand_toggle=self._flight_deck_toggle_expand,
+            on_pause=self._flight_deck_pause,
+            on_stop=self._stop_all,
+            on_geometry=self._flight_deck_store_geometry,
+        )
+        self._taxonomy = None
+        self._flight_deck_keymap = None
+        self._sync_flight_deck_expand_vk()
         errors = self.store.load_all()
         if self.store.presets:
             self._select(self.store.presets[0])
         else:
             self._rebuild_preset_list()
             self._rebuild_points()
+        self._reload_taxonomy()
         self._refresh_screen_map_catalog()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         try:
             self.hooks.start()
         except OSError as exc:
             self._status(f"Hotkeys unavailable: {exc}", "error")
+        self.bind("<F5>", lambda _e: self._refresh_lab())
         self.after(120, self._poll_anchor)
         self.after(30, self._drain_hooks)
         self.after(50, self._drain_player)
         self.after(80, self._drain_automations)
         self.after(100, self._drain_ai_batch_runner)
+        self.after(1500, self._poll_disk_watch)
+        self.after(500, self._poll_activity)
         if settings_error:
             self._status(settings_error, "warn")
         elif errors:
@@ -146,7 +214,11 @@ class App(ctk.CTk):
         elif ai_errors:
             self._status("Skipped AI batch files: " + "; ".join(ai_errors), "error")
         else:
-            self._status("Set anchor, then click the emulator window.", "info")
+            self._status(
+                "Click Anchor, then the emulator window. F5 = Refresh. "
+                f"Flight deck expand = {vk_label(self._flight_deck_expand_vk_for_anchor())}.",
+                "info",
+            )
 
     def _build(self) -> None:
         self.status_label = ctk.CTkLabel(self, text="", anchor="w", justify="left", wraplength=980)
@@ -156,43 +228,34 @@ class App(ctk.CTk):
 
         self.tabs = ctk.CTkTabview(self, command=self._on_tab_changed)
         self.tabs.pack(fill="both", expand=True, padx=8, pady=(4, 0))
-        clicker = self.tabs.add("Clicker")
-        automations = self.tabs.add("Automations")
-        screen_map = self.tabs.add("Screen Map")
-        ai_batches = self.tabs.add("AI Batches")
+        bench = self.tabs.add("Bench")
+        observe = self.tabs.add("Observe")
+        missions = self.tabs.add("Missions")
+        loops = self.tabs.add("Loops")
 
-        self.body = ctk.CTkScrollableFrame(clicker, fg_color="transparent")
+        self.body = ctk.CTkScrollableFrame(bench, fg_color="transparent")
         self.body.pack(fill="both", expand=True, padx=4, pady=(4, 0))
         self.scroll_memory.register("clicker.body", self.body)
         self._build_clicker_body()
         self.scroll_memory.register("clicker.presets", self.preset_list)
 
-        self.auto_panel = AutomationsPanel(
-            automations,
-            store=self.auto_store,
-            on_reload=self._reload_automations,
-            on_start=self._start_automations,
-            on_stop=self._stop_automations,
-            on_walkthrough=self._start_collection_walkthrough,
-            on_walkthrough_stop=self._stop_collection_walkthrough,
-            scroll=self.scroll_memory,
-        )
-        self.auto_panel.pack(fill="both", expand=True)
-
         self.screen_map_panel = ScreenMapPanel(
-            screen_map,
+            observe,
             on_start_batch=self._start_screen_map_batch,
             on_end_batch=self._end_screen_map_batch,
             on_open_folder=self._open_screen_map_folder,
             on_refresh_catalog=self._refresh_screen_map_catalog,
             on_view_shot=self._view_screen_map_shot,
             on_view_batch=self._view_screen_map_batch,
+            on_comment_batch=self._comment_screen_map_batch,
+            on_comment_shot=self._comment_screen_map_shot,
+            comments=self.comment_store,
             scroll=self.scroll_memory,
         )
         self.screen_map_panel.pack(fill="both", expand=True)
 
         self.ai_batch_panel = AiBatchPanel(
-            ai_batches,
+            missions,
             store=self.ai_batch_store,
             scroll=self.scroll_memory,
             screen_maps_root=self.screen_maps_root,
@@ -207,93 +270,184 @@ class App(ctk.CTk):
             on_snapshot_event=self._snapshot_event_into_ai_batch,
             on_start_run=self._start_ai_batch_run,
             on_stop_run=self._stop_ai_batch_run,
+            on_export_packet=self._export_prompt_packet,
+            on_comment_batch=self._comment_mission,
+            on_comment_request=self._comment_mission_request,
+            comments=self.comment_store,
         )
         self.ai_batch_panel.pack(fill="both", expand=True)
+
+        self.auto_panel = AutomationsPanel(
+            loops,
+            store=self.auto_store,
+            on_reload=self._reload_automations,
+            on_start=self._start_automations_selection,
+            on_start_all_enabled=self._start_automations_all_enabled,
+            on_stop=self._stop_automations,
+            on_walkthrough=self._start_collection_walkthrough,
+            on_walkthrough_stop=self._stop_collection_walkthrough,
+            on_run_collection=self._start_molecule,
+            on_validate=self._validate_automations,
+            on_dry_run=self._dry_run_selection,
+            on_comment_event=self._comment_event,
+            on_comment_collection=self._comment_collection,
+            comments=self.comment_store,
+            scroll=self.scroll_memory,
+        )
+        self.auto_panel.pack(fill="both", expand=True)
         self._current_tab = self.tabs.get()
 
     def _build_chrome(self) -> None:
-        """Global top bar: brand, shared anchor, reserved action tray (Settings later)."""
+        """Thin global chrome: brand, compact Anchor, Refresh/Restart/Stop all, activity."""
 
         chrome = ctk.CTkFrame(self, corner_radius=12)
         chrome.pack(fill="x", padx=8, pady=(8, 4))
 
         left = ctk.CTkFrame(chrome, fg_color="transparent")
-        left.pack(side="left", fill="y", padx=(14, 10), pady=10)
+        left.pack(side="left", fill="y", padx=(12, 8), pady=8)
         ctk.CTkLabel(
             left,
             text="Errriiiccc's Idle Lab",
-            font=ctk.CTkFont(size=18, weight="bold"),
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            left,
-            text="Shared window anchor for every tab",
-            text_color="#9AA4B2",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(anchor="w")
 
-        # Right-side action tray first so anchor can expand into remaining space.
         self.header_actions = ctk.CTkFrame(chrome, fg_color="transparent")
-        self.header_actions.pack(side="right", padx=(8, 12), pady=10)
+        self.header_actions.pack(side="right", padx=(8, 12), pady=8)
         self.settings_button = ctk.CTkButton(
             self.header_actions,
             text="Settings",
-            width=96,
+            width=88,
             state="disabled",
             fg_color="#2A3140",
             text_color="#7E8796",
             hover=False,
         )
-        self.settings_button.pack(side="right")
-
-        anchor_cluster = ctk.CTkFrame(chrome, fg_color="#1A2030", corner_radius=10)
-        anchor_cluster.pack(side="left", fill="both", expand=True, padx=(4, 8), pady=8)
-
-        anchor_top = ctk.CTkFrame(anchor_cluster, fg_color="transparent")
-        anchor_top.pack(fill="x", padx=10, pady=(8, 2))
-        ctk.CTkLabel(
-            anchor_top,
-            text="ANCHOR",
-            text_color="#8EE0C2",
-            font=ctk.CTkFont(size=11, weight="bold"),
-        ).pack(side="left")
-        self.anchor_dot = ctk.CTkLabel(anchor_top, text="●", text_color="#5A6474", width=18)
-        self.anchor_dot.pack(side="left", padx=(8, 0))
-
-        self.anchor_label = ctk.CTkLabel(
-            anchor_cluster,
-            text="No window anchored",
-            anchor="w",
-            justify="left",
-            text_color="#C5D0DC",
+        self.settings_button.pack(side="right", padx=(6, 0))
+        self.stop_all_button = ctk.CTkButton(
+            self.header_actions,
+            text="Stop all (F8)",
+            width=112,
+            fg_color="#5A3030",
+            hover_color="#7A4040",
+            command=self._stop_all,
         )
-        self.anchor_label.pack(fill="x", padx=10, pady=(0, 4))
-
-        anchor_buttons = ctk.CTkFrame(anchor_cluster, fg_color="transparent")
-        anchor_buttons.pack(fill="x", padx=10, pady=(0, 8))
-        self.anchor_button = ctk.CTkButton(
-            anchor_buttons,
-            text="Set anchor",
-            width=118,
-            command=self._toggle_anchor_mode,
-        )
-        self.anchor_button.pack(side="left", padx=(0, 6))
-        self.clear_button = ctk.CTkButton(
-            anchor_buttons,
-            text="Clear",
-            width=78,
+        self.stop_all_button.pack(side="right", padx=(6, 0))
+        self.restart_button = ctk.CTkButton(
+            self.header_actions,
+            text="Restart",
+            width=88,
             fg_color="#2A3140",
             hover_color="#3A4558",
+            command=self._restart_lab,
+        )
+        self.restart_button.pack(side="right", padx=(6, 0))
+        self.refresh_button = ctk.CTkButton(
+            self.header_actions,
+            text="Refresh",
+            width=88,
+            command=self._refresh_lab,
+        )
+        self.refresh_button.pack(side="right", padx=(6, 0))
+        self.mode_menu = ctk.CTkOptionMenu(
+            self.header_actions,
+            values=["Auto", "Supervised"],
+            width=110,
+            command=self._on_lab_mode,
+        )
+        self.mode_menu.set("Supervised" if normalize_lab_mode(self.settings.lab_mode) == "supervised" else "Auto")
+        self.mode_menu.pack(side="right", padx=(6, 0))
+
+        mid = ctk.CTkFrame(chrome, fg_color="transparent")
+        mid.pack(side="left", fill="both", expand=True, padx=(4, 8), pady=6)
+
+        anchor_row = ctk.CTkFrame(mid, fg_color="transparent")
+        anchor_row.pack(anchor="w")
+        self.anchor_button = ctk.CTkButton(
+            anchor_row,
+            text="Anchor",
+            width=88,
+            height=28,
+            command=self._toggle_anchor_mode,
+        )
+        self.anchor_button.pack(side="left")
+        self.clear_button = ctk.CTkButton(
+            anchor_row,
+            text="×",
+            width=28,
+            height=28,
+            fg_color="transparent",
+            hover_color="#3A2030",
+            text_color="#E25C5C",
             command=self._clear_anchor,
         )
-        self.clear_button.pack(side="left")
+        self.clear_button.pack(side="left", padx=(2, 0))
+        self.anchor_dot = ctk.CTkLabel(anchor_row, text="●", text_color="#5A6474", width=16)
+        self.anchor_dot.pack(side="left", padx=(6, 0))
+        self.flight_deck_button = ctk.CTkButton(
+            anchor_row,
+            text="Flight deck",
+            width=96,
+            height=28,
+            fg_color="#1E3A4A",
+            hover_color="#2A5568",
+            command=self._toggle_flight_deck_from_lab,
+        )
+        self.flight_deck_button.pack(side="left", padx=(10, 0))
+        self.remap_expand_button = ctk.CTkButton(
+            anchor_row,
+            text=f"Expand [{vk_label(self.settings.flight_deck_expand_vk or DEFAULT_EXPAND_VK)}]",
+            width=110,
+            height=28,
+            fg_color="#2A3140",
+            hover_color="#3A4558",
+            command=self._begin_flight_deck_remap,
+        )
+        self.remap_expand_button.pack(side="left", padx=(6, 0))
+
+        self.anchor_label = ctk.CTkLabel(
+            mid,
+            text="No window",
+            anchor="w",
+            justify="left",
+            text_color="#7E8796",
+            font=ctk.CTkFont(size=11),
+        )
+        self.anchor_label.pack(anchor="w", pady=(2, 0))
+
+        pulse = ctk.CTkFrame(mid, fg_color="transparent")
+        pulse.pack(anchor="w", pady=(4, 0))
+        self.mode_chip = ctk.CTkLabel(
+            pulse,
+            text="Mode: Auto",
+            anchor="w",
+            text_color="#A8B4C4",
+            font=ctk.CTkFont(size=11),
+        )
+        self.mode_chip.pack(side="left")
+        self.activity_label = ctk.CTkLabel(
+            pulse,
+            text="Activity: Idle",
+            anchor="w",
+            text_color="#8EE0C2",
+            font=ctk.CTkFont(size=11, weight="bold"),
+        )
+        self.activity_label.pack(side="left", padx=(10, 0))
+        self.files_badge = ctk.CTkLabel(
+            pulse,
+            text="",
+            anchor="w",
+            text_color="#E7C36A",
+            font=ctk.CTkFont(size=11),
+        )
+        self.files_badge.pack(side="left", padx=(10, 0))
 
     def _build_clicker_body(self) -> None:
         header = ctk.CTkFrame(self.body, fg_color="transparent")
         header.pack(fill="x", padx=12, pady=(12, 4))
-        ctk.CTkLabel(header, text="Clicker", font=ctk.CTkFont(size=20, weight="bold")).pack(anchor="w")
+        ctk.CTkLabel(header, text="Bench", font=ctk.CTkFont(size=20, weight="bold")).pack(anchor="w")
         ctk.CTkLabel(
             header,
-            text="Presets are fractions of the anchored window, so they follow moves and resizes.",
+            text="Presets are reusable verbs — fractions of the anchored window for Missions and Loops.",
             text_color="#9AA4B2",
             wraplength=520,
             justify="left",
@@ -367,7 +521,7 @@ class App(ctk.CTk):
         self.logger_button.pack(side="left")
         ctk.CTkLabel(
             play_frame,
-            text="F6 starts or stops. F7 pauses. Esc stops a run. F6 and F7 are captured while this app is open.",
+            text="F6 starts/stops Bench playback. F7 pauses. F8 = Stop all (Loops, Missions, Bench, Observe). Esc also stops the active run. F6–F8 are captured while this app is open.",
             text_color="#9AA4B2",
             wraplength=520,
             justify="left",
@@ -430,13 +584,30 @@ class App(ctk.CTk):
     def _sync_controls(self) -> None:
         busy = self._busy()
         waiting = self._anchor_waiting
-        self.anchor_button.configure(text="Cancel anchor" if waiting else "Set anchor")
+        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+        anchored = status in ("ok", "minimized", "closed")
+        self.anchor_button.configure(text="Cancel" if waiting else "Anchor")
         self.anchor_button.configure(state="disabled" if busy else "normal")
         if waiting:
             self.anchor_button.configure(fg_color="#C9A227", hover_color="#E0B93A", text_color="#161616")
+        elif anchored:
+            # Green = window locked in
+            self.anchor_button.configure(
+                fg_color="#2F6B4A",
+                hover_color="#3A855C",
+                text_color="#E8FFF2",
+            )
         else:
-            self.anchor_button.configure(fg_color=["#3B8ED0", "#1F6AA5"], hover_color=["#36719F", "#144870"], text_color="#DCE4EE")
-        self.clear_button.configure(state="disabled" if busy else "normal")
+            self.anchor_button.configure(
+                fg_color=["#3B8ED0", "#1F6AA5"],
+                hover_color=["#36719F", "#144870"],
+                text_color="#DCE4EE",
+            )
+        clear_ok = anchored and not busy and not waiting
+        self.clear_button.configure(
+            state="normal" if clear_ok else "disabled",
+            text_color="#E25C5C" if clear_ok else "#5A6474",
+        )
         self.create_button.configure(state="disabled" if busy else "normal")
         can_edit = self.current is not None and not busy
         for button in (self.rename_button, self.duplicate_button, self.delete_button, self.export_button):
@@ -445,6 +616,7 @@ class App(ctk.CTk):
         self.stop_button.configure(state="normal" if self.player.is_active else "disabled")
         self.pause_button.configure(state="normal" if self.player.is_active else "disabled")
         self._update_banner()
+        self._update_activity()
 
     def _update_banner(self) -> None:
         if self.recorder.active:
@@ -472,6 +644,47 @@ class App(ctk.CTk):
             return
         self.settings.humanize_level = _HUMANIZE_FROM_LABEL.get(value, normalize_level(value))
         self._save_settings()
+        self._status(humanize_level_tooltip(self.settings.humanize_level), "info")
+
+    def _on_lab_mode(self, value: str) -> None:
+        if self._loading():
+            return
+        mode = "supervised" if str(value).strip().lower().startswith("supervised") else "auto"
+        self.settings.lab_mode = mode
+        self.supervise_gate.enabled = mode == "supervised"
+        self._save_settings()
+        self._update_activity()
+        self._status(
+            "Supervised: confirm each click/preset." if mode == "supervised" else "Auto: run without confirms.",
+            "info",
+        )
+
+    def _supervised_ask(self, description: str) -> bool:
+        """Worker-thread safe confirm via UI thread + Event."""
+
+        result = {"ok": False}
+        done = threading.Event()
+
+        def ask() -> None:
+            try:
+                result["ok"] = bool(
+                    messagebox.askokcancel(
+                        "Supervised",
+                        f"{description}\n\nConfirm to actuate. Cancel skips this action.",
+                        parent=self,
+                    )
+                )
+            finally:
+                done.set()
+
+        try:
+            self.after(0, ask)
+        except Exception:
+            return False
+        while not done.wait(0.05):
+            if self.auto_runtime._stop.is_set() or self.ai_batch_runner._stop.is_set():
+                return False
+        return bool(result["ok"])
 
     def _on_countdown(self, value: str) -> None:
         if self._loading():
@@ -503,6 +716,8 @@ class App(ctk.CTk):
                 self.overlay.set_visible(False)
             if self.guide_overlay is not None and self.walkthrough is not None and self.walkthrough.active:
                 self.guide_overlay.set_anchor(rect if status == "ok" else None)
+            if getattr(self, "flight_deck", None) is not None:
+                self._maybe_auto_show_flight_deck(status, rect)
         except Exception as exc:
             self._status(f"Anchor poll failed: {exc}", "error")
         if self._alive:
@@ -510,19 +725,27 @@ class App(ctk.CTk):
 
     def _render_anchor(self, status: str, rect, title: str) -> None:
         if status == "ok" and rect is not None:
-            text = f"{title}   {rect.width} x {rect.height}"
+            short = (title or "Window").strip()
+            if len(short) > 36:
+                short = short[:33] + "…"
+            text = f"{short} · {rect.width}×{rect.height}"
             dot = "#8EE0C2"
         elif status == "minimized":
-            text = f"{title} is minimized"
+            text = f"{title} minimized"
             dot = "#E7C36A"
         elif status == "closed":
-            text = "Anchored window closed"
+            text = "Window closed"
             dot = "#F09595"
         else:
-            text = "No window anchored"
+            text = "No window"
             dot = "#5A6474"
         self.anchor_label.configure(text=text)
         self.anchor_dot.configure(text_color=dot)
+        clear_ok = status in ("ok", "minimized", "closed") and not self._busy() and not self._anchor_waiting
+        self.clear_button.configure(
+            state="normal" if clear_ok else "disabled",
+            text_color="#E25C5C" if clear_ok else "#5A6474",
+        )
 
     def _toggle_anchor_mode(self) -> None:
         if self._busy():
@@ -548,8 +771,14 @@ class App(ctk.CTk):
         if error:
             self._status(error, "error")
             return
-        _status, _hwnd, _rect, title = self.anchor_target.snapshot()
+        status, _hwnd, rect, title = self.anchor_target.snapshot()
         self._status(f"Anchored to {title}.", "ok")
+        # Show immediately (don't wait for the next anchor poll).
+        if not self.settings.flight_deck_user_hidden:
+            self._show_flight_deck()
+        else:
+            self.hooks.state.flight_deck_expand_armed = status in ("ok", "minimized")
+            self._sync_flight_deck_expand_vk()
 
     def _clear_anchor(self) -> None:
         if self._busy():
@@ -557,7 +786,368 @@ class App(ctk.CTk):
         self._cancel_anchor_mode()
         self.anchor_target.clear()
         self.overlay.set_visible(False)
+        self._hide_flight_deck(user_hidden=False)
         self._status("Anchor cleared.", "info")
+
+    # --- Flight deck (in-flight HUD) ---
+
+    def _reload_taxonomy(self) -> None:
+        """Load Lab Loops taxonomy + separate flight-deck accordion catalog."""
+
+        path = default_taxonomy_path(project_root())
+        try:
+            raw = load_taxonomy(path)
+            resolved = resolve_taxonomy(
+                raw,
+                event_ids=self.auto_store.events.keys(),
+                collection_ids=self.auto_store.collections.keys(),
+                preset_names={preset.name for preset in self.store.presets},
+            )
+            self._taxonomy = resolved
+            if self.auto_panel is not None:
+                self.auto_panel.set_taxonomy(resolved)
+        except TaxonomyError as exc:
+            self._taxonomy = None
+            if self.auto_panel is not None:
+                self.auto_panel.set_taxonomy(None)
+            self._status(f"Taxonomy: {exc}", "warn")
+
+        deck_path = default_keymap_path(project_root())
+        try:
+            self._flight_deck_keymap = load_keymap(deck_path)
+            self.flight_deck.set_keymap(self._flight_deck_keymap)
+        except (KeymapError, OSError) as exc:
+            self._flight_deck_keymap = None
+            self.flight_deck.set_keymap(None)
+            self._status(f"Flight deck catalog: {exc}", "warn")
+
+    def _flight_deck_expand_vk_for_anchor(self) -> int:
+        status, _hwnd, _rect, title = self.anchor_target.snapshot()
+        if status in ("ok", "minimized", "closed") and title:
+            mapped = (self.settings.flight_deck_expand_by_anchor or {}).get(title)
+            if mapped:
+                return int(mapped)
+        return int(self.settings.flight_deck_expand_vk or DEFAULT_EXPAND_VK)
+
+    def _sync_flight_deck_expand_vk(self) -> None:
+        vk = self._flight_deck_expand_vk_for_anchor()
+        self.hooks.state.flight_deck_expand_vk = vk
+        self.flight_deck.set_expand_vk(vk)
+        if getattr(self, "remap_expand_button", None) is not None:
+            self.remap_expand_button.configure(text=f"Expand [{vk_label(vk)}]")
+
+    def _flight_deck_store_geometry(self, geometry: str) -> None:
+        from idle_lab.flight_deck.window import sanitize_geometry
+
+        cleaned = sanitize_geometry(geometry)
+        if not cleaned:
+            return
+        self.settings.flight_deck_geometry = cleaned
+        try:
+            self._save_settings()
+        except Exception:
+            pass
+
+    def _flight_deck_is_visible(self) -> bool:
+        try:
+            return bool(self.flight_deck.winfo_viewable())
+        except Exception:
+            return False
+
+    def _show_flight_deck(self, *, expand: bool = False) -> None:
+        status, _hwnd, rect, _title = self.anchor_target.snapshot()
+        if status not in ("ok", "minimized"):
+            self._status("Anchor a window before opening the flight deck.", "error")
+            return
+        self.settings.flight_deck_user_hidden = False
+        self._save_settings()
+        self._sync_flight_deck_expand_vk()
+        self.flight_deck.show_deck(
+            beside=rect if status == "ok" else None,
+            geometry=self.settings.flight_deck_geometry,
+        )
+        self.hooks.state.flight_deck_open = True
+        self.hooks.state.flight_deck_expand_armed = True
+        self._sync_flight_deck_run_state()
+        if expand:
+            self._flight_deck_set_expanded(True)
+        self._update_flight_deck_lab_button()
+
+    def _hide_flight_deck(self, *, user_hidden: bool) -> None:
+        self.flight_deck.hide_deck()
+        self.hooks.state.flight_deck_open = False
+        self.hooks.state.flight_deck_expanded = False
+        self.hooks.state.flight_deck_remap = False
+        if user_hidden:
+            self.settings.flight_deck_user_hidden = True
+            self._save_settings()
+        # Stay expand-armed while still anchored so ` reopens the deck.
+        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+        self.hooks.state.flight_deck_expand_armed = status in ("ok", "minimized")
+        self._update_flight_deck_lab_button()
+
+    def _flight_deck_user_close(self) -> None:
+        self._hide_flight_deck(user_hidden=True)
+        self._status("Flight deck closed. Use Flight deck or expand key to reopen.", "info")
+
+    def _toggle_flight_deck_from_lab(self) -> None:
+        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+        if status not in ("ok", "minimized", "closed"):
+            self._status("Anchor a window before opening the flight deck.", "error")
+            return
+        if self._flight_deck_is_visible():
+            self._flight_deck_user_close()
+        else:
+            self._show_flight_deck()
+
+    def _update_flight_deck_lab_button(self) -> None:
+        if getattr(self, "flight_deck_button", None) is None:
+            return
+        open_now = self._flight_deck_is_visible()
+        self.flight_deck_button.configure(text="Close deck" if open_now else "Flight deck")
+
+    def _flight_deck_set_expanded(self, expanded: bool) -> None:
+        if expanded and not self._flight_deck_is_visible():
+            self._show_flight_deck(expand=False)
+        self.flight_deck.set_expanded(expanded)
+        self.hooks.state.flight_deck_expanded = bool(self.flight_deck.expanded)
+        self.hooks.state.flight_deck_open = self._flight_deck_is_visible()
+        if self.flight_deck.expanded:
+            self.flight_deck.focus_deck()
+            try:
+                hwnd = win32_api.widget_hwnd(self.flight_deck)
+                if hwnd:
+                    win32_api.focus_window(hwnd)
+            except Exception:
+                pass
+
+    def _flight_deck_toggle_expand(self) -> None:
+        if not self._flight_deck_is_visible():
+            self._show_flight_deck(expand=True)
+            return
+        self._flight_deck_set_expanded(not self.flight_deck.expanded)
+
+    def _flight_deck_pause(self) -> None:
+        if self.player.is_active:
+            self._toggle_pause()
+            self._sync_flight_deck_run_state()
+        else:
+            self._status("Pause is only wired for Bench playback in v0.", "warn")
+
+    def _begin_flight_deck_remap(self) -> None:
+        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+        if status not in ("ok", "minimized", "closed"):
+            self._status("Anchor a window first so the expand key can be saved per anchor.", "warn")
+        self.hooks.state.flight_deck_remap = True
+        self._status("Press the new expand key (Esc cancels). Saved for this anchor when set.", "warn")
+
+    def _apply_flight_deck_remap(self, vk: int) -> None:
+        vk = int(vk)
+        if vk in (0x1B,):  # Esc handled elsewhere
+            return
+        status, _hwnd, _rect, title = self.anchor_target.snapshot()
+        self.settings.flight_deck_expand_vk = vk
+        if status in ("ok", "minimized", "closed") and title:
+            by_anchor = dict(self.settings.flight_deck_expand_by_anchor or {})
+            by_anchor[title] = vk
+            self.settings.flight_deck_expand_by_anchor = by_anchor
+            self._status(f"Expand key → {vk_label(vk)} for anchor “{title}”.", "ok")
+        else:
+            self._status(f"Expand key → {vk_label(vk)} (global default).", "ok")
+        self._save_settings()
+        self._sync_flight_deck_expand_vk()
+
+    def _dispatch_flight_deck_action(self, action: dict) -> None:
+        kind = str(action.get("type") or "")
+        path = str(action.get("_path") or action.get("_label") or kind)
+        try:
+            if kind == "play_preset":
+                self._flight_deck_play_preset(str(action["preset"]), path=path)
+            elif kind == "start_event":
+                self._flight_deck_start_event(str(action["event"]), path=path)
+            elif kind == "start_collection":
+                self._flight_deck_start_collection(str(action["collection"]), path=path)
+            elif kind == "start_enabled_loops":
+                self._start_automations_all_enabled()
+            elif kind == "observe_start":
+                self._flight_deck_observe_start(str(action.get("title") or "Flight deck"))
+            elif kind == "observe_shot":
+                self._flight_deck_observe_shot()
+            elif kind == "observe_end":
+                self._end_screen_map_batch()
+            else:
+                self._status(f"Flight deck: unknown action type “{kind}”.", "error")
+        except Exception as exc:
+            self._status(f"Flight deck failed ({path}): {exc}", "error")
+
+    def _flight_deck_play_preset(self, name: str, *, path: str) -> None:
+        if self.recorder.active or self.player.is_active:
+            self._status("Stop Bench recording/playback first.", "warn")
+            return
+        if self.auto_runtime.is_running or self.auto_runtime.collection_running:
+            self._status("Stop Loops before a one-shot preset (single mouse runway).", "warn")
+            return
+        if self.ai_batch_runner.is_running:
+            self._status("Stop the Mission before a one-shot preset.", "warn")
+            return
+        preset = next((item for item in self.store.presets if item.name == name), None)
+        if preset is None:
+            self._status(f"Preset not found: {name}", "error")
+            return
+        if not preset.points:
+            self._status(f"Preset has no points: {name}", "error")
+            return
+        status, hwnd, _rect, _title = self.anchor_target.snapshot()
+        if status != "ok" or not hwnd:
+            self._status("Anchor a window before playing a preset.", "error")
+            return
+        self.hooks.state.playback = True
+        self._sync_controls()
+        self.player.start(
+            preset.points,
+            loop=False,
+            loop_count=1,
+            method=self.settings.click_method,
+            focus=self.settings.focus_before_run,
+            restore_cursor=self.settings.restore_cursor,
+            countdown=self.settings.countdown_seconds,
+            hwnd=hwnd,
+            snapshot=self.anchor_target.snapshot,
+            humanize=self._humanize_profile(),
+        )
+        self._status(f"Flight deck · {path}", "run")
+
+    def _flight_deck_start_event(self, event_id: str, *, path: str) -> None:
+        event = self.auto_store.events.get(event_id)
+        if event is None:
+            self._status(f"Atom not found: {event_id}", "error")
+            return
+        self._start_automations_selection(event, None)
+        if self.auto_runtime.collection_running or self.auto_runtime.is_running:
+            self._status(f"Flight deck · {path}", "run")
+
+    def _flight_deck_start_collection(self, collection_id: str, *, path: str) -> None:
+        collection = self.auto_store.collections.get(collection_id)
+        if collection is None:
+            self._status(f"Molecule not found: {collection_id}", "error")
+            return
+        self._start_molecule(collection)
+        if self.auto_runtime.collection_running or self.auto_runtime.is_running:
+            self._status(f"Flight deck · {path}", "run")
+
+    def _flight_deck_observe_start(self, title: str) -> None:
+        if self.screen_map.active:
+            self._status("Observe batch already active — Capture shot or End batch.", "warn")
+            return
+        if self.recorder.active or self.player.is_active:
+            self._status("Finish recording/playback before Observe.", "warn")
+            return
+        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+        if status != "ok":
+            self._status("Anchor a window before Observe.", "error")
+            return
+        stamp = time.strftime("%Y-%m-%d %H%M")
+        batch_title = f"{(title or 'Flight deck').strip()} {stamp}".strip()
+        try:
+            self.screen_maps_root.mkdir(parents=True, exist_ok=True)
+            session = create_batch(self.screen_maps_root, batch_title)
+            self.screen_map.start(session)
+        except ScreenMapError as exc:
+            self._status(str(exc), "error")
+            return
+        except OSError as exc:
+            self._status(f"Could not create batch folder: {exc}", "error")
+            return
+        self.hooks.state.screenshot_mode = True
+        self.hooks.state.title_dialog_open = False
+        self.hooks.state.screenshot_busy = False
+        self._screen_map_busy = False
+        self._refresh_screen_map_panel()
+        self._refresh_screen_map_catalog()
+        self._status(f"Observe ON · {session.folder.name} — Space→2 captures.", "run")
+
+    def _flight_deck_observe_shot(self) -> None:
+        if not self.screen_map.active or self.screen_map.dialog_open or self._screen_map_busy:
+            self._status("Start an Observe batch first (Space → Space).", "warn")
+            return
+        if self.recorder.active or self.player.is_active:
+            self._status("Cannot capture while recording or playing back.", "warn")
+            return
+        self._set_screen_map_busy(True, "Capturing…")
+        status, _hwnd, rect, window_title = self.anchor_target.snapshot()
+        if status != "ok" or rect is None:
+            self._set_screen_map_busy(False)
+            self._status(f"Anchor not ready ({status}) — capture refused.", "error")
+            return
+        try:
+            image = grab_anchor(rect)
+        except CaptureError as exc:
+            self._set_screen_map_busy(False)
+            self._status(f"Capture failed: {exc}", "error")
+            return
+        session = self.screen_map.session
+        if session is None:
+            self._set_screen_map_busy(False)
+            self._status("Batch session missing.", "error")
+            return
+        title = f"shot {session.shot_count + 1}"
+        anchor_meta = {
+            "window_title": window_title,
+            "width": rect.width,
+            "height": rect.height,
+            "left": rect.left,
+            "top": rect.top,
+        }
+        try:
+            shot = add_shot(session, title=title, image=image, anchor=anchor_meta)
+        except (ScreenMapError, OSError) as exc:
+            self._set_screen_map_busy(False)
+            self._status(f"Could not save shot: {exc}", "error")
+            return
+        self._set_screen_map_busy(False)
+        self._refresh_screen_map_panel()
+        self._refresh_screen_map_catalog()
+        self._status(f"Saved {shot.filename}", "ok")
+
+    def _sync_flight_deck_run_state(self) -> None:
+        running = bool(
+            self.player.is_active
+            or self.auto_runtime.is_running
+            or self.auto_runtime.collection_running
+            or self.ai_batch_runner.is_running
+        )
+        paused = bool(self.player.is_active and self.player.paused)
+        # Prefer the same wording as the Activity chip, trimmed for the deck.
+        status = self._activity_text().replace("Activity: ", "")
+        if paused:
+            status = f"Paused · {status}"
+        elif running:
+            status = f"Running · {status}"
+        self.flight_deck.set_run_state(running=running, paused=paused, status=status)
+        self.hooks.state.flight_deck_expanded = bool(self.flight_deck.expanded)
+        self.hooks.state.flight_deck_open = self._flight_deck_is_visible()
+
+    def _maybe_auto_show_flight_deck(self, status: str, rect) -> None:
+        anchored = status in ("ok", "minimized")
+        self.hooks.state.flight_deck_expand_armed = anchored
+        if not anchored:
+            if self._flight_deck_is_visible():
+                self._hide_flight_deck(user_hidden=False)
+            return
+        self._sync_flight_deck_expand_vk()
+        if self.settings.flight_deck_user_hidden:
+            return
+        if not self._flight_deck_is_visible():
+            self.flight_deck.show_deck(
+                beside=rect if status == "ok" else None,
+                geometry=self.settings.flight_deck_geometry,
+            )
+            self.hooks.state.flight_deck_open = True
+            self._sync_flight_deck_run_state()
+            self._update_flight_deck_lab_button()
+        else:
+            # Recover if a prior session parked the deck off-screen.
+            self.flight_deck.ensure_onscreen()
 
     def _edited_points(self) -> list[ClickPoint]:
         if self.recorder.active:
@@ -607,14 +1197,25 @@ class App(ctk.CTk):
                 child.destroy()
             for preset in self.store.presets:
                 selected = self.current is not None and preset.path == self.current.path
+                row = ctk.CTkFrame(self.preset_list, fg_color="transparent")
+                row.pack(fill="x", pady=2)
                 button = ctk.CTkButton(
-                    self.preset_list,
+                    row,
                     text=preset.name,
                     anchor="w",
                     fg_color="#1f6aa5" if selected else "transparent",
                     command=lambda item=preset: self._select(item),
                 )
-                button.pack(fill="x", pady=2)
+                button.pack(side="left", fill="x", expand=True)
+                stem = Path(preset.path).stem if preset.path else slug(preset.name)
+                path = preset_comment_path(stem)
+                make_comment_button(
+                    row,
+                    has_notes=self.comment_store.has(path),
+                    command=lambda p=path, n=preset.name: self._open_object_comment(
+                        f"Comment · preset · {n}", p
+                    ),
+                ).pack(side="right", padx=(4, 0))
 
         self.scroll_memory.around_rebuild("clicker.presets", rebuild)
 
@@ -627,6 +1228,11 @@ class App(ctk.CTk):
 
     def _tab_scroll_prefix(self, tab_name: str) -> str:
         return {
+            "Bench": "clicker.",
+            "Observe": "screen_map.",
+            "Missions": "ai.",
+            "Loops": "automations.",
+            # Legacy names (if any old sessions linger)
             "Clicker": "clicker.",
             "Automations": "automations.",
             "Screen Map": "screen_map.",
@@ -1097,16 +1703,37 @@ class App(ctk.CTk):
                 elif kind == "walkthrough_key":
                     self._walkthrough_key(str(event[1]))
                 elif kind == "escape":
-                    if self._anchor_waiting or self.hooks.state.anchor_armed:
+                    if self.hooks.state.flight_deck_remap:
+                        self.hooks.state.flight_deck_remap = False
+                        self._status("Expand remap cancelled.", "info")
+                    elif self._flight_deck_is_visible():
+                        # Esc always closes the flight deck (expand/collapse is the expand key).
+                        self._flight_deck_user_close()
+                    elif self._anchor_waiting or self.hooks.state.anchor_armed:
                         self._cancel_anchor_mode()
                     elif self.walkthrough is not None and self.walkthrough.active:
                         self._stop_collection_walkthrough()
                     elif self.recorder.active:
                         self._finish_recording()
-                    elif self.player.is_active:
-                        self._stop_playback()
+                    elif (
+                        self.player.is_active
+                        or self.auto_runtime.is_running
+                        or self.auto_runtime.collection_running
+                        or self.ai_batch_runner.is_running
+                    ):
+                        # Same authority as the chrome button / F8 when a run owns the mouse.
+                        self._stop_all()
                     elif self.screen_map.active and not self._screen_map_busy:
                         self._end_screen_map_batch()
+                elif kind == "flight_deck_expand":
+                    self._flight_deck_toggle_expand()
+                elif kind == "flight_deck_menu_key":
+                    action = self.flight_deck.navigate(str(event[1]))
+                    self.hooks.state.flight_deck_expanded = bool(self.flight_deck.expanded)
+                    if action is not None:
+                        self._dispatch_flight_deck_action(action)
+                elif kind == "flight_deck_remap_key":
+                    self._apply_flight_deck_remap(int(event[1]))
                 elif kind == "f6":
                     if self.walkthrough is not None and self.walkthrough.active:
                         pass
@@ -1116,6 +1743,8 @@ class App(ctk.CTk):
                         self._start_playback()
                 elif kind == "f7" and self.player.is_active:
                     self._toggle_pause()
+                elif kind == "f8":
+                    self._stop_all()
         except Exception as exc:
             self._status(f"Hotkey handler failed: {exc}", "error")
         if self._alive:
@@ -1164,6 +1793,10 @@ class App(ctk.CTk):
         self.hooks.state.title_dialog_open = False
         self.hooks.state.screenshot_busy = False
         self.hooks.state.walkthrough_active = False
+        self.hooks.state.flight_deck_open = False
+        self.hooks.state.flight_deck_expanded = False
+        self.hooks.state.flight_deck_remap = False
+        self.hooks.state.flight_deck_expand_armed = False
         try:
             self._stop_collection_walkthrough()
         except Exception:
@@ -1176,6 +1809,11 @@ class App(ctk.CTk):
         self.hooks.stop()
         try:
             self.overlay.destroy()
+        except Exception:
+            pass
+        try:
+            if getattr(self, "flight_deck", None) is not None:
+                self.flight_deck.destroy()
         except Exception:
             pass
         try:
@@ -1372,9 +2010,9 @@ class App(ctk.CTk):
         self._refresh_screen_map_catalog()
         if self.screen_map_panel is not None:
             self.screen_map_panel.focus_batch(slug)
-        self.tabs.set("Screen Map")
+        self.tabs.set("Observe")
         self._on_tab_changed()
-        self._status(f"Opened Screen Map batch: {slug}", "info")
+        self._status(f"Opened Observe batch: {slug}", "info")
 
     def _screen_map_space(self) -> None:
         if not self.screen_map.active or self.screen_map.dialog_open or self._screen_map_busy:
@@ -1474,16 +2112,17 @@ class App(ctk.CTk):
         if self.ai_batch_runner.is_running:
             self._status("An AI batch is already running.", "warn")
             return
-        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
-        if status != "ok":
-            self._status("Anchor a window before starting an AI batch run.", "error")
-            return
         # Re-load so steps from disk are current.
         self.ai_batch_store.load_all()
         live = self.ai_batch_store.batches.get(batch.slug)
         if live is None:
             self._status("Batch missing on disk — Reload.", "error")
             return
+        if not live.is_offline():
+            status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+            if status != "ok":
+                self._status("Anchor a window before starting an AI batch run.", "error")
+                return
         try:
             self.ai_batch_runner.start(live)
         except AiBatchRunnerError as exc:
@@ -1492,7 +2131,8 @@ class App(ctk.CTk):
                 self.ai_batch_panel.set_run_message(str(exc), level="error")
             return
         if self.ai_batch_panel is not None:
-            self.ai_batch_panel.set_running(True, f"Runner: starting {live.name}…")
+            mode = "offline" if live.is_offline() else "anchored"
+            self.ai_batch_panel.set_running(True, f"Runner: starting {live.name} ({mode})…")
         self._status(f"AI batch running: {live.name}", "run")
 
     def _stop_ai_batch_run(self) -> None:
@@ -1522,12 +2162,20 @@ class App(ctk.CTk):
                     self._refresh_screen_map_catalog()
                 elif kind == "finished":
                     if self.ai_batch_panel is not None:
-                        self.ai_batch_panel.set_running(False, "Runner: idle — tell the AI chat this batch ran.")
+                        self.ai_batch_panel.set_running(
+                            False,
+                            "Runner: idle — Refresh if needed, then Open linked Observe / tell chat it ran.",
+                        )
                     self._refresh_screen_map_catalog()
                     report = event.get("report") or {}
                     sm = report.get("screen_map_batch")
                     if sm:
-                        self._status(f"AI batch finished. Screen Map: screen-maps/{sm}/ (+ run_report.json)", "ok")
+                        self._status(
+                            f"Mission finished. Observe: screen-maps/{sm}/ (+ run_report.json). "
+                            "Use Open linked Observe.",
+                            "ok",
+                        )
+                    self._update_activity()
         except Exception as exc:
             self._status(f"AI batch runner update failed: {exc}", "error")
         if self._alive:
@@ -1537,8 +2185,15 @@ class App(ctk.CTk):
         errors = self.ai_batch_store.load_all()
         if self.ai_batch_panel is not None:
             self.ai_batch_panel.refresh_list()
+        seeded = getattr(self.ai_batch_store, "last_seeded", []) or []
         if errors:
             self._status("Skipped AI batch files: " + "; ".join(errors), "error")
+        elif seeded:
+            self._status(
+                f"AI batches reloaded ({len(self.ai_batch_store.batches)}). "
+                f"Seeded: {', '.join(seeded)}.",
+                "ok",
+            )
         else:
             self._status(f"AI batches reloaded ({len(self.ai_batch_store.batches)}).", "ok")
 
@@ -1854,25 +2509,208 @@ class App(ctk.CTk):
 
     def _reload_automations(self) -> None:
         errors = self.auto_store.load_all()
+        self._reload_taxonomy()
         if self.auto_panel is not None:
-            self.auto_panel.refresh_list()
             for message in errors:
                 self.auto_panel.append_console(f"load error: {message}", "error")
             if not errors:
-                self.auto_panel.append_console("Automations reloaded.", "ok")
+                self.auto_panel.append_console("Automations + taxonomy reloaded.", "ok")
         self.auto_runtime.reload_schedule()
         if errors:
             self._status("Skipped automation files: " + "; ".join(errors), "error")
         else:
             self._status("Automations reloaded.", "ok")
 
-    def _start_automations(self) -> None:
-        self.auto_runtime.start()
-        self._status("Automations started.", "run")
+    def _start_automations_selection(self, event, collection) -> None:
+        """Start selected atom (once) or molecule (once | interval pool)."""
+
+        from idle_lab.automations.schema import Collection as CollType
+        from idle_lab.automations.schema import Event as EventType
+
+        if collection is not None and isinstance(collection, CollType):
+            self._start_molecule(collection)
+            return
+        if event is None or not isinstance(event, EventType):
+            self._status("Select an Atom or Molecule in Loops, then Start selected.", "warn")
+            if self.auto_panel is not None:
+                self.auto_panel.append_console(
+                    "Nothing selected. Click an atom (or molecule) in Available, then Start selected. "
+                    "Or use Start all enabled for every JSON-enabled atom interval.",
+                    "warn",
+                )
+            return
+        if self.auto_runtime.collection_running:
+            self._status("Stop the running atom/molecule job first.", "error")
+            return
+        if self.auto_runtime.is_running:
+            self._status("Loops already running — Stop (or F8) first.", "warn")
+            return
+        if self.anchor_target.rect is None:
+            self._status("Anchor a window before starting Loops.", "error")
+            return
+        try:
+            self.auto_runtime.trace.configure(
+                level=self.settings.trace_level, run_number=self.auto_store.runtime.run_number
+            )
+            self.auto_runtime.run_event_once(event.id)
+            self._status(f"Atom once: {event.title}", "run")
+            if self.auto_panel is not None:
+                self.auto_panel.append_console(
+                    f"Atom once started: {event.id} (no interval wait; F8 = Stop all)",
+                    "ok",
+                )
+        except Exception as exc:
+            self._status(f"Start failed: {exc}", "error")
+
+    def _start_molecule(self, collection) -> None:
+        """Molecule Start: run=once → serial pack; run=interval → child atoms on scheduler."""
+
+        from idle_lab.automations.schema import collection_interval_event_ids
+
+        if self.anchor_target.rect is None:
+            self._status("Anchor a window before starting Loops.", "error")
+            return
+        mode = (collection.run or "interval").strip().lower()
+        if mode == "once":
+            self._run_collection_pack(collection)
+            return
+        # interval pool
+        if self.auto_runtime.collection_running:
+            self._status("Stop the running atom/molecule job first.", "error")
+            return
+        if self.auto_runtime.is_running:
+            self._status("Loops already running — Stop (or F8) first.", "warn")
+            return
+        event_ids = collection_interval_event_ids(
+            collection, self.auto_store.events, self.auto_store.collections
+        )
+        if not event_ids:
+            self._status(f"Molecule {collection.id} has no atom children to schedule.", "warn")
+            return
+        try:
+            self.auto_runtime.trace.configure(
+                level=self.settings.trace_level, run_number=self.auto_store.runtime.run_number
+            )
+            self.auto_runtime.start(event_ids=event_ids)
+            self._status(f"Molecule interval: {collection.title} ({len(event_ids)} atom(s))", "run")
+            if self.auto_panel is not None:
+                self.auto_panel.append_console(
+                    f"Molecule interval pool: {collection.id} → {', '.join(event_ids)} (F8 = Stop all)",
+                    "ok",
+                )
+        except Exception as exc:
+            self._status(f"Molecule start failed: {exc}", "error")
+            if self.auto_panel is not None:
+                self.auto_panel.append_console(str(exc), "error")
+
+    def _start_automations_all_enabled(self) -> None:
+        if self.auto_runtime.collection_running:
+            self._status("Stop the collection pack before starting interval Loops.", "error")
+            return
+        if self.auto_runtime.is_running:
+            self._status("Loops already running — Stop (or F8) first.", "warn")
+            return
+        if self.anchor_target.rect is None:
+            self._status("Anchor a window before starting Loops.", "error")
+            return
+        enabled = [event for event in self.auto_store.events.values() if event.enabled]
+        if not enabled:
+            self._status("No events have enabled:true in JSON.", "warn")
+            return
+        try:
+            self.auto_runtime.trace.configure(
+                level=self.settings.trace_level, run_number=self.auto_store.runtime.run_number
+            )
+            self.auto_runtime.start()
+            names = ", ".join(event.id for event in enabled)
+            self._status(f"Loops started (all enabled): {len(enabled)} event(s).", "run")
+            if self.auto_panel is not None:
+                self.auto_panel.append_console(f"Started all enabled: {names} (F8 = Stop all)", "ok")
+        except Exception as exc:
+            self._status(f"Start all failed: {exc}", "error")
 
     def _stop_automations(self) -> None:
         self.auto_runtime.stop()
-        self._status("Automations stopped.", "warn")
+        self._status("Automations stopped. (F8 also Stop all)", "warn")
+
+    def _run_collection_pack(self, collection: Collection) -> None:
+        """Serial once-molecule (run_collection). Interval molecules use _start_molecule."""
+
+        if self.auto_runtime.is_running:
+            self._status("Stop interval Loops first (single mouse runway).", "error")
+            return
+        if self.anchor_target.rect is None:
+            self._status("Anchor a window before running a molecule.", "error")
+            return
+        try:
+            self.auto_runtime.trace.configure(
+                level=self.settings.trace_level, run_number=self.auto_store.runtime.run_number
+            )
+            self.auto_runtime.start_collection(collection.id)
+            self._status(f"Molecule once: {collection.title}", "run")
+            if self.auto_panel is not None:
+                self.auto_panel.append_console(
+                    f"Molecule once started: {collection.id} (Stop / Stop all to abort)",
+                    "ok",
+                )
+        except Exception as exc:
+            self._status(f"Molecule start failed: {exc}", "error")
+            if self.auto_panel is not None:
+                self.auto_panel.append_console(str(exc), "error")
+
+    def _validate_automations(self) -> None:
+        preset_names = {preset.name for preset in self.store.presets}
+        report = validate_store(self.auto_store, preset_names=preset_names)
+        text = format_report(report)
+        if self.auto_panel is not None:
+            for line in text.splitlines():
+                self.auto_panel.append_console(line, "ok" if report.ok else "error")
+        self._status("Validate ok." if report.ok else f"Validate found {len(report.issues)} issue(s).", "ok" if report.ok else "warn")
+
+    def _dry_run_selection(self, event: object | None, collection: Collection | None) -> None:
+        lines: list[str] = []
+        if collection is not None:
+            lines = dry_run_collection(collection, self.auto_store, variables=dict(self.auto_runtime.state.variables))
+        elif event is not None:
+            lines = dry_run_event(event, self.auto_store, variables=dict(self.auto_runtime.state.variables))  # type: ignore[arg-type]
+        else:
+            self._status("Select an event or collection for Dry-run.", "warn")
+            return
+        if self.auto_panel is not None:
+            self.auto_panel.append_console("── dry-run ──", "info")
+            for line in lines:
+                self.auto_panel.append_console(line, "info")
+        self._status(f"Dry-run printed ({len(lines)} lines).", "ok")
+
+    def _export_prompt_packet(self) -> None:
+        root = project_root()
+        packets = root / "prompt-packets"
+        packets.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        dest = packets / f"packet-{stamp}"
+        goal = (
+            "Describe the automation you want in plain language. "
+            "Replace this GOAL.md after export if needed."
+        )
+        vision_dir = None
+        batches = list_screen_map_batches(self.screen_maps_root)
+        if batches:
+            # newest first typically
+            vision_dir = self.screen_maps_root / batches[0].slug
+        try:
+            export_prompt_packet(
+                dest,
+                goal=goal,
+                vision_batch_dir=vision_dir,
+                project_root=root,
+            )
+            self._status(f"Prompt packet exported: {dest}", "ok")
+            try:
+                os.startfile(str(dest))  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        except Exception as exc:
+            self._status(f"Packet export failed: {exc}", "error")
 
     def _drain_automations(self) -> None:
         try:
@@ -1891,6 +2729,306 @@ class App(ctk.CTk):
         if self._alive:
             self.after(80, self._drain_automations)
 
+    # --- Lab lifecycle: Refresh / Restart / Stop all / Activity / Comments ---
+
+    def _refresh_lab(self) -> None:
+        """Reload all file-backed stores without killing the process."""
+
+        if self.recorder.active:
+            self._status("Finish recording before Refresh.", "error")
+            return
+        messages: list[str] = []
+        preset_path = self.current.path if self.current is not None else None
+        preset_errors = self.store.load_all()
+        self._select_path(preset_path)
+        if preset_errors:
+            messages.append("presets: " + "; ".join(preset_errors))
+
+        auto_errors = self.auto_store.load_all()
+        self.auto_runtime.reload_schedule()
+        if auto_errors:
+            messages.append("automations: " + "; ".join(auto_errors))
+
+        ai_errors = self.ai_batch_store.load_all()
+        if self.ai_batch_panel is not None:
+            self.ai_batch_panel.refresh_list()
+        if ai_errors:
+            messages.append("missions: " + "; ".join(ai_errors))
+
+        comment_errors = self.comment_store.load()
+        if comment_errors:
+            messages.append("comments: " + "; ".join(comment_errors))
+
+        self._refresh_screen_map_catalog()
+        self._rebuild_preset_list()
+        self._reload_taxonomy()
+        if self.auto_panel is not None:
+            for message in auto_errors:
+                self.auto_panel.append_console(f"load error: {message}", "error")
+            if not auto_errors:
+                self.auto_panel.append_console("Lab refreshed (automations + taxonomy).", "ok")
+        self._sync_flight_deck_expand_vk()
+        self._last_refresh_at = time.time()
+        self._disk_fingerprint = dir_fingerprint(self._watch_paths)
+        self._update_files_badge()
+        stamp = time.strftime("%H:%M:%S")
+        if messages:
+            self._status(f"Lab refreshed at {stamp} with skips — " + " | ".join(messages), "warn")
+        else:
+            self._status(
+                f"Lab refreshed at {stamp} "
+                f"({len(self.store.presets)} presets, "
+                f"{len(self.ai_batch_store.batches)} missions, "
+                f"{len(self.auto_store.events)} events).",
+                "ok",
+            )
+
+    def _stop_all(self) -> None:
+        """Halt every owner of the mouse / capture without quitting."""
+
+        stopped: list[str] = []
+        if self.player.is_active:
+            self.player.stop()
+            stopped.append("Bench playback")
+        if self.ai_batch_runner.is_running:
+            self.ai_batch_runner.stop()
+            stopped.append("Mission")
+            if self.ai_batch_panel is not None:
+                self.ai_batch_panel.set_run_message("Runner: stop requested…", level="warn")
+        if self.auto_runtime.is_running or self.auto_runtime.collection_running:
+            self.auto_runtime.stop()
+            stopped.append("Loops")
+        if self.screen_map.active:
+            try:
+                self._end_screen_map_batch()
+                stopped.append("Observe capture")
+            except Exception:
+                pass
+        if self.walkthrough is not None and self.walkthrough.active:
+            self._stop_collection_walkthrough()
+            stopped.append("Walkthrough")
+        self._update_activity()
+        if stopped:
+            self._status("Stopped: " + ", ".join(stopped) + ".", "warn")
+        else:
+            self._status("Nothing running — already Idle.", "info")
+
+    def _restart_lab(self) -> None:
+        """Stop runners, save settings, relaunch process, exit (code changes)."""
+
+        self._stop_all()
+        try:
+            self._save_settings()
+        except Exception:
+            pass
+        root = project_root()
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+                subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+            )
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "idle_lab"],
+                cwd=str(root),
+                close_fds=True,
+                creationflags=creationflags,
+            )
+        except OSError as exc:
+            self._status(f"Restart failed: {exc}", "error")
+            return
+        self._on_close()
+
+    def _activity_text(self) -> str:
+        if self.anchor_target.rect is None and (
+            self.ai_batch_runner.is_running
+            or self.auto_runtime.is_running
+            or self.auto_runtime.collection_running
+            or self.player.is_active
+        ):
+            return "Activity: Unanchored · actuation requested"
+        if self.ai_batch_runner.is_running:
+            slug_name = self.ai_batch_runner.active_slug or "?"
+            return f"Activity: Mission · {slug_name}"
+        if self.auto_runtime.collection_running:
+            snap = self.auto_runtime.operator_snapshot()
+            detail = snap.get("detail") or "collection"
+            return f"Activity: Loops · {detail}"
+        if self.auto_runtime.is_running:
+            snap = self.auto_runtime.operator_snapshot()
+            deferred = snap.get("deferred_summary") or ""
+            blocking = snap.get("blocking_id")
+            if deferred and blocking:
+                return f"Activity: Loops · {blocking} · deferred: {deferred}"
+            if blocking:
+                return f"Activity: Loops · {blocking}"
+            return "Activity: Loops"
+        if self.screen_map.active:
+            return "Activity: Observe · capturing"
+        if self.player.is_active:
+            return "Activity: Bench · playback"
+        if self.recorder.active:
+            return "Activity: Bench · recording"
+        if self.walkthrough is not None and self.walkthrough.active:
+            return "Activity: Walkthrough"
+        return "Activity: Idle"
+
+    def _update_activity(self) -> None:
+        if getattr(self, "mode_chip", None) is not None:
+            mode = normalize_lab_mode(self.settings.lab_mode)
+            self.mode_chip.configure(text=f"Mode: {'Supervised' if mode == 'supervised' else 'Auto'}")
+        # Let Esc halt Loops/Missions the same way F8 does when something is running.
+        try:
+            self.hooks.state.stoppable = bool(
+                self.auto_runtime.is_running
+                or self.auto_runtime.collection_running
+                or self.ai_batch_runner.is_running
+                or self.player.is_active
+                or self.recorder.active
+                or self.screen_map.active
+                or (self.walkthrough is not None and self.walkthrough.active)
+            )
+        except Exception:
+            pass
+        if getattr(self, "activity_label", None) is None:
+            return
+        self.activity_label.configure(text=self._activity_text())
+        if getattr(self, "flight_deck", None) is not None:
+            try:
+                self._sync_flight_deck_run_state()
+            except Exception:
+                pass
+
+    def _update_files_badge(self) -> None:
+        if getattr(self, "files_badge", None) is None:
+            return
+        current = dir_fingerprint(self._watch_paths)
+        if self._disk_fingerprint and current > self._disk_fingerprint + 0.01:
+            self.files_badge.configure(text="Files changed — Refresh")
+            if getattr(self, "refresh_button", None) is not None:
+                self.refresh_button.configure(fg_color="#C9A227", hover_color="#E0B93A", text_color="#161616")
+        else:
+            age = ""
+            if self._last_refresh_at is not None:
+                secs = int(time.time() - self._last_refresh_at)
+                age = f" · refreshed {secs}s ago" if secs < 120 else " · refreshed"
+            self.files_badge.configure(text=age.lstrip(" ·") if age else "")
+            if getattr(self, "refresh_button", None) is not None:
+                self.refresh_button.configure(
+                    fg_color=["#3B8ED0", "#1F6AA5"],
+                    hover_color=["#36719F", "#144870"],
+                    text_color="#DCE4EE",
+                )
+
+    def _poll_disk_watch(self) -> None:
+        try:
+            self._update_files_badge()
+        except Exception:
+            pass
+        if self._alive:
+            self.after(2000, self._poll_disk_watch)
+
+    def _poll_activity(self) -> None:
+        try:
+            self._update_activity()
+        except Exception:
+            pass
+        if self._alive:
+            self.after(400, self._poll_activity)
+
+    def _open_object_comment(self, title: str, object_path: str) -> None:
+        initial = self.comment_store.get(object_path)
+
+        def save(text: str) -> None:
+            self.comment_store.set(object_path, text)
+            self._disk_fingerprint = dir_fingerprint(self._watch_paths)
+            self._rebuild_preset_list()
+            if self.screen_map_panel is not None:
+                self.screen_map_panel.refresh_comments()
+            if self.ai_batch_panel is not None:
+                self.ai_batch_panel.refresh_list()
+            if self.auto_panel is not None:
+                self.auto_panel.refresh_list()
+            self._status(f"Saved comment on {object_path}", "ok")
+
+        open_comment_dialog(
+            self,
+            title=title,
+            object_path=object_path,
+            initial=initial,
+            on_save=save,
+        )
+
+    def _comment_mission(self, batch: AiBatch) -> None:
+        self._open_object_comment(
+            f"Comment · mission · {batch.name}",
+            mission_comment_path(batch.slug),
+        )
+
+    def _comment_mission_request(self, batch: AiBatch, req: BatchRequest) -> None:
+        self._open_object_comment(
+            f"Comment · request · {req.label}",
+            mission_request_comment_path(batch.slug, req.id),
+        )
+
+    def _comment_event(self, event_id: str, label: str) -> None:
+        self._open_object_comment(f"Comment · event · {label}", event_comment_path(event_id))
+
+    def _comment_collection(self, collection_id: str, label: str) -> None:
+        self._open_object_comment(
+            f"Comment · collection · {label}",
+            collection_comment_path(collection_id),
+        )
+
+    def _comment_screen_map_batch(self, batch: BatchSummary) -> None:
+        path = screen_map_batch_comment_path(batch.slug)
+
+        def save(text: str) -> None:
+            self.comment_store.set(path, text)
+            try:
+                manifest = load_manifest(batch.folder)
+                manifest.notes = text.strip() or None
+                save_manifest(batch.folder, manifest)
+            except Exception as exc:
+                self._status(f"Comment saved; manifest sync failed: {exc}", "warn")
+                return
+            self._refresh_screen_map_catalog()
+            self._status(f"Saved batch comment: {batch.slug}", "ok")
+
+        open_comment_dialog(
+            self,
+            title=f"Comment · batch · {batch.title}",
+            object_path=path,
+            initial=self.comment_store.get(path) or (batch.manifest.notes or ""),
+            on_save=save,
+        )
+
+    def _comment_screen_map_shot(self, batch: BatchSummary, shot_index: int) -> None:
+        if shot_index < 0 or shot_index >= len(batch.manifest.shots):
+            return
+        shot = batch.manifest.shots[shot_index]
+        path = screen_map_shot_comment_path(batch.slug, shot.filename)
+
+        def save(text: str) -> None:
+            self.comment_store.set(path, text)
+            try:
+                manifest = load_manifest(batch.folder)
+                if shot_index < len(manifest.shots):
+                    manifest.shots[shot_index].notes = text.strip() or None
+                    save_manifest(batch.folder, manifest)
+            except Exception as exc:
+                self._status(f"Comment saved; shot notes sync failed: {exc}", "warn")
+                return
+            self._refresh_screen_map_catalog()
+            self._status(f"Saved shot comment: {shot.filename}", "ok")
+
+        open_comment_dialog(
+            self,
+            title=f"Comment · shot · {shot.title}",
+            object_path=path,
+            initial=self.comment_store.get(path) or (shot.notes or ""),
+            on_save=save,
+        )
 
 
 def main() -> None:

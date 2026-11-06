@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "notes": "Committed ROI crops for perception regression. Full window shots stay in gitignored runs/screenshots/.",
+  "cases": [
+    {"file": "wave_38.png", "parse_as": "wave", "expect": "38"},
+    {"file": "wave_87.png", "parse_as": "wave", "expect": "87"},
+    {"file": "coins_11.28K.png", "parse_as": "currency_balance", "expect": "11.28K"},
+    {"file": "coins_9.77K.png", "parse_as": "currency_balance", "expect": "9.77K"},
+    {"file": "coins_7.91K.png", "parse_as": "currency_balance", "expect": "7.91K"},
+    {"file": "coins_208.6K.png", "parse_as": "currency_balance", "expect": "208.6K", "accept": ["208.60K", "208.6K"]},
+    {"file": "cash_8.61K.png", "parse_as": "currency_balance", "expect": "8.61K"},
+    {"file": "cash_6.67K.png", "parse_as": "currency_balance", "expect": "6.67K"},
+    {"file": "diamonds_488.png", "parse_as": "currency_int", "expect": "488"},
+    {"file": "diamonds_546.png", "parse_as": "currency_int", "expect": "546"},
+    {"file": "diamonds_816.png", "parse_as": "currency_int", "expect": "816"},
+    {"file": "cpm_1.68K.png", "parse_as": "currency_rate", "expect": "1.68K"},
+    {"file": "cpm_1.48K.png", "parse_as": "currency_rate", "expect": "1.48K"},
+    {"file": "cpm_192.png", "parse_as": "currency_rate", "expect": "192"},
+    {"file": "cpm_2.39K.png", "parse_as": "currency_rate", "expect": "2.39K", "accept": ["2.39K", "2.3K"]},
+    {"file": "cashmin_4.3K.png", "parse_as": "currency_rate", "expect": "4.3K"},
+    {"file": "cashmin_3.61K.png", "parse_as": "currency_rate", "expect": "3.61K"},
+    {"file": "cashmin_1.35K.png", "parse_as": "currency_rate", "expect": "1.35K"},
+    {"file": "cashmin_16.1K.png", "parse_as": "currency_rate", "expect": "16.1K"}
+  ]
+}

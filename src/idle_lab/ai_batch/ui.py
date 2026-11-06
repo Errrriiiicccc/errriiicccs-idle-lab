@@ -1,4 +1,4 @@
-"""AI Information Batch Gathering tab."""
+"""Missions workspace — AI Information Batch Gathering."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ import customtkinter as ctk
 
 from idle_lab.ai_batch.schema import AiBatch, BatchRequest
 from idle_lab.ai_batch.store import AiBatchStore
+from idle_lab.comment_ui import make_comment_button
+from idle_lab.comments import CommentStore, mission_comment_path, mission_request_comment_path
 from idle_lab.scroll_memory import ScrollMemory
 
 
@@ -43,6 +45,10 @@ class AiBatchPanel(ctk.CTkFrame):
         on_snapshot_event: Callable[[AiBatch, BatchRequest], None] | None = None,
         on_start_run: Callable[[AiBatch], None] | None = None,
         on_stop_run: Callable[[], None] | None = None,
+        on_export_packet: Callable[[], None] | None = None,
+        on_comment_batch: Callable[[AiBatch], None] | None = None,
+        on_comment_request: Callable[[AiBatch, BatchRequest], None] | None = None,
+        comments: CommentStore | None = None,
     ) -> None:
         super().__init__(master, fg_color="transparent")
         self.store = store
@@ -59,6 +65,10 @@ class AiBatchPanel(ctk.CTkFrame):
         self.on_snapshot_event = on_snapshot_event
         self.on_start_run = on_start_run
         self.on_stop_run = on_stop_run
+        self.on_export_packet = on_export_packet
+        self.on_comment_batch = on_comment_batch
+        self.on_comment_request = on_comment_request
+        self.comments = comments
         self._filter = ctk.StringVar(value="all")
         self._sort = ctk.StringVar(value="updated")
         self._selected: AiBatch | None = None
@@ -70,13 +80,22 @@ class AiBatchPanel(ctk.CTkFrame):
         toolbar.pack(fill="x", padx=8, pady=(8, 4))
         ctk.CTkLabel(
             toolbar,
-            text="AI Information Batch Gathering",
+            text="Missions",
             font=ctk.CTkFont(size=18, weight="bold"),
         ).pack(side="left")
         self.reload_button = ctk.CTkButton(toolbar, text="Reload", width=90, command=self.on_reload)
         self.reload_button.pack(side="right", padx=(6, 0))
-        self.new_button = ctk.CTkButton(toolbar, text="New batch…", width=110, command=self.on_new_batch)
+        self.new_button = ctk.CTkButton(toolbar, text="New mission…", width=120, command=self.on_new_batch)
         self.new_button.pack(side="right", padx=(6, 0))
+        self.packet_button = ctk.CTkButton(
+            toolbar,
+            text="Export packet",
+            width=110,
+            fg_color="#2A3140",
+            hover_color="#3A4558",
+            command=self._export_packet,
+        )
+        self.packet_button.pack(side="right", padx=(6, 0))
         self.stop_button = ctk.CTkButton(
             toolbar,
             text="Stop",
@@ -95,10 +114,9 @@ class AiBatchPanel(ctk.CTkFrame):
         ctk.CTkLabel(
             help_frame,
             text=(
-                "Select a batch → Start. Idle Lab runs its steps (click / scroll / scroll_map / ensure_upgrade_tab / wait / screenshot), "
-                "writes a Screen Map batch, links it here, and marks each request done/missed. "
-                "Come back when it finishes — tell the AI chat it ran and point at the batch folder / run_report.json. "
-                "Anchor must be set first. Requests need steps[] in batch.json to auto-run."
+                "Select a mission → Start. Offline missions (OCR fixture bench) need no Anchor; live ones do. "
+                "Failed steps screenshot into the linked Observe batch. After chat edits files, hit global Refresh (F5) — "
+                "not Restart. Use comment bubbles for mid-run notes."
             ),
             anchor="w",
             justify="left",
@@ -116,7 +134,7 @@ class AiBatchPanel(ctk.CTkFrame):
 
         left = ctk.CTkFrame(columns)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
-        ctk.CTkLabel(left, text="Batches", font=ctk.CTkFont(size=14, weight="bold")).pack(
+        ctk.CTkLabel(left, text="Missions", font=ctk.CTkFont(size=14, weight="bold")).pack(
             anchor="w", padx=8, pady=(8, 2)
         )
         filters = ctk.CTkFrame(left, fg_color="transparent")
@@ -148,7 +166,15 @@ class AiBatchPanel(ctk.CTkFrame):
         right.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         header = ctk.CTkFrame(right, fg_color="transparent")
         header.pack(fill="x", padx=8, pady=(8, 2))
-        ctk.CTkLabel(header, text="Batch detail", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        ctk.CTkLabel(header, text="Mission detail", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        self.open_observe_btn = ctk.CTkButton(
+            header,
+            text="Open linked Observe",
+            width=150,
+            command=self._open_linked_observe,
+            state="disabled",
+        )
+        self.open_observe_btn.pack(side="right", padx=(6, 0))
         self.view_shots_btn = ctk.CTkButton(
             header, text="View screenshots", width=130, command=self._view_shots, state="disabled"
         )
@@ -158,11 +184,11 @@ class AiBatchPanel(ctk.CTkFrame):
         )
         self.open_folder_btn.pack(side="right", padx=(6, 0))
         self.link_map_btn = ctk.CTkButton(
-            header, text="Link Screen Map…", width=130, command=self._link_map, state="disabled"
+            header, text="Link Observe…", width=120, command=self._link_map, state="disabled"
         )
         self.link_map_btn.pack(side="right")
 
-        self.summary = ctk.CTkLabel(right, text="Select a batch.", anchor="w", justify="left", wraplength=560)
+        self.summary = ctk.CTkLabel(right, text="Select a mission.", anchor="w", justify="left", wraplength=560)
         self.summary.pack(fill="x", padx=10, pady=(2, 4))
 
         self.detail_box = ctk.CTkScrollableFrame(right, height=280)
@@ -194,19 +220,30 @@ class AiBatchPanel(ctk.CTkFrame):
             selected_slug = self._selected.slug if self._selected else None
             for batch in items:
                 already = " · already ran" if batch.status == "completed" else ""
+                genre_tag = f"[{batch.genre}] " if batch.genre else ""
                 runnable = sum(1 for req in batch.requests if req.runnable)
                 color = STATUS_COLOR.get(batch.status, "#C5D0DC")
                 row = ctk.CTkFrame(self.list_box, fg_color="transparent")
                 row.pack(fill="x", pady=3)
+                top = ctk.CTkFrame(row, fg_color="transparent")
+                top.pack(fill="x")
                 btn = ctk.CTkButton(
-                    row,
-                    text=f"{batch.name}  · {batch.status}{already}",
+                    top,
+                    text=f"{genre_tag}{batch.name}  · {batch.status}{already}",
                     anchor="w",
                     fg_color="#1F2A3A" if batch.slug == selected_slug else "transparent",
                     text_color=color,
                     command=lambda b=batch: self._select(b),
                 )
-                btn.pack(fill="x")
+                btn.pack(side="left", fill="x", expand=True)
+                if self.on_comment_batch is not None:
+                    path = mission_comment_path(batch.slug)
+                    has = bool(self.comments and self.comments.has(path))
+                    make_comment_button(
+                        top,
+                        has_notes=has,
+                        command=lambda b=batch: self.on_comment_batch(b),
+                    ).pack(side="right", padx=(4, 0))
                 ctk.CTkLabel(
                     row,
                     text=(
@@ -241,18 +278,21 @@ class AiBatchPanel(ctk.CTkFrame):
             self.open_folder_btn.configure(state=state)
             self.link_map_btn.configure(state=state)
             self.feedback_btn.configure(state=state)
+            has_link = bool(batch and batch.linked_screen_map_batches)
+            self.open_observe_btn.configure(state="normal" if has_link else "disabled")
             if batch is None:
-                self.summary.configure(text="Select a batch.")
+                self.summary.configure(text="Select a mission.")
                 ctk.CTkLabel(self.detail_box, text="Nothing selected.", text_color="#9AA4B2").pack(anchor="w")
                 return
 
             already = "Yes — treat as already ran." if batch.status == "completed" else "No"
             runnable = sum(1 for req in batch.requests if req.runnable)
+            genre_line = f"Genre: {batch.genre}  ·  " if batch.genre else ""
             self.summary.configure(
                 text=(
                     f"{batch.name}\n"
                     f"Status: {batch.status}  ·  Already ran: {already}  ·  Runnable requests: {runnable}\n"
-                    f"By: {batch.created_by}  ·  Updated: {batch.updated_at or '—'}\n"
+                    f"{genre_line}By: {batch.created_by}  ·  Updated: {batch.updated_at or '—'}\n"
                     f"Goal: {batch.goal or '(none)'}"
                 )
             )
@@ -276,16 +316,14 @@ class AiBatchPanel(ctk.CTkFrame):
             if batch.linked_screen_map_batches:
                 ctk.CTkLabel(
                     self.detail_box,
-                    text="Linked Screen Map batches",
+                    text="Linked Observe batches",
                     font=ctk.CTkFont(size=13, weight="bold"),
                 ).pack(anchor="w", padx=4, pady=(12, 4))
                 for slug in batch.linked_screen_map_batches:
                     ctk.CTkButton(
                         self.detail_box,
-                        text=f"Screen Map: {slug}",
+                        text=f"Open Observe: {slug}",
                         anchor="w",
-                        fg_color="#2A3140",
-                        hover_color="#3A4558",
                         command=lambda s=slug: self.on_open_screen_map_batch(s),
                     ).pack(fill="x", padx=4, pady=2)
 
@@ -388,7 +426,20 @@ class AiBatchPanel(ctk.CTkFrame):
                 fg_color="#2A3140",
                 hover_color="#3A4558",
                 command=lambda r=req, b=batch: self.on_snapshot_event(b, r),
-            ).pack(side="left")
+            ).pack(side="left", padx=(0, 4))
+        if self.on_comment_request is not None:
+            path = mission_request_comment_path(batch.slug, req.id)
+            has = bool(self.comments and self.comments.has(path))
+            make_comment_button(
+                actions,
+                has_notes=has,
+                command=lambda r=req, b=batch: self.on_comment_request(b, r),
+            ).pack(side="right")
+
+    def _open_linked_observe(self) -> None:
+        if self._selected is None or not self._selected.linked_screen_map_batches:
+            return
+        self.on_open_screen_map_batch(self._selected.linked_screen_map_batches[-1])
 
     def _view_shots(self) -> None:
         if self._selected is not None:
@@ -405,6 +456,10 @@ class AiBatchPanel(ctk.CTkFrame):
     def _add_feedback(self) -> None:
         if self._selected is not None:
             self.on_add_feedback(self._selected)
+
+    def _export_packet(self) -> None:
+        if self.on_export_packet is not None:
+            self.on_export_packet()
 
     def _start_run(self) -> None:
         if self.on_start_run is None:

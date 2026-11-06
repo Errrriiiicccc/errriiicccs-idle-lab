@@ -1,0 +1,78 @@
+{
+  "name": "Probe: scroll one row",
+  "slug": "probe-scroll-one-row",
+  "status": "pending",
+  "genre": "probe",
+  "goal": "Measure whether one drag_fraction≈0.10 on the Attack upgrade list advances ~one tile row (before/after status shots).",
+  "created_by": "ai",
+  "auto_rerun": true,
+  "requests": [
+    {
+      "id": "req-prepare",
+      "kind": "screen_map_shot",
+      "label": "Open Attack + seek top only",
+      "detail": "max_steps must be 0 (seek-only). Runner bug fixed: 0 no longer becomes 12.",
+      "status": "pending",
+      "steps": [
+        {"action": "ensure_upgrade_tab", "tab": "attack", "nx": 0.20, "ny": 0.955, "title_prefix": "attack-ensure"},
+        {"action": "wait", "ms": 500},
+        {
+          "action": "scroll_map",
+          "nx": 0.45,
+          "ny": 0.72,
+          "direction": "down",
+          "method": "drag",
+          "amount": 1,
+          "drag_fraction": 0.10,
+          "hold_end_ms": 450,
+          "settle_ms": 800,
+          "settle_confirm_ms": 400,
+          "max_steps": 0,
+          "max_seek_steps": 10,
+          "seek_top_first": true,
+          "unchanged_threshold": 0.015,
+          "title_prefix": "attack-seek-top",
+          "include_before": true,
+          "roi": {"nx": 0.04, "ny": 0.55, "nw": 0.92, "nh": 0.36}
+        },
+        {"action": "screenshot", "title": "attack-before-one-row"}
+      ]
+    },
+    {
+      "id": "req-one-drag",
+      "kind": "screen_map_shot",
+      "label": "One controlled drag down from top",
+      "detail": "Single drag_fraction 0.10 with hold_end — playbook one-row claim.",
+      "status": "pending",
+      "steps": [
+        {
+          "action": "scroll_map",
+          "nx": 0.45,
+          "ny": 0.72,
+          "direction": "down",
+          "method": "drag",
+          "amount": 1,
+          "drag_fraction": 0.10,
+          "hold_end_ms": 450,
+          "settle_ms": 800,
+          "settle_confirm_ms": 400,
+          "max_steps": 1,
+          "max_seek_steps": 0,
+          "seek_top_first": false,
+          "unchanged_threshold": 0.015,
+          "title_prefix": "attack-one-row",
+          "include_before": true,
+          "roi": {"nx": 0.04, "ny": 0.55, "nw": 0.92, "nh": 0.36}
+        },
+        {"action": "screenshot", "title": "attack-after-one-row"}
+      ]
+    },
+    {
+      "id": "req-note",
+      "kind": "note",
+      "label": "After run",
+      "detail": "Tell the chat this probe ran. before should show Damage…; after should show ~one row shift. Chat fills reflection.md.",
+      "status": "pending"
+    }
+  ]
+}

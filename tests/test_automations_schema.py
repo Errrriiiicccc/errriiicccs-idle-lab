@@ -6,6 +6,7 @@ from pathlib import Path
 from idle_lab.automations.schema import (
     AutomationSchemaError,
     collection_from_dict,
+    collection_interval_event_ids,
     event_from_dict,
     resolve_branch,
     roi_from_dict,
@@ -63,6 +64,32 @@ class CollectionBranchTests(unittest.TestCase):
         )
         self.assertEqual(resolve_branch(collection, {"phase": "MID"}), "phase_mid_stub")
         self.assertIsNone(resolve_branch(collection, {"phase": "unknown"}))
+        self.assertEqual(collection.run, "interval")
+
+    def test_run_mode_once(self) -> None:
+        collection = collection_from_dict(
+            {
+                "id": "once_pack",
+                "title": "Once",
+                "children": ["a"],
+                "run": "once",
+            }
+        )
+        self.assertEqual(collection.run, "once")
+
+    def test_rejects_bad_run_mode(self) -> None:
+        with self.assertRaises(AutomationSchemaError):
+            collection_from_dict({"id": "x", "title": "X", "children": ["a"], "run": "forever"})
+
+    def test_interval_event_ids_flatten(self) -> None:
+        store = AutomationStore(project_root() / "automations")
+        store.load_all()
+        ids = collection_interval_event_ids(
+            store.collections["stat_collecting"],
+            store.events,
+            store.collections,
+        )
+        self.assertEqual(ids, ["stat_collect", "stat_broll_5m"])
 
 
 class StoreTests(unittest.TestCase):
@@ -73,7 +100,8 @@ class StoreTests(unittest.TestCase):
         self.assertIn("ocr_ab_tick", store.events)
         self.assertIn("minute_clip", store.events)
         self.assertIn("humanize_upgrade_loop", store.events)
-        self.assertIn("demo_poc", store.collections)
+        self.assertNotIn("demo_poc", store.collections)
+        self.assertNotIn("phase_begin_stub", store.collections)
         self.assertIn("endgame_tier1", store.collections)
         self.assertIn("stat_collecting", store.collections)
         self.assertIn("endgame_phase_loop", store.collections)
@@ -81,21 +109,29 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(store.collections["endgame_phase_loop"].title, "Endgame Phase Loop")
         self.assertEqual(
             store.collections["endgame_phase_loop"].children,
-            ["endgame_status_buy", "stat_collect_30s", "stat_broll_5m"],
+            ["endgame_status_buy", "stat_collect", "stat_broll_5m"],
         )
+        self.assertEqual(store.collections["endgame_phase_loop"].run, "interval")
+        self.assertEqual(store.collections["stat_collecting"].run, "interval")
+        self.assertEqual(store.collections["scroll_probe_once"].run, "once")
         self.assertIn("endgame_status_buy", store.events)
         self.assertIn("endgame_minute_stats", store.events)
-        self.assertIn("stat_collect_30s", store.events)
+        self.assertIn("stat_collect", store.events)
+        self.assertNotIn("stat_collect_30s", store.events)
         self.assertIn("stat_broll_5m", store.events)
+        self.assertIn("list_scroll_down_1", store.events)
+        self.assertIn("list_scroll_up_1", store.events)
         self.assertTrue(store.events["endgame_status_buy"].enabled)
         self.assertFalse(store.events["humanize_upgrade_loop"].enabled)
-        self.assertTrue(store.events["stat_collect_30s"].enabled)
+        self.assertTrue(store.events["stat_collect"].enabled)
         self.assertTrue(store.events["stat_broll_5m"].enabled)
-        self.assertEqual(store.events["stat_collect_30s"].every_ms, 30000)
+        self.assertEqual(store.events["stat_collect"].every_ms, 30000)
         self.assertEqual(store.events["stat_broll_5m"].every_ms, 300000)
-        self.assertEqual(store.collections["stat_collecting"].children, ["stat_collect_30s", "stat_broll_5m"])
+        self.assertEqual(store.collections["stat_collecting"].children, ["stat_collect", "stat_broll_5m"])
         types = {action.type for action in store.events["endgame_status_buy"].actions}
         self.assertIn("detect_panel", types)
+        scroll_types = {action.type for action in store.events["list_scroll_down_1"].actions}
+        self.assertIn("scroll_list", scroll_types)
         self.assertEqual(store.runtime.run_number, 1)
 
     def test_bad_file_reported(self) -> None:

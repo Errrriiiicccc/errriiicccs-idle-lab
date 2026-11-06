@@ -1,46 +1,65 @@
 # Features
 
-## Clicker tab
+Product purpose and north star: [VISION.md](VISION.md). This file lists **what the POC ships today**; VISION describes the destination.
 
-- Shared top **ANCHOR** bar on every tab: Set / Clear, live window title + size. Left-click a window after Set; Esc cancels.
-- Click-through cyan frame follows that window (including negative monitor coords).
+## Global chrome
+
+- Compact **Anchor** button (set/rebind) + red **×** clear (disabled when unbound); tiny window subtitle.
+- **Flight deck** toggle + **Expand [key]** remap (default `` ` ``) beside Anchor — opens the in-flight HUD.
+- **Refresh** (F5): reload presets, automations, missions, Observe catalog, comments, flight-deck keymap — no process kill.
+- **Restart**: stop runners, save settings, relaunch `python -m idle_lab`.
+- **Stop all**: halt Bench playback, Missions, Loops, Observe capture, Walkthrough.
+- **Activity** pulse + **Files changed — Refresh** badge when watched dirs change on disk.
+- Contract: [REFRESH-RESTART.md](REFRESH-RESTART.md).
+
+## Flight deck (in-flight HUD)
+
+- Separate movable topmost window; auto-opens when anchored (unless you closed it); reopen from Lab or expand key.
+- Collapsed: compact **Close [Esc]** + **Expand [key]**. Expanded: **Collapse [key]** + accordion hotkey menu.
+- While a run is active: Pause / Stop + run name/status (menu still available).
+- Expand key (`` ` `` by default, remappable per anchor): toggles expand/collapse only.
+- Esc always **closes** the deck (never forwarded to the target while the deck is open).
+- Accordion catalog [`automations/flight_deck.json`](../automations/flight_deck.json) (separate from Lab Loops taxonomy): letters **O/C/N/A/M** open one section; digits run leaves; **X** collapses section/menu; **D** descriptions. Max two keys deep. No Space flagship.
+
+## Bench (presets)
+
 - Create presets (instantaneous / one second / realtime); Space/Esc recording.
 - Foreground and background clicks; focus; cursor restore; countdown.
-- **Humanize** (Off / Light / Medium / Heavy, default Medium): runtime aim jitter, delay/hold variance, and foreground cursor travel. Applied to Clicker playback, Automations presets, and AI Batch clicks/waits — not written into preset JSON.
-- Loop forever or N times; F6 / F7 / Esc run control.
-- Rename, duplicate, delete, import, export, reload JSON presets.
-- Click logger with upper/middle/lower targets plus WAVE/SIGNAL bands for OCR demos.
+- **Humanize** (Off / Light / Medium / Heavy): runtime jitter shared with Missions/Loops.
+- Loop forever or N times; F6 / F7 / Esc.
+- **Note** comments per preset (`lab-comments.json`).
+- Click logger with WAVE/SIGNAL OCR harness.
 
-## Automations tab
+## Observe (Screen Map)
 
-- Browse Events or Collections from JSON; selection details; Reload.
-- Live queue (running / waiting / deferred by priority).
-- Console: OCR raw + parsed, branches, preemption, errors.
-- Interval scheduler with priorities (recording blocks A/B tick).
-- Screenshot, OCR ROIs, A/B decide, play preset, record clip (ffmpeg), CSV append.
-- POC event `humanize_upgrade_loop` (every 10s): Attack → Damage → Defense → Health → Attack via preset `humanize atk def loop` (other demo events ship disabled so this showcase is clean).
+- Start named batch under `screen-maps/`; Space titles a PNG; Esc ends.
+- Browse batches + shots; View all; Open folder.
+- **Note** on batch or individual shot (also writes `manifest.json` notes).
 
-## Screen Map tab
+## Missions (AI Batches)
 
-- Start a named batch under `screen-maps/`; screenshot mode ON.
-- Space → capture immediately (loading overlay) → autofocused title dialog → save; Esc cancels dialog first, else ends batch.
-- Busy overlay while capturing/saving; Space ignored until Ready.
-- `manifest.json` with titles, filenames, timestamps, anchor hints, and null review fields.
-- Browse past batches; click a shot (or View all) to open the screenshot viewer.
-- Open batch folder in Explorer; Space/Esc only special while mode is active (pass-through during title dialog).
+- File-backed gather/verify runs with executable `steps[]`.
+- Optional `genre`: `probe` / `mission` / `bench` (list shows `[probe]` tags).
+- Probes: `QUESTION.md` + `ACCEPTANCE.md` + `iterations/NNN/reflection.md` — [PROBE-MISSIONS.md](PROBE-MISSIONS.md).
+- Start/Stop; auto-links Observe batch; `run_report.json`.
+- Seeds missing folders from `examples/ai-batches/` on Reload (never overwrites local edits).
+- **Open linked Observe** primary cross-link.
+- On step failure: captures a **FAIL** screenshot into the linked Screen Map before marking missed.
+- **Note** on mission or request; legacy Add feedback still available.
 
-## AI Batches tab
+## Loops (Automations)
 
-- File-backed **AI Information Batch Gathering**: named batches of requests with optional executable `steps[]`.
-- **Start / Stop**: runs click / scroll / wait / screenshot / play_preset against the anchored window; auto-creates and links a Screen Map batch; writes `run_report.json`.
-- Filter / sort by status; completed batches show as already ran; detail shows what was taken per request.
-- Manual link / event snapshot / feedback still available. Docs: [AI-BATCH-USAGE.md](AI-BATCH-USAGE.md).
+- **Atoms** (`events/`) and **Molecules** (`collections/`); taxonomy labels Atoms / Molecules (`loops.events` / `loops.collections`).
+- **Start selected** on an atom runs it **once** (no interval wait). Molecules: `run: "interval"` → child interval pool; `run: "once"` → serial pass.
+- Shared `scroll_list` action + scroll atoms (tab-agnostic).
+- Queue; console; Reload/Start/Stop; Walkthrough; Start all enabled.
+- Interval scheduler with priorities; OCR, A/B, clips, CSV.
+- **Note** on atoms and molecules.
 
 ## Scrolling
 
-- Mouse wheel + middle-drag (and left-drag on empty chrome) on scrollable menus.
-- Per-tab scroll position persists in memory until you revisit that tab or restart the app.
+- Wheel + middle-drag; per-tab scroll position until leave/restart.
 
 ## Not in this POC
 
-Full Tower buy-priority playbooks, perfect HUD OCR, process injection, stealth/anti-detect claims, cloud agents. Collection branching is representable in data/UI but not fully executed. Screen Map does not auto-classify shots or invent strategy loops. AI Batches do not call an LLM in-process — they are a file hook for review chats.
+Full Tower buy-priority playbooks, process injection, stealth claims, in-process LLM, deep nested molecule orchestration.

@@ -1,8 +1,10 @@
 # Errriiiccc's Idle Lab
 
-Personal Windows toolkit forked from the Tower Autoclicker: keep window-anchored click presets, add a file-driven **Automations** tab (OCR, A/B, clips, CSV), a **Screen Map** tab for titled screenshot batches, and an **AI Batches** tab for AI information-gathering passes.
+Personal Windows **human-translation workbench**: you show a screen and say what you want in plain language; AI helps turn that into file-backed automations; Idle Lab runs them with ordinary mouse input and pixel observation. No process injection, no memory dumps — the same cues a human could see.
 
-It sends ordinary mouse input and reads pixels from the screen. It does not inject into games or hide itself. Check the game's rules before leaving a run going.
+Workspaces: window-anchored presets (**Bench**), timed automations (**Loops**), titled screenshot batches (**Observe**), and AI gather/verify runs (**Missions**), under one chrome with **Refresh / Restart / Stop all**.
+
+Check the target app's rules before leaving a run going. North star: [docs/VISION.md](docs/VISION.md).
 
 ## Run
 
@@ -17,31 +19,32 @@ py -3 -m venv .venv
 
 **System deps for Automations:** [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) and `ffmpeg` on `PATH`.
 
-## Tabs
+## Workspaces
 
-- **Clicker** — same workflows as the autoclicker: anchor, record presets, playback, hotkeys, click methods, click logger.
-- **Automations** — load events/collections from `automations/`, run a priority scheduler, watch the queue and console.
-- **Screen Map** — start a batch, Space → title → PNG of the anchored window, Esc ends; browse past batches and view screenshots.
-- **AI Batches** — AI Information Batch Gathering: named request batches, completion status, Screen Map links, event snapshots, feedback, screenshot viewer.
+- **Bench** — presets, playback, hotkeys, click logger (the hands).
+- **Observe** — Screen Map: Space → title → PNG; browse batches/shots; comments.
+- **Missions** — AI gather/verify batches with `steps[]`, linked Observe, run reports.
+- **Loops** — file-driven events/collections scheduler (OCR, A/B, clips, CSV).
 
-## Hotkeys (Clicker)
+Top chrome: compact **Anchor**, **Flight deck** / expand remap, **Refresh** (F5, data), **Restart** (code), **Stop all**, Activity. See [docs/REFRESH-RESTART.md](docs/REFRESH-RESTART.md). Flight deck + Loops folders share [automations/taxonomy.json](automations/taxonomy.json) (expand `` ` `` by default).
 
-- **Set anchor**, then left-click the target window. Esc cancels.
+## Hotkeys (Bench)
+
+- **Anchor**, then left-click the target window. Esc cancels.
 - **Space** adds a point while recording. **Esc** saves.
+- **F5** refreshes all file-backed stores.
 - **F6** starts/stops playback. **F7** pauses. **Esc** stops a run.
-- F6 and F7 are captured while the app is open.
 
-## Automations POC demo
+## Loops POC demo
 
-1. Open **Click logger**, set anchor on it.
-2. Automations → **Reload** → **Start**.
+1. Open **Click logger**, set Anchor on it.
+2. Loops → **Reload** → **Start** (or global Refresh first if files changed).
 3. Every **10s**: screenshot → OCR `SIGNAL A/B` → play `ab choice a` or `ab choice b`.
 4. Every **60s**: OCR wave → record a **10s** clip (`runs/clips/run_1_wave_xx.mp4`) → CSV row. Recording **blocks** the 10s tick.
 5. Click the SIGNAL band in the click logger to toggle A ↔ B; click WAVE to bump the number.
 
 Details: [docs/USAGE.md](docs/USAGE.md), [docs/SMOKE-TESTS.md](docs/SMOKE-TESTS.md), [docs/automation-schema.md](docs/automation-schema.md).  
-Screen Map: [docs/SCREEN-MAP-USAGE.md](docs/SCREEN-MAP-USAGE.md), [docs/SCREEN-MAP-SMOKE-TESTS.md](docs/SCREEN-MAP-SMOKE-TESTS.md). After a batch, paste [docs/SCREEN-MAP-REVIEW-PROMPT.md](docs/SCREEN-MAP-REVIEW-PROMPT.md) into a review chat.  
-AI Batches: [docs/AI-BATCH-USAGE.md](docs/AI-BATCH-USAGE.md), example [examples/ai-batch-spec.json](examples/ai-batch-spec.json).  
+Observe: [docs/SCREEN-MAP-USAGE.md](docs/SCREEN-MAP-USAGE.md). Missions: [docs/AI-BATCH-USAGE.md](docs/AI-BATCH-USAGE.md).  
 Next chat: [docs/CONTINUATION.md](docs/CONTINUATION.md).
 
 ## Tests

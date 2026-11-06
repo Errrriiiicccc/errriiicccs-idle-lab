@@ -1,4 +1,4 @@
-"""Screen Map tab UI — capture mode + batch browser + screenshot viewer hooks."""
+"""Observe workspace — Screen Map capture + batch browser + screenshot viewer hooks."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from idle_lab.comment_ui import make_comment_button
+from idle_lab.comments import CommentStore, screen_map_batch_comment_path, screen_map_shot_comment_path
 from idle_lab.screen_map.catalog import BatchSummary
 from idle_lab.scroll_memory import ScrollMemory
 
@@ -22,6 +24,9 @@ class ScreenMapPanel(ctk.CTkFrame):
         on_refresh_catalog: Callable[[], None],
         on_view_shot: Callable[[BatchSummary, int], None],
         on_view_batch: Callable[[BatchSummary], None],
+        on_comment_batch: Callable[[BatchSummary], None] | None = None,
+        on_comment_shot: Callable[[BatchSummary, int], None] | None = None,
+        comments: CommentStore | None = None,
         scroll: ScrollMemory | None = None,
     ) -> None:
         super().__init__(master, fg_color="transparent")
@@ -31,6 +36,9 @@ class ScreenMapPanel(ctk.CTkFrame):
         self.on_refresh_catalog = on_refresh_catalog
         self.on_view_shot = on_view_shot
         self.on_view_batch = on_view_batch
+        self.on_comment_batch = on_comment_batch
+        self.on_comment_shot = on_comment_shot
+        self.comments = comments
         self.scroll = scroll or ScrollMemory()
         self._busy_message: str | None = None
         self._catalog: list[BatchSummary] = []
@@ -48,9 +56,9 @@ class ScreenMapPanel(ctk.CTkFrame):
 
         toolbar = ctk.CTkFrame(self._content, fg_color="transparent")
         toolbar.pack(fill="x", padx=8, pady=(8, 4))
-        ctk.CTkLabel(toolbar, text="Screen Map", font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
+        ctk.CTkLabel(toolbar, text="Observe", font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
         self.refresh_button = ctk.CTkButton(
-            toolbar, text="Refresh", width=90, command=self.on_refresh_catalog, fg_color="#2A3140", hover_color="#3A4558"
+            toolbar, text="Refresh catalog", width=120, command=self.on_refresh_catalog, fg_color="#2A3140", hover_color="#3A4558"
         )
         self.refresh_button.pack(side="right", padx=(6, 0))
         self.open_button = ctk.CTkButton(toolbar, text="Open folder", width=110, command=self.on_open_folder)
@@ -79,11 +87,9 @@ class ScreenMapPanel(ctk.CTkFrame):
         ctk.CTkLabel(
             help_frame,
             text=(
-                "Anchor the emulator first (top ANCHOR bar). Start a batch, then press Space: Idle Lab "
-                "captures immediately, then asks for a title. Esc cancels an open title dialog; Esc again "
-                "ends the batch. Browse past batches below — click a shot to view the screenshot. "
-                "Scroll position stays until you leave and come back or restart the app. "
-                "Middle-drag (or drag empty areas) to scrub long lists."
+                "Evidence locker for the lab. Use the top Anchor control first. Start a batch, then Space "
+                "captures + titles a shot; Esc ends the batch. Comment bubbles work on a batch or an "
+                "individual shot. Prefer global Refresh (F5) after chat edits files on disk."
             ),
             anchor="w",
             justify="left",
@@ -211,14 +217,27 @@ class ScreenMapPanel(ctk.CTkFrame):
             for batch in self._catalog:
                 row = ctk.CTkFrame(self.batch_list, fg_color="transparent")
                 row.pack(fill="x", pady=3)
+                top = ctk.CTkFrame(row, fg_color="transparent")
+                top.pack(fill="x")
                 btn = ctk.CTkButton(
-                    row,
+                    top,
                     text=f"{batch.title}",
                     anchor="w",
                     fg_color="#1F2A3A" if batch.slug == selected_slug else "transparent",
                     command=lambda b=batch: self._select_batch(b),
                 )
-                btn.pack(fill="x")
+                btn.pack(side="left", fill="x", expand=True)
+                if self.on_comment_batch is not None:
+                    path = screen_map_batch_comment_path(batch.slug)
+                    has = bool(
+                        (self.comments and self.comments.has(path))
+                        or (batch.manifest.notes and str(batch.manifest.notes).strip())
+                    )
+                    make_comment_button(
+                        top,
+                        has_notes=has,
+                        command=lambda b=batch: self.on_comment_batch(b),
+                    ).pack(side="right", padx=(4, 0))
                 ctk.CTkLabel(
                     row,
                     text=f"{batch.shot_count} screen(s)  ·  {batch.slug}",
@@ -259,13 +278,26 @@ class ScreenMapPanel(ctk.CTkFrame):
                 row.pack(fill="x", pady=2)
                 exists = (batch.folder / shot.filename).exists()
                 suffix = "" if exists else "  (missing file)"
+                top = ctk.CTkFrame(row, fg_color="transparent")
+                top.pack(fill="x")
                 ctk.CTkButton(
-                    row,
+                    top,
                     text=f"{shot.index:02d}. {shot.title}{suffix}",
                     anchor="w",
                     fg_color="transparent",
                     command=lambda b=batch, i=index: self.on_view_shot(b, i),
-                ).pack(fill="x")
+                ).pack(side="left", fill="x", expand=True)
+                if self.on_comment_shot is not None:
+                    path = screen_map_shot_comment_path(batch.slug, shot.filename)
+                    has = bool(
+                        (self.comments and self.comments.has(path))
+                        or (shot.notes and str(shot.notes).strip())
+                    )
+                    make_comment_button(
+                        top,
+                        has_notes=has,
+                        command=lambda b=batch, i=index: self.on_comment_shot(b, i),
+                    ).pack(side="right", padx=(4, 0))
                 meta = shot.captured_at or shot.filename
                 ctk.CTkLabel(
                     row,
@@ -276,6 +308,10 @@ class ScreenMapPanel(ctk.CTkFrame):
                 ).pack(fill="x", padx=8)
 
         self.scroll.around_rebuild("screen_map.shots", rebuild)
+
+    def refresh_comments(self) -> None:
+        self._render_batches()
+        self._render_shots()
 
     def _view_all(self) -> None:
         if self._selected is not None:

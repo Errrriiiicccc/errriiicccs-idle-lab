@@ -47,23 +47,29 @@ class Manifest:
     batch_slug: str
     created_at: str
     shots: list[ShotRecord] = field(default_factory=list)
+    notes: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "batch_title": self.batch_title,
             "batch_slug": self.batch_slug,
             "created_at": self.created_at,
             "shots": [shot.to_dict() for shot in self.shots],
         }
+        if self.notes:
+            payload["notes"] = self.notes
+        return payload
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Manifest":
         shots = [ShotRecord.from_dict(item) for item in data.get("shots") or []]
+        notes = data.get("notes")
         return cls(
             batch_title=str(data.get("batch_title") or ""),
             batch_slug=str(data.get("batch_slug") or ""),
             created_at=str(data.get("created_at") or ""),
             shots=shots,
+            notes=str(notes) if notes else None,
         )
 
 
@@ -106,4 +112,5 @@ def append_shot(manifest: Manifest, shot: ShotRecord) -> Manifest:
         batch_slug=manifest.batch_slug,
         created_at=manifest.created_at,
         shots=shots,
+        notes=manifest.notes,
     )

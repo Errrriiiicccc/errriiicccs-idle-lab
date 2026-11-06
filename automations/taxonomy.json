@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "roots": [
+    {
+      "id": "screen_map",
+      "key": "Space",
+      "label": "Screen Map",
+      "description": "Observe workspace — titled screenshot batches of the anchored window (same as Lab → Observe).",
+      "children": [
+        {
+          "id": "screen_map.start",
+          "key": "Space",
+          "label": "Start screenshot batch",
+          "description": "Create a new Screen Map batch folder and turn capture mode on. Shots land under screen-maps/.",
+          "action": { "type": "observe_start", "title": "Flight deck" }
+        },
+        {
+          "id": "screen_map.shot",
+          "key": "2",
+          "label": "Capture screenshot",
+          "description": "Grab the anchored window now and save it into the active batch (auto title shot N). Batch must already be started.",
+          "action": { "type": "observe_shot" }
+        },
+        {
+          "id": "screen_map.end",
+          "key": "3",
+          "label": "End screenshot batch",
+          "description": "Close the active Screen Map batch and leave capture mode.",
+          "action": { "type": "observe_end" }
+        }
+      ]
+    },
+    {
+      "id": "one_shots",
+      "key": "M",
+      "label": "One-shots",
+      "description": "Bench presets played once (mouse clicks). Pause/Stop on the deck while a one-shot runs.",
+      "children": [
+        {
+          "id": "one_shots.gem_box",
+          "key": "Space",
+          "label": "Gem box tap",
+          "description": "Single tap on the gem box.",
+          "ref": { "kind": "preset", "id": "gem box tap" }
+        },
+        {
+          "id": "one_shots.currency",
+          "key": "2",
+          "label": "Currency toggle",
+          "description": "Flip top HUD balances ↔ /min rates.",
+          "ref": { "kind": "preset", "id": "currency toggle" }
+        },
+        {
+          "id": "one_shots.health_attack",
+          "key": "3",
+          "label": "Health then Attack",
+          "description": "Legacy blind Defense→Health then Attack→Damage clicks.",
+          "ref": { "kind": "preset", "id": "endgame health then attack" }
+        },
+        {
+          "id": "one_shots.humanize",
+          "key": "4",
+          "label": "Humanize Atk/Def once",
+          "description": "One humanized Attack/Defense upgrade loop.",
+          "ref": { "kind": "preset", "id": "humanize atk def loop" }
+        }
+      ]
+    },
+    {
+      "id": "loops",
+      "key": "L",
+      "label": "Loops",
+      "description": "Atoms (reusable procedures) and molecules (compositions / schedules). Stop with Stop / F8.",
+      "children": [
+        {
+          "id": "loops.events",
+          "key": "Space",
+          "label": "Atoms",
+          "description": "Reusable procedures from automations/events/. Start selected runs once.",
+          "children": [
+            {
+              "id": "loops.events.real",
+              "key": "Space",
+              "label": "Real",
+              "description": "Production Tower / instrumentation atoms.",
+              "children": [
+                {
+                  "id": "loops.events.real.nav",
+                  "key": "Space",
+                  "label": "Navigation",
+                  "description": "Tab ensure + shared list scroll (tab-agnostic).",
+                  "children": [
+                    {
+                      "id": "loops.events.real.nav.ensure_attack",
+                      "key": "Space",
+                      "label": "Ensure Attack tab",
+                      "description": "Open Attack if needed (skip when already open).",
+                      "ref": { "kind": "event", "id": "ensure_attack_tab" }
+                    },
+                    {
+                      "id": "loops.events.real.nav.scroll_down_1",
+                      "key": "2",
+                      "label": "List scroll down 1",
+                      "description": "One tile-row down on the open upgrade list.",
+                      "ref": { "kind": "event", "id": "list_scroll_down_1" }
+                    },
+                    {
+                      "id": "loops.events.real.nav.scroll_up_1",
+                      "key": "3",
+                      "label": "List scroll up 1",
+                      "description": "One tile-row up on the open upgrade list.",
+                      "ref": { "kind": "event", "id": "list_scroll_up_1" }
+                    }
+                  ]
+                },
+                {
+                  "id": "loops.events.real.image",
+                  "key": "2",
+                  "label": "Image / Recording",
+                  "description": "Clips and b-roll.",
+                  "children": [
+                    {
+                      "id": "loops.events.real.image.broll",
+                      "key": "Space",
+                      "label": "B-roll every 5 minutes",
+                      "description": "20s anchored clip + CSV row every five minutes (when pooled).",
+                      "ref": { "kind": "event", "id": "stat_broll_5m" }
+                    },
+                    {
+                      "id": "loops.events.real.image.minute_clip",
+                      "key": "2",
+                      "label": "Minute clip",
+                      "description": "About once a minute: OCR wave, 10s clip, CSV (often disabled).",
+                      "ref": { "kind": "event", "id": "minute_clip" }
+                    }
+                  ]
+                },
+                {
+                  "id": "loops.events.real.gameplay",
+                  "key": "3",
+                  "label": "Gameplay",
+                  "description": "Buys, status, and stat OCR.",
+                  "children": [
+                    {
+                      "id": "loops.events.real.gameplay.status_buy",
+                      "key": "Space",
+                      "label": "Status + buy",
+                      "description": "Panel status, gem check, Health then Attack.",
+                      "ref": { "kind": "event", "id": "endgame_status_buy" }
+                    },
+                    {
+                      "id": "loops.events.real.gameplay.stat_collect",
+                      "key": "2",
+                      "label": "Stat collect",
+                      "description": "One CSV row now (Start selected). Interval every 30s when in a pool.",
+                      "ref": { "kind": "event", "id": "stat_collect" }
+                    },
+                    {
+                      "id": "loops.events.real.gameplay.minute_stats",
+                      "key": "3",
+                      "label": "Endgame minute stats",
+                      "description": "Older once-a-minute stats atom (used by endgame_tier1).",
+                      "ref": { "kind": "event", "id": "endgame_minute_stats" }
+                    }
+                  ]
+                },
+                {
+                  "id": "loops.events.real.humanize",
+                  "key": "4",
+                  "label": "Humanize",
+                  "description": "Humanize showcase ticks.",
+                  "children": [
+                    {
+                      "id": "loops.events.real.humanize.loop",
+                      "key": "Space",
+                      "label": "Humanize upgrade loop",
+                      "description": "Play humanize atk def loop (usually disabled).",
+                      "ref": { "kind": "event", "id": "humanize_upgrade_loop" }
+                    }
+                  ]
+                },
+                {
+                  "id": "loops.events.real.all_enabled",
+                  "key": "5",
+                  "label": "All enabled atoms",
+                  "description": "Start every atom whose JSON has enabled:true on its interval.",
+                  "action": { "type": "start_enabled_loops" }
+                }
+              ]
+            },
+            {
+              "id": "loops.events.test",
+              "key": "2",
+              "label": "Test",
+              "description": "Harness / click-logger demos.",
+              "children": [
+                {
+                  "id": "loops.events.test.ocr_ab",
+                  "key": "Space",
+                  "label": "OCR A/B tick",
+                  "description": "Click-logger SIGNAL band → path A or B.",
+                  "ref": { "kind": "event", "id": "ocr_ab_tick" }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "loops.collections",
+          "key": "2",
+          "label": "Molecules",
+          "description": "Compositions of atoms — run=interval (timed pool) or run=once (serial).",
+          "children": [
+            {
+              "id": "loops.collections.real",
+              "key": "Space",
+              "label": "Real",
+              "description": "Main Tower packs.",
+              "children": [
+                {
+                  "id": "loops.collections.real.main",
+                  "key": "Space",
+                  "label": "Main game",
+                  "description": "Endgame / instrumentation / smoke packs.",
+                  "children": [
+                    {
+                      "id": "loops.collections.real.main.endgame_phase",
+                      "key": "Space",
+                      "label": "Endgame phase loop",
+                      "description": "Interval: status+buy + stats + b-roll.",
+                      "ref": { "kind": "collection", "id": "endgame_phase_loop" }
+                    },
+                    {
+                      "id": "loops.collections.real.main.tier1",
+                      "key": "2",
+                      "label": "Endgame tier1",
+                      "description": "Interval: status+buy + minute stats.",
+                      "ref": { "kind": "collection", "id": "endgame_tier1" }
+                    },
+                    {
+                      "id": "loops.collections.real.main.stats",
+                      "key": "3",
+                      "label": "Stat collecting",
+                      "description": "Interval: stat collect + 5-min b-roll (no buys).",
+                      "ref": { "kind": "collection", "id": "stat_collecting" }
+                    },
+                    {
+                      "id": "loops.collections.real.main.scroll_probe",
+                      "key": "4",
+                      "label": "Scroll probe once",
+                      "description": "Once: ensure Attack → scroll down 1 row.",
+                      "ref": { "kind": "collection", "id": "scroll_probe_once" }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

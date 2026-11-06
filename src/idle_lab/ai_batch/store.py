@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -26,16 +27,25 @@ def batch_path(folder: Path) -> Path:
     return Path(folder) / "batch.json"
 
 
+def default_examples_root() -> Path:
+    """Repo ``examples/ai-batches/`` (seeded into gitignored ``ai-batches/``)."""
+
+    return Path(__file__).resolve().parents[3] / "examples" / "ai-batches"
+
+
 class AiBatchStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, examples_root: Path | None = None) -> None:
         self.root = Path(root)
+        self.examples_root = Path(examples_root) if examples_root else default_examples_root()
         self.batches: dict[str, AiBatch] = {}
         self.folders: dict[str, Path] = {}
+        self.last_seeded: list[str] = []
 
     def load_all(self) -> list[str]:
         """Reload every ``*/batch.json``. Returns skip errors."""
 
         self.root.mkdir(parents=True, exist_ok=True)
+        self.last_seeded = self.ensure_example_batches()
         self.batches.clear()
         self.folders.clear()
         errors: list[str] = []
@@ -57,6 +67,51 @@ class AiBatchStore:
             except (OSError, ValueError, json.JSONDecodeError, KeyError, TypeError) as exc:
                 errors.append(f"{folder.name}: {exc}")
         return errors
+
+    def ensure_example_batches(self) -> list[str]:
+        """Copy missing example missions into ``ai-batches/``. Never overwrites local edits."""
+
+        created: list[str] = []
+        examples = self.examples_root
+        if not examples.is_dir():
+            return created
+        self.root.mkdir(parents=True, exist_ok=True)
+        for src in sorted(examples.iterdir()):
+            if not src.is_dir():
+                continue
+            src_batch = batch_path(src)
+            if not src_batch.is_file():
+                continue
+            dest = self.root / src.name
+            if dest.exists():
+                continue
+            try:
+                shutil.copytree(src, dest)
+                created.append(src.name)
+            except OSError:
+                continue
+        return created
+
+    def prepare_for_start(self, batch: AiBatch) -> AiBatch:
+        """If ``auto_rerun``, reset done/missed/skipped runnable requests to pending."""
+
+        if not batch.auto_rerun:
+            return batch
+        changed = False
+        for req in batch.requests:
+            if req.runnable and req.status in ("done", "missed", "skipped"):
+                req.status = "pending"
+                req.result = None
+                changed = True
+            elif req.kind == "note" and req.status in ("done", "missed", "skipped"):
+                req.status = "pending"
+                req.result = None
+                changed = True
+        if changed:
+            batch.status = "pending"
+            batch.completed_at = None
+            self.save(batch)
+        return batch
 
     def list_batches(
         self,

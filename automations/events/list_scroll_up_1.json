@@ -1,0 +1,18 @@
+{
+  "id": "list_scroll_up_1",
+  "title": "List scroll up 1",
+  "version": 1,
+  "enabled": false,
+  "priority": 40,
+  "timing": {"type": "interval", "every_ms": 60000},
+  "description": "Atom: scroll the open upgrade list up ~one tile row (playbook drag). Tab-agnostic — ensure the right tab first in the molecule.",
+  "notes": "Start selected runs once. Prefer this over duplicating scroll coords per tab.",
+  "actions": [
+    {
+      "type": "scroll_list",
+      "direction": "up",
+      "rows": 1,
+      "description": "One controlled up drag (~one upgrade tile row)."
+    }
+  ]
+}

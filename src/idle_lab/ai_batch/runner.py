@@ -14,6 +14,7 @@ from idle_lab.ai_batch.schema import AiBatch, BatchRequest, RequestResult, now_i
 from idle_lab.ai_batch.scroll_metrics import ScrollStepMetric, crop_normalized, mean_abs_diff
 from idle_lab.ai_batch.store import AiBatchStore
 from idle_lab.automations.capture import CaptureError, grab_anchor
+from idle_lab.automations.ocr_bench import run_fixture_bench
 from idle_lab.click_foreground import foreground_drag
 from idle_lab.humanize import HumanizeProfile, human_click, human_scroll_gap_ms, human_wait
 from idle_lab.models import Rect, normalized_to_screen
@@ -61,18 +62,23 @@ class AiBatchRunner:
         with self._lock:
             if self.is_running:
                 raise AiBatchRunnerError("An AI batch is already running.")
-            runnable = [req for req in batch.requests if req.runnable and req.status == "pending"]
-            if not runnable and not any(req.runnable for req in batch.requests):
+            live = self.store.prepare_for_start(batch)
+            runnable = [req for req in live.requests if req.runnable and req.status == "pending"]
+            if not runnable and not any(req.runnable for req in live.requests):
                 raise AiBatchRunnerError(
                     "This batch has no executable steps. Add steps[] to requests in batch.json "
-                    "(click / scroll / screenshot / wait)."
+                    "(click / scroll / screenshot / wait / ocr_fixture_bench)."
+                )
+            if not runnable:
+                raise AiBatchRunnerError(
+                    "No pending runnable requests. Enable auto_rerun on the batch, or mark requests pending."
                 )
             self._stop.clear()
-            self.active_slug = batch.slug
+            self.active_slug = live.slug
             self._thread = threading.Thread(
                 target=self._run,
-                args=(batch.slug,),
-                name=f"ai-batch-{batch.slug}",
+                args=(live.slug,),
+                name=f"ai-batch-{live.slug}",
                 daemon=True,
             )
             self._thread.start()
@@ -91,8 +97,10 @@ class AiBatchRunner:
             "screen_map_batch": None,
             "stopped": False,
             "error": None,
+            "iteration_dir": None,
         }
         session: BatchSession | None = None
+        iteration_dir = None
         try:
             self.store.load_all()
             batch = self.store.batches.get(slug)
@@ -103,6 +111,22 @@ class AiBatchRunner:
             self.store.save(batch)
             self._emit(kind="status", message=f"Running AI batch: {batch.name}", level="run")
             self._emit(kind="refresh")
+
+            # Knowledge-batch iteration folder (L9)
+            try:
+                from idle_lab.ai_batch.iterations import begin_iteration, finalize_iteration
+
+                folder = self.store.folder_for(slug)
+                if folder is not None:
+                    iteration_dir = begin_iteration(folder)
+                    report["iteration_dir"] = str(iteration_dir)
+                    self._emit(
+                        kind="status",
+                        message=f"Iteration folder: {iteration_dir.name}",
+                        level="ok",
+                    )
+            except Exception as exc:  # noqa: BLE001
+                self._emit(kind="status", message=f"Iteration folder skipped: {exc}", level="warn")
 
             self.screen_maps_root.mkdir(parents=True, exist_ok=True)
             session = create_batch(self.screen_maps_root, f"ai-run-{batch.slug}")
@@ -158,8 +182,14 @@ class AiBatchRunner:
                     outcome = self._run_request(batch, live, session)
                     report["requests"].append(outcome)
                 except Exception as exc:  # noqa: BLE001 — surface per-request
+                    fail_shot = None
+                    try:
+                        fail_shot = self._screenshot(session, f"FAIL {live.id}")
+                    except Exception:
+                        fail_shot = None
                     self.store.load_all()
                     batch = self.store.batches[slug]
+                    shot_name = fail_shot.filename if fail_shot is not None else None
                     self.store.mark_request(
                         batch,
                         live.id,
@@ -167,10 +197,18 @@ class AiBatchRunner:
                         result=RequestResult(
                             summary=f"Failed: {exc}",
                             screen_map_batch=session.folder.name,
+                            screen_map_shot=shot_name,
                             captured_at=now_iso(),
                         ),
                     )
-                    report["requests"].append({"id": live.id, "status": "missed", "error": str(exc)})
+                    report["requests"].append(
+                        {
+                            "id": live.id,
+                            "status": "missed",
+                            "error": str(exc),
+                            "fail_shot": shot_name,
+                        }
+                    )
                     self._emit(kind="status", message=f"Failed {live.id}: {exc}", level="error")
                 self._emit(kind="refresh")
 
@@ -208,10 +246,22 @@ class AiBatchRunner:
             try:
                 folder = self.store.folder_for(slug)
                 if folder is not None:
-                    (folder / "run_report.json").write_text(
+                    report_path = folder / "run_report.json"
+                    report_path.write_text(
                         json.dumps(report, indent=2) + "\n",
                         encoding="utf-8",
                     )
+                    if iteration_dir is not None:
+                        try:
+                            from idle_lab.ai_batch.iterations import finalize_iteration
+
+                            finalize_iteration(
+                                iteration_dir,
+                                run_report=report_path,
+                                screen_map_slug=report.get("screen_map_batch"),
+                            )
+                        except Exception:
+                            pass
             except OSError:
                 pass
             self.active_slug = None
@@ -227,6 +277,7 @@ class AiBatchRunner:
         shot_names: list[str] = []
         scroll_maps: list[dict[str, Any]] = []
         ensures: list[dict[str, Any]] = []
+        ocr_benches: list[dict[str, Any]] = []
         for index, step in enumerate(req.steps):
             if self._stop.is_set():
                 raise AiBatchRunnerError("Stopped by user.")
@@ -254,6 +305,11 @@ class AiBatchRunner:
                 if not name or self.play_preset is None:
                     raise AiBatchRunnerError(f"play_preset missing name or handler ({name!r})")
                 self.play_preset(name)
+            elif action == "ocr_fixture_bench":
+                bench = self._ocr_fixture_bench(step)
+                ocr_benches.append(bench)
+                if not bench.get("ok"):
+                    raise AiBatchRunnerError(str(bench.get("summary") or "OCR fixture bench failed"))
             else:
                 raise AiBatchRunnerError(f"Unknown step action: {action!r}")
 
@@ -276,11 +332,15 @@ class AiBatchRunner:
                     f"stop={item.get('stop_reason')}, at_bottom={item.get('at_bottom')}"
                 )
             summary += " | " + "; ".join(bits)
+        if ocr_benches:
+            summary += " | " + " ; ".join(str(item.get("summary") or "") for item in ocr_benches)
         payload: dict[str, Any] = {"shots": shot_names, "steps_run": len(req.steps)}
         if ensures:
             payload["ensures"] = ensures
         if scroll_maps:
             payload["scroll_maps"] = scroll_maps
+        if ocr_benches:
+            payload["ocr_fixture_benches"] = ocr_benches
         self.store.mark_request(
             batch,
             req.id,
@@ -300,7 +360,37 @@ class AiBatchRunner:
             "shots": shot_names,
             "scroll_maps": scroll_maps,
             "ensures": ensures,
+            "ocr_fixture_benches": ocr_benches,
         }
+
+    def _ocr_fixture_bench(self, step: dict[str, Any]) -> dict[str, Any]:
+        """Run committed OCR crops. Offline — no Anchor."""
+
+        fixture_dir = step.get("fixture_dir") or step.get("fixtures") or "tests/fixtures/ocr"
+        manifest = str(step.get("manifest") or "manifest.json")
+        self._emit(
+            kind="status",
+            message=f"OCR fixture bench: {fixture_dir}/{manifest}",
+            level="info",
+        )
+        report = run_fixture_bench(fixture_dir=fixture_dir, manifest_name=manifest)
+        payload = report.to_dict()
+        payload["summary"] = report.summary()
+        # Also drop a copy next to run_report for the chat.
+        try:
+            folder = self.store.folder_for(self.active_slug or "")
+            if folder is not None:
+                out = folder / "ocr_fixture_bench.json"
+                out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                payload["report_path"] = str(out)
+        except OSError:
+            pass
+        self._emit(
+            kind="status",
+            message=report.summary(),
+            level="ok" if report.ok else "error",
+        )
+        return payload
 
     def _anchor_ready(self) -> tuple[int, Rect, str]:
         status, hwnd, rect, title = self.get_anchor()
@@ -511,8 +601,17 @@ class AiBatchRunner:
         ny = float(step.get("ny", 0.70))
         direction = str(step.get("direction") or "down")
         amount = max(1, abs(int(step.get("amount") or 1)))
-        max_steps = max(1, abs(int(step.get("max_steps") or 12)))
-        max_seek = max(1, abs(int(step.get("max_seek_steps") or 12)))
+        # Allow max_steps=0 (seek-only). Do not use ``or`` — 0 is falsy and became 12.
+        if "max_steps" in step and step["max_steps"] is not None:
+            max_steps = abs(int(step["max_steps"]))
+        else:
+            max_steps = 12
+        if "max_seek_steps" in step and step["max_seek_steps"] is not None:
+            max_seek = abs(int(step["max_seek_steps"]))
+        else:
+            max_seek = 12
+        if max_seek < 1:
+            max_seek = 1
         if "settle_ms" in step:
             settle_ms = max(0, int(step.get("settle_ms") or 0))
         elif "wait_ms" in step:

@@ -13,6 +13,8 @@ from datetime import datetime
 from typing import Any
 
 BATCH_STATUSES = ("pending", "running", "completed", "partial", "failed")
+# ``probe`` = AI-owned question → evidence → reflect loop (see docs/PROBE-MISSIONS.md).
+BATCH_GENRES = ("", "probe", "mission", "bench")
 REQUEST_KINDS = (
     "screenshot",
     "screen_map_batch",
@@ -63,6 +65,7 @@ class RequestResult:
 
 
 # Executable step actions for AiBatchRunner (normalized coords = fractions of anchored window).
+# Offline-capable actions (no Anchor): ocr_fixture_bench
 STEP_ACTIONS = (
     "wait",
     "click",
@@ -71,7 +74,9 @@ STEP_ACTIONS = (
     "ensure_upgrade_tab",
     "screenshot",
     "play_preset",
+    "ocr_fixture_bench",
 )
+OFFLINE_STEP_ACTIONS = frozenset({"ocr_fixture_bench", "wait"})
 
 
 @dataclass
@@ -154,9 +159,15 @@ class AiBatch:
     requests: list[BatchRequest] = field(default_factory=list)
     feedback: list[FeedbackNote] = field(default_factory=list)
     linked_screen_map_batches: list[str] = field(default_factory=list)
+    # Start always re-queues done/missed runnable requests (perception benches).
+    auto_rerun: bool = False
+    # True when every executable step is offline (no Anchor / window needed).
+    offline: bool = False
+    # Optional genre: probe | mission | bench (empty = general).
+    genre: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "name": self.name,
             "slug": self.slug,
             "status": self.status,
@@ -169,6 +180,14 @@ class AiBatch:
             "feedback": [item.to_dict() for item in self.feedback],
             "linked_screen_map_batches": list(self.linked_screen_map_batches),
         }
+        if self.auto_rerun:
+            payload["auto_rerun"] = True
+        if self.offline:
+            payload["offline"] = True
+        genre = (self.genre or "").strip().lower()
+        if genre:
+            payload["genre"] = genre
+        return payload
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AiBatch":
@@ -186,6 +205,13 @@ class AiBatch:
             if isinstance(item, dict)
         ]
         linked = [str(item) for item in (data.get("linked_screen_map_batches") or [])]
+        offline = bool(data.get("offline"))
+        if not offline and requests:
+            # Infer offline when every step is in OFFLINE_STEP_ACTIONS.
+            offline = _requests_are_offline(requests)
+        genre = str(data.get("genre") or "").strip().lower()
+        if genre not in BATCH_GENRES:
+            genre = ""
         return cls(
             name=str(data.get("name") or data.get("slug") or "batch"),
             slug=str(data.get("slug") or ""),
@@ -198,7 +224,15 @@ class AiBatch:
             requests=requests,
             feedback=feedback,
             linked_screen_map_batches=linked,
+            auto_rerun=bool(data.get("auto_rerun")),
+            offline=offline,
+            genre=genre,
         )
+
+    def is_offline(self) -> bool:
+        if self.offline:
+            return True
+        return _requests_are_offline(self.requests)
 
     @property
     def done_count(self) -> int:
@@ -223,6 +257,18 @@ class AiBatch:
         return "pending"
 
 
+def _requests_are_offline(requests: list[BatchRequest]) -> bool:
+    runnable = [req for req in requests if req.steps]
+    if not runnable:
+        return False
+    for req in runnable:
+        for step in req.steps:
+            action = str(step.get("action") or "").strip().lower()
+            if action not in OFFLINE_STEP_ACTIONS:
+                return False
+    return True
+
+
 def new_batch(
     *,
     name: str,
@@ -230,8 +276,15 @@ def new_batch(
     goal: str = "",
     created_by: str = "human",
     requests: list[BatchRequest] | None = None,
+    auto_rerun: bool = False,
+    offline: bool = False,
+    genre: str = "",
 ) -> AiBatch:
     now = now_iso()
+    reqs = list(requests or [])
+    genre_norm = (genre or "").strip().lower()
+    if genre_norm not in BATCH_GENRES:
+        genre_norm = ""
     return AiBatch(
         name=name,
         slug=slug,
@@ -241,9 +294,12 @@ def new_batch(
         updated_at=now,
         completed_at=None,
         created_by=created_by,
-        requests=list(requests or []),
+        requests=reqs,
         feedback=[],
         linked_screen_map_batches=[],
+        auto_rerun=auto_rerun,
+        offline=offline or _requests_are_offline(reqs),
+        genre=genre_norm,
     )
 
 

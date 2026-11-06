@@ -122,7 +122,17 @@ class Overlay:
         y1 = rect.top - self._vs.top
         x2 = rect.right - self._vs.left
         y2 = rect.bottom - self._vs.top
-        self.canvas.create_rectangle(x1, y1, x2, y2, outline="#3CE6FF", width=4, tags="frame")
+        # Thin dashed light-blue frame (magenta key is fully transparent elsewhere).
+        self.canvas.create_rectangle(
+            x1,
+            y1,
+            x2,
+            y2,
+            outline="#9FD4F0",
+            width=2,
+            dash=(5, 4),
+            tags="frame",
+        )
 
     def set_markers(self, points: list[tuple[int, int]], draggable: bool) -> None:
         if not draggable or not points:

@@ -6,6 +6,7 @@ __pycache__/
 dist/
 build/
 settings.json
+lab-comments.json
 runs/
-screen-maps/
-ai-batches/
+/screen-maps/
+/ai-batches/

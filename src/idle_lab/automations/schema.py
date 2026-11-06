@@ -22,12 +22,19 @@ ACTION_TYPES = frozenset(
         "log",
         "set_variable",
         "wait",
+        "wait_until",
         "click",
         "detect_panel",
         "ensure_upgrade_tab",
         "seek_list_top",
+        "scroll_list",
+        "match_template",
     }
 )
+
+OVERDUE_POLICIES = frozenset({"run_when_free", "skip", "run_once_catchup"})
+# Molecules: how Start selected runs the pack.
+COLLECTION_RUN_MODES = frozenset({"once", "interval"})
 
 
 def _reject_bool(value: Any, field_name: str) -> None:
@@ -93,6 +100,7 @@ class Event:
     version: int = 1
     description: str = ""
     notes: str = ""
+    overdue_policy: str = "run_when_free"
     path: str | None = None
 
 
@@ -105,6 +113,8 @@ class Collection:
     branch_variable: str = "phase"
     loop: bool = False
     stop_when: str | None = None
+    # once = serial atom pass; interval = start child atoms on the scheduler.
+    run: str = "interval"
     version: int = 1
     description: str = ""
     notes: str = ""
@@ -176,6 +186,11 @@ def event_from_dict(data: Any, path: str | None = None) -> Event:
     notes = data.get("notes", "")
     if not isinstance(notes, str):
         raise AutomationSchemaError("notes must be text")
+    overdue_policy = data.get("overdue_policy", "run_when_free")
+    if not isinstance(overdue_policy, str) or overdue_policy.strip() not in OVERDUE_POLICIES:
+        raise AutomationSchemaError(
+            "overdue_policy must be run_when_free, skip, or run_once_catchup"
+        )
     return Event(
         id=event_id,
         title=title,
@@ -186,6 +201,7 @@ def event_from_dict(data: Any, path: str | None = None) -> Event:
         version=1,
         description=description,
         notes=notes,
+        overdue_policy=overdue_policy.strip(),
         path=path,
     )
 
@@ -224,6 +240,10 @@ def collection_from_dict(data: Any, path: str | None = None) -> Collection:
     notes = data.get("notes", "")
     if not isinstance(notes, str):
         raise AutomationSchemaError("notes must be text")
+    run_raw = data.get("run", "interval")
+    if not isinstance(run_raw, str) or run_raw.strip().lower() not in COLLECTION_RUN_MODES:
+        raise AutomationSchemaError('run must be "once" or "interval"')
+    run_mode = run_raw.strip().lower()
     return Collection(
         id=collection_id,
         title=title,
@@ -232,11 +252,31 @@ def collection_from_dict(data: Any, path: str | None = None) -> Collection:
         branch_variable=branch_variable.strip(),
         loop=loop,
         stop_when=stop_when.strip() if isinstance(stop_when, str) else None,
+        run=run_mode,
         version=1,
         description=description,
         notes=notes,
         path=path,
     )
+
+
+def collection_interval_event_ids(collection: Collection, events: dict[str, Event], collections: dict[str, Collection]) -> list[str]:
+    """Flatten molecule children to atom (event) ids for an interval Start (one nesting level)."""
+
+    ids: list[str] = []
+    seen: set[str] = set()
+    for child_id in collection.children:
+        if child_id in events:
+            if child_id not in seen:
+                ids.append(child_id)
+                seen.add(child_id)
+        elif child_id in collections:
+            nested = collections[child_id]
+            for nested_id in nested.children:
+                if nested_id in events and nested_id not in seen:
+                    ids.append(nested_id)
+                    seen.add(nested_id)
+    return ids
 
 
 def runtime_from_dict(data: Any, path: str | None = None) -> RuntimeConfig:

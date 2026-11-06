@@ -79,6 +79,10 @@ def _action_basic(action: Action) -> str:
         if look:
             return f"Check whether “{look}” is on the first upgrade row; scroll up if not."
         return "Scroll the upgrade list up until it stops moving (top edge)."
+    if kind == "scroll_list":
+        direction = raw.get("direction") or "down"
+        rows = raw.get("rows") or raw.get("amount") or 1
+        return f"Scroll the open upgrade list {direction} by ~{rows} tile row(s) (tab-agnostic)."
     return f"Run action “{kind}”."
 
 
@@ -160,6 +164,10 @@ def _action_detailed(action: Action, *, indent: str = "") -> list[str]:
     elif kind == "seek_list_top":
         lines.append(f"{indent}  → look_for: {raw.get('look_for') or raw.get('keyword') or '(unchanged edge)'}")
         lines.append(f"{indent}  → controlled drag up (fraction≈0.10) until OCR match or unchanged")
+    elif kind == "scroll_list":
+        lines.append(f"{indent}  → direction: {raw.get('direction') or 'down'}")
+        lines.append(f"{indent}  → rows: {raw.get('rows') or raw.get('amount') or 1}")
+        lines.append(f"{indent}  → playbook drag_fraction≈{raw.get('drag_fraction') or 0.10}")
     return lines
 
 
@@ -179,9 +187,11 @@ def format_event(event: Event, *, detailed: bool, store: AutomationStore | None 
     lines = [
         event.title,
         "",
+        "Atom — Start selected runs this once (interval only when enabled in a pool).",
+        "",
         _event_blurb(event),
         "",
-        f"Runs every {every} · priority {event.priority}"
+        f"Interval when pooled: every {every} · priority {event.priority}"
         + (" · enabled" if event.enabled else " · disabled"),
     ]
     if not detailed:
@@ -245,8 +255,16 @@ def _collection_blurb(collection: Collection) -> str:
 
 
 def format_collection(collection: Collection, *, detailed: bool, store: AutomationStore) -> str:
+    run_mode = (collection.run or "interval").strip().lower()
+    run_hint = (
+        "Molecule · run=interval — Start selected opens a timed pool of child atoms."
+        if run_mode == "interval"
+        else "Molecule · run=once — Start selected runs child atoms serially once."
+    )
     lines = [
         collection.title,
+        "",
+        run_hint,
         "",
         _collection_blurb(collection),
     ]
@@ -283,6 +301,7 @@ def format_collection(collection: Collection, *, detailed: bool, store: Automati
             "",
             "Identity",
             f"  id: {collection.id}",
+            f"  run: {collection.run}",
             f"  loop: {collection.loop}",
             f"  stop_when: {collection.stop_when or '—'}",
             f"  file: {collection.path or '—'}",

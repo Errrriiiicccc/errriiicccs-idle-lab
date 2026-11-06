@@ -2,15 +2,16 @@
   "id": "endgame_phase_loop",
   "title": "Endgame Phase Loop",
   "version": 1,
-  "description": "Combined late Tier-1 pack: Health→Attack buys with panel status checks (menus stay open), opportunistic gem collects, 30s stat CSV, and 20s b-roll every 5 minutes.",
+  "description": "Interval molecule: status+buy + stat collect + 5-min b-roll until you Stop (stop_when game_over is for once-mode packs).",
   "children": [
     "endgame_status_buy",
-    "stat_collect_30s",
+    "stat_collect",
     "stat_broll_5m"
   ],
   "branch_variable": "phase",
   "branches": {},
   "loop": true,
   "stop_when": "game_over",
-  "notes": "Start Automations after Reload — runtime runs every enabled child event. B-roll (prio 100) defers buys/stats while recording. endgame_minute_stats is omitted here; use stat_collect_30s instead. Keep humanize_upgrade_loop disabled."
+  "run": "interval",
+  "notes": "Start selected → interval pool of child atoms. B-roll (prio 100) defers buys/stats while recording. Keep humanize_upgrade_loop disabled."
 }

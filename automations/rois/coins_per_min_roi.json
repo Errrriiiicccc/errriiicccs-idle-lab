@@ -1,9 +1,9 @@
 {
   "id": "coins_per_min_roi",
   "version": 1,
-  "nx": 0.055,
-  "ny": 0.083,
-  "nw": 0.28,
-  "nh": 0.028,
-  "notes": "Tuned on rates shot: coin ###K/min under cash/min. OCR often splits decimals ('5 76K'); parser rejoins to 5.76K."
+  "nx": 0.040,
+  "ny": 0.080,
+  "nw": 0.30,
+  "nh": 0.032,
+  "notes": "Aligned with coins_roi left edge; parser recovers 168K/min → 1.68K. Target: 1.68K/min / 1.48K/min."
 }

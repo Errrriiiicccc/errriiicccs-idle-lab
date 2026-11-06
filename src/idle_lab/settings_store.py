@@ -5,8 +5,32 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from idle_lab.flight_deck.keys import DEFAULT_EXPAND_VK
 from idle_lab.humanize import HUMANIZE_LEVELS, normalize_level
+from idle_lab.lab_mode import normalize_lab_mode
 from idle_lab.models import Settings
+
+
+def _parse_expand_vk(raw) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_EXPAND_VK
+    if value <= 0 or value > 0xFE:
+        return DEFAULT_EXPAND_VK
+    return value
+
+
+def _parse_expand_by_anchor(raw) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, int] = {}
+    for key, value in raw.items():
+        title = str(key).strip()
+        if not title:
+            continue
+        out[title] = _parse_expand_vk(value)
+    return out
 
 
 def load_settings(path: Path) -> tuple[Settings, str | None]:
@@ -27,6 +51,13 @@ def load_settings(path: Path) -> tuple[Settings, str | None]:
     humanize = normalize_level(data.get("humanize_level", "medium"))
     if humanize not in HUMANIZE_LEVELS:
         humanize = "medium"
+    lab_mode = normalize_lab_mode(data.get("lab_mode", "auto"))
+    trace_level = str(data.get("trace_level", "failure") or "failure").strip().lower()
+    if trace_level not in {"off", "failure", "all"}:
+        trace_level = "failure"
+    geometry = data.get("flight_deck_geometry")
+    if geometry is not None:
+        geometry = str(geometry).strip() or None
     return (
         Settings(
             click_method=method,
@@ -34,6 +65,16 @@ def load_settings(path: Path) -> tuple[Settings, str | None]:
             restore_cursor=bool(data.get("restore_cursor", True)),
             countdown_seconds=int(countdown),
             humanize_level=humanize,
+            lab_mode=lab_mode,
+            trace_level=trace_level,
+            flight_deck_expand_vk=_parse_expand_vk(
+                data.get("flight_deck_expand_vk", DEFAULT_EXPAND_VK)
+            ),
+            flight_deck_expand_by_anchor=_parse_expand_by_anchor(
+                data.get("flight_deck_expand_by_anchor")
+            ),
+            flight_deck_geometry=geometry,
+            flight_deck_user_hidden=bool(data.get("flight_deck_user_hidden", False)),
         ),
         None,
     )
@@ -46,5 +87,13 @@ def save_settings(path: Path, settings: Settings) -> None:
         "restore_cursor": settings.restore_cursor,
         "countdown_seconds": settings.countdown_seconds,
         "humanize_level": normalize_level(settings.humanize_level),
+        "lab_mode": normalize_lab_mode(settings.lab_mode),
+        "trace_level": settings.trace_level if settings.trace_level in {"off", "failure", "all"} else "failure",
+        "flight_deck_expand_vk": int(settings.flight_deck_expand_vk or DEFAULT_EXPAND_VK),
+        "flight_deck_expand_by_anchor": {
+            str(k): int(v) for k, v in (settings.flight_deck_expand_by_anchor or {}).items()
+        },
+        "flight_deck_geometry": settings.flight_deck_geometry,
+        "flight_deck_user_hidden": bool(settings.flight_deck_user_hidden),
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

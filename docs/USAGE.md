@@ -21,10 +21,14 @@ Idle Lab also looks for Tesseract under `C:\Program Files\Tesseract-OCR\` even i
 .\.venv\Scripts\pythonw.exe -m idle_lab
 ```
 
-## Clicker (unchanged workflows)
+## Refresh vs Restart
 
-1. Use the top **ANCHOR** bar (visible on every tab) → **Set anchor** → left-click BlueStacks or the click logger.
-2. Load or create a preset under **Presets**.
+See [REFRESH-RESTART.md](REFRESH-RESTART.md). Short version: chat edits JSON → **Refresh** (F5); chat edits `.py` → **Restart**.
+
+## Bench (presets)
+
+1. Top chrome → **Anchor** → left-click BlueStacks or the click logger. Red **×** clears.
+2. Load or create a preset under **Presets**. Use **Note** for observations without leaving the app.
 3. Choose Foreground/Background, **Humanize** (default Medium), countdown, loops.
 4. **Start** or **F6**. Use the click logger to verify hits before trusting the game.
 
@@ -32,7 +36,7 @@ Humanize only affects playback/execution (jitter + timing). Preset JSON stays ex
 
 Preset JSON format: [preset-format.md](preset-format.md).
 
-## Automations
+## Loops (Automations)
 
 ### Files
 
@@ -40,25 +44,22 @@ Preset JSON format: [preset-format.md](preset-format.md).
 | --- | --- |
 | `automations/runtime.json` | `run_number` (default 1) |
 | `automations/rois/` | Named OCR/crop regions |
-| `automations/events/` | Interval events + actions |
-| `automations/collections/` | Ordered/branching graphs |
+| `automations/events/` | **Atoms** — reusable procedures (+ interval timing when pooled) |
+| `automations/collections/` | **Molecules** — compositions (`run: once` \| `interval`) |
 | `runs/` | Screenshots, clips, CSV (gitignored) |
 
 Schema: [automation-schema.md](automation-schema.md).
 
 ### UI
 
-1. Open the **Automations** tab.
-2. Toggle **Events** / **Collections**. Each list row shows a short caption.
-3. In **Details**, switch **Basic** (plain language + branch contention) vs **Detailed** (exact paths, outputs, nested steps).
-4. **Reload** after editing JSON files. Optional `description` fields on events/collections/actions feed the Basic view.
-5. **Start** begins the scheduler; **Stop** ends it.
-6. **Walkthrough** (select a Collection first): guided on-screen tour with drawings.
-   - **Space** — next linear step
-   - **A / B / C…** — choose a branch to preview
-   - **Esc** or **End tour** — exit
-7. **Queue** shows running / waiting / deferred (e.g. A/B deferred while recording).
-8. **Console** shows OCR observations/inferences, branches, preemption, errors.
+1. Open the **Loops** workspace.
+2. Toggle **Atoms** / **Molecules**. Each list row shows a short caption.
+3. In **Details**, switch **Basic** vs **Detailed**.
+4. **Reload** after editing JSON. **Start selected**: atom → run once now; molecule → once chain or interval pool per `run`.
+5. **Start all enabled** — interval scheduler for every `enabled: true` atom.
+6. **Stop** / F8 ends jobs.
+7. **Walkthrough** (select a molecule first): guided tour (Space / A/B / Esc).
+8. **Queue** + **Console** as before.
 
 ### Recommended first demo — humanize upgrade loop
 
@@ -70,7 +71,7 @@ Schema: [automation-schema.md](automation-schema.md).
 
 ### Older OCR A/B demo
 
-Re-enable `automations/events/ocr_ab_tick.json` and `minute_clip.json` (`"enabled": true`), Reload, then:
+Click-logger harness (optional): re-enable `automations/events/ocr_ab_tick.json` and `minute_clip.json` (`"enabled": true`), Reload, then:
 
 1. **Click logger**, then top bar **Set anchor** on that window.
 2. Countdown **0**, method **Foreground**.
@@ -96,7 +97,7 @@ If OCR misses the wave, the name uses `xx` and the CSV stores `xx`.
 
 ## AI Batches
 
-Named information-gathering passes for review chats. See [AI-BATCH-USAGE.md](AI-BATCH-USAGE.md) and [examples/ai-batch-spec.json](../examples/ai-batch-spec.json).
+Named information-gathering passes for review chats. See [AI-BATCH-USAGE.md](AI-BATCH-USAGE.md), [PROBE-MISSIONS.md](PROBE-MISSIONS.md), and [examples/ai-batch-spec.json](../examples/ai-batch-spec.json).
 
 ## Scrolling
 

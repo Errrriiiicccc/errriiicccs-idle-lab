@@ -7,8 +7,8 @@
   "notes": "POC Automations branch A \u2014 clicks the upper click-logger target once.",
   "points": [
     {
-      "nx": 0.25675675675675674,
-      "ny": 0.249269717624148,
+      "nx": 0.0,
+      "ny": 0.49756572541382665,
       "delay_ms": 50,
       "hold_ms": 50,
       "button": "left",

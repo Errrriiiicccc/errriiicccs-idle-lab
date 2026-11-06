@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "roots": [
+    {
+      "key": "O",
+      "label": "Observe",
+      "description": "Screen Map capture while anchored.",
+      "children": [
+        {
+          "key": "1",
+          "label": "Start batch",
+          "description": "Create a Screen Map batch and arm capture.",
+          "action": { "type": "observe_start", "title": "Flight deck" }
+        },
+        {
+          "key": "2",
+          "label": "Capture shot",
+          "description": "Grab the anchored window into the active batch.",
+          "action": { "type": "observe_shot" }
+        },
+        {
+          "key": "3",
+          "label": "End batch",
+          "description": "Close the active Screen Map batch.",
+          "action": { "type": "observe_end" }
+        }
+      ]
+    },
+    {
+      "key": "C",
+      "label": "Clicks",
+      "description": "One-shot HUD / preset taps.",
+      "children": [
+        {
+          "key": "1",
+          "label": "Currency toggle",
+          "description": "Flip top HUD balances ↔ /min.",
+          "action": { "type": "play_preset", "preset": "currency toggle" }
+        },
+        {
+          "key": "2",
+          "label": "Gem box",
+          "description": "Single tap on the gem box.",
+          "action": { "type": "play_preset", "preset": "gem box tap" }
+        }
+      ]
+    },
+    {
+      "key": "N",
+      "label": "Nav",
+      "description": "Upgrade tab + list scroll (tab-agnostic).",
+      "children": [
+        {
+          "key": "1",
+          "label": "Ensure Attack",
+          "description": "Open Attack if needed (atom once).",
+          "action": { "type": "start_event", "event": "ensure_attack_tab" }
+        },
+        {
+          "key": "2",
+          "label": "Scroll down 1",
+          "description": "One tile-row down on the open list.",
+          "action": { "type": "start_event", "event": "list_scroll_down_1" }
+        },
+        {
+          "key": "3",
+          "label": "Scroll up 1",
+          "description": "One tile-row up on the open list.",
+          "action": { "type": "start_event", "event": "list_scroll_up_1" }
+        }
+      ]
+    },
+    {
+      "key": "A",
+      "label": "Atoms",
+      "description": "Run-once procedures (no interval wait).",
+      "children": [
+        {
+          "key": "1",
+          "label": "Stat collect",
+          "description": "One CSV instrumentation row now.",
+          "action": { "type": "start_event", "event": "stat_collect" }
+        },
+        {
+          "key": "2",
+          "label": "Status + buy",
+          "description": "Panel status, gems, Health then Attack buys.",
+          "action": { "type": "start_event", "event": "endgame_status_buy" }
+        }
+      ]
+    },
+    {
+      "key": "M",
+      "label": "Molecules",
+      "description": "Packs — interval pools or once chains.",
+      "children": [
+        {
+          "key": "1",
+          "label": "Endgame phase loop",
+          "description": "Interval: status+buy + stats + b-roll.",
+          "action": { "type": "start_collection", "collection": "endgame_phase_loop" }
+        },
+        {
+          "key": "2",
+          "label": "Stat collecting",
+          "description": "Interval: stat collect + 5-min b-roll.",
+          "action": { "type": "start_collection", "collection": "stat_collecting" }
+        },
+        {
+          "key": "3",
+          "label": "Endgame tier1",
+          "description": "Interval: status+buy + minute stats.",
+          "action": { "type": "start_collection", "collection": "endgame_tier1" }
+        },
+        {
+          "key": "4",
+          "label": "Start all enabled",
+          "description": "Interval pool: every atom with enabled:true.",
+          "action": { "type": "start_enabled_loops" }
+        }
+      ]
+    }
+  ]
+}

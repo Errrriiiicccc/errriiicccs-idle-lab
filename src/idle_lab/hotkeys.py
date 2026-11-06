@@ -9,6 +9,7 @@ import threading
 from ctypes import wintypes
 
 from idle_lab import win32_api
+from idle_lab.flight_deck.keys import DEFAULT_EXPAND_VK, menu_token_from_vk
 
 WH_KEYBOARD_LL = 13
 WH_MOUSE_LL = 14
@@ -23,6 +24,9 @@ VK_SPACE = 0x20
 VK_ESCAPE = 0x1B
 VK_F6 = 0x75
 VK_F7 = 0x76
+VK_F8 = 0x77
+VK_0 = 0x30
+VK_9 = 0x39
 VK_A = 0x41
 VK_Z = 0x5A
 LLKHF_UP = 0x80
@@ -59,6 +63,15 @@ class HookFlags:
         self.title_dialog_open = False
         self.screenshot_busy = False
         self.walkthrough_active = False
+        # True while Loops / Missions / collection / playback / etc. can be Esc-stopped.
+        self.stoppable = False
+        # Flight deck: open HUD, nested hotkey menu, or waiting for remap key.
+        self.flight_deck_open = False
+        self.flight_deck_expanded = False
+        self.flight_deck_remap = False
+        # When True (anchored), expand VK is captured even if the deck window is hidden.
+        self.flight_deck_expand_armed = False
+        self.flight_deck_expand_vk = DEFAULT_EXPAND_VK
         self.our_pid = os.getpid()
 
 
@@ -78,6 +91,9 @@ class InputHooks:
         self._esc_down = False
         self._f6_down = False
         self._f7_down = False
+        self._f8_down = False
+        self._expand_down = False
+        self._menu_down: set[int] = set()
         self._swallow_up = False
         self._letter_down: set[int] = set()
 
@@ -154,7 +170,25 @@ class InputHooks:
         is_up = bool(data.flags & LLKHF_UP)
         vk = int(data.vkCode)
         swallow = False
-        if vk == VK_SPACE:
+        # Remap expand key: next non-modifier keydown becomes the binding.
+        if self.state.flight_deck_remap and vk != VK_ESCAPE:
+            if is_up:
+                return 1
+            swallow = True
+            self.state.flight_deck_remap = False
+            self.events.put(("flight_deck_remap_key", vk))
+            return 1
+        if vk == VK_SPACE and self.state.flight_deck_expanded:
+            # Flagship menu key while the flight-deck tree is open.
+            swallow = True
+            if is_up:
+                self._space_down = False
+            elif not self._space_down:
+                self._space_down = True
+                token = menu_token_from_vk(VK_SPACE)
+                if token is not None:
+                    self.events.put(("flight_deck_menu_key", token))
+        elif vk == VK_SPACE:
             # Pass Space through while a title dialog is open so titles can include spaces.
             if self.state.title_dialog_open:
                 pass
@@ -194,6 +228,10 @@ class InputHooks:
                     or self.state.playback
                     or self.state.screenshot_mode
                     or self.state.walkthrough_active
+                    or self.state.stoppable
+                    or self.state.flight_deck_open
+                    or self.state.flight_deck_expanded
+                    or self.state.flight_deck_remap
                 )
                 if is_up:
                     self._esc_down = False
@@ -203,6 +241,31 @@ class InputHooks:
                     self.events.put(("escape",))
                 elif armed:
                     swallow = True
+        elif vk == int(self.state.flight_deck_expand_vk) and (
+            self.state.flight_deck_expand_armed
+            or self.state.flight_deck_open
+            or self.state.flight_deck_expanded
+        ):
+            # Capture expand while anchored so BlueStacks never sees the default bind.
+            # Handled before menu keys so expand always toggles rather than navigating.
+            swallow = True
+            if is_up:
+                self._expand_down = False
+            elif not self._expand_down:
+                self._expand_down = True
+                self.events.put(("flight_deck_expand",))
+        elif self.state.flight_deck_expanded and (
+            (VK_A <= vk <= VK_Z) or (VK_0 <= vk <= VK_9) or menu_token_from_vk(vk) is not None
+        ):
+            # Nested hotkey menu: swallow and deliver tokens; never forward to the target.
+            swallow = True
+            if is_up:
+                self._menu_down.discard(vk)
+            elif vk not in self._menu_down:
+                self._menu_down.add(vk)
+                token = menu_token_from_vk(vk)
+                if token is not None:
+                    self.events.put(("flight_deck_menu_key", token))
         elif self.state.walkthrough_active and VK_A <= vk <= VK_Z:
             swallow = True
             if is_up:
@@ -225,6 +288,14 @@ class InputHooks:
             elif not self._f7_down:
                 self._f7_down = True
                 self.events.put(("f7",))
+        elif vk == VK_F8:
+            # Global Stop all — always captured while Idle Lab is open (like F6/F7).
+            swallow = True
+            if is_up:
+                self._f8_down = False
+            elif not self._f8_down:
+                self._f8_down = True
+                self.events.put(("f8",))
         if swallow:
             return 1
         return self._next(self._kb_hook, n_code, w_param, l_param)

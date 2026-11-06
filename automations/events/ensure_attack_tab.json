@@ -1,0 +1,18 @@
+{
+  "id": "ensure_attack_tab",
+  "title": "Ensure Attack tab",
+  "version": 1,
+  "enabled": false,
+  "priority": 45,
+  "timing": {"type": "interval", "every_ms": 60000},
+  "description": "Atom: open Attack upgrades if needed (skip click when already on Attack).",
+  "notes": "Used by once-molecules like scroll_probe_once.",
+  "actions": [
+    {
+      "type": "ensure_upgrade_tab",
+      "tab": "attack",
+      "prefix": "ensure_attack",
+      "description": "Observe panel; switch to Attack only if needed."
+    }
+  ]
+}

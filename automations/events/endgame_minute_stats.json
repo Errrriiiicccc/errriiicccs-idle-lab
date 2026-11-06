@@ -85,14 +85,14 @@
       "type": "ocr",
       "roi": "coins_roi",
       "variable": "coins",
-      "parse_as": "currency",
+      "parse_as": "currency_balance",
       "description": "Read coin balance (assumes HUD is in balances mode)."
     },
     {
       "type": "ocr",
       "roi": "diamonds_roi",
       "variable": "diamonds",
-      "parse_as": "currency",
+      "parse_as": "currency_int",
       "description": "Read diamond / gem stock (playbook: stays stock across toggle)."
     },
     {
@@ -138,14 +138,14 @@
           "type": "ocr",
           "roi": "coins_per_min_roi",
           "variable": "coins_per_min",
-          "parse_as": "currency",
+          "parse_as": "currency_rate",
           "description": "Read coins per minute."
         },
         {
           "type": "ocr",
           "roi": "cash_per_min_roi",
           "variable": "cash_per_min",
-          "parse_as": "currency",
+          "parse_as": "currency_rate",
           "description": "Read cash per minute."
         },
         {
