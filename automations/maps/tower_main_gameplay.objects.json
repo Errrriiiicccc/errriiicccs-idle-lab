@@ -20,7 +20,7 @@
     "fling_down": "G",
     "stat_collect": "V",
     "refresh": "B",
-    "toggle_legend": "D"
+    "describe": "D"
   },
   "kind_templates": {
     "button": {

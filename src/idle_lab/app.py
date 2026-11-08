@@ -1417,10 +1417,10 @@ class App(ctk.CTk):
             except Exception:
                 pass
 
-    def _live_control_legend_changed(self, show_hotkeys: bool) -> None:
+    def _live_control_legend_changed(self, show_descriptors: bool) -> None:
         if getattr(self, "flight_deck", None) is None:
             return
-        self.flight_deck.set_live_control_legend(bool(show_hotkeys))
+        self.flight_deck.set_live_control_legend(bool(show_descriptors))
 
     def _live_control_pause_changed(self, paused: bool) -> None:
         self.hooks.state.live_control_paused = bool(paused)
@@ -1472,6 +1472,7 @@ class App(ctk.CTk):
             return
         try:
             self.live_control.enter(evidence=False)
+            self.overlay.set_markers([], False)
             self.hooks.state.live_control_active = True
             self.hooks.state.live_control_paused = False
             self._live_control_owns_observation = False
@@ -1501,6 +1502,7 @@ class App(ctk.CTk):
             return
         try:
             self.live_control.enter(evidence=True)
+            self.overlay.set_markers([], False)
             self.hooks.state.live_control_active = True
             self.hooks.state.live_control_paused = False
             self._live_control_owns_observation = True
@@ -1765,7 +1767,9 @@ class App(ctk.CTk):
         return []
 
     def _place_markers(self, rect) -> None:
-        if self.player.is_active:
+        # Bench point markers are the old autoclicker circles — hide during playback
+        # and while Live Control owns the anchor surface.
+        if self.player.is_active or self.live_control.active:
             self.overlay.set_markers([], False)
             return
         points = self._edited_points()

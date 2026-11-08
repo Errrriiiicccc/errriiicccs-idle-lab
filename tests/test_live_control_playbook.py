@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 from idle_lab.live_control.buy_detect import BuyGridDetection, DetectedBuySlot
 from idle_lab.live_control.controller import LiveControlController
 from idle_lab.live_control.objects import default_object_map_path, load_object_map
-from idle_lab.live_control.overlay import LiveControlOverlay
+from idle_lab.live_control.overlay import LiveControlOverlay, _Box, _DescribeLayout, _MARKER_R
 from idle_lab.live_control.playbook import default_playbook_path, load_playbook
 from idle_lab.models import Rect
 from idle_lab.presets import project_root
@@ -28,7 +28,7 @@ class LiveControlPlaybookTests(unittest.TestCase):
         self.assertEqual(pb.action_for_token("F"), "scroll_down")
         self.assertEqual(pb.action_for_token("T"), "fling_up")
         self.assertEqual(pb.action_for_token("G"), "fling_down")
-        self.assertEqual(pb.action_for_token("D"), "toggle_legend")
+        self.assertEqual(pb.action_for_token("D"), "describe")
         self.assertEqual(len(pb.buy_slots("attack")), 6)
         self.assertEqual(pb.buy_slots("attack")[0].label, "Damage")
         self.assertIn("defense", pb.tabs)
@@ -204,19 +204,25 @@ class LiveControlScrollModelTests(unittest.TestCase):
         self.assertAlmostEqual(click.call_args.kwargs["nx"], 0.32)
         self.assertAlmostEqual(click.call_args.kwargs["ny"], 0.74)
 
-    def test_d_toggles_legend_icons_to_hotkeys(self) -> None:
+    def test_d_hold_shows_descriptors_release_clears(self) -> None:
         noted: list[bool] = []
         ctrl = self._controller()
         ctrl.on_legend_change = noted.append
         with patch.object(ctrl, "_repaint") as repaint:
             self.assertTrue(ctrl.handle_key("D", phase="down"))
-        self.assertTrue(ctrl.show_hotkeys)
+        self.assertTrue(ctrl.show_descriptors)
         self.assertEqual(noted, [True])
         repaint.assert_called_once()
-        with patch.object(ctrl, "_repaint"):
-            self.assertTrue(ctrl.handle_key("D", phase="down"))
-        self.assertFalse(ctrl.show_hotkeys)
+        with patch.object(ctrl, "_repaint") as repaint_up:
+            self.assertTrue(ctrl.handle_key("D", phase="up"))
+        self.assertFalse(ctrl.show_descriptors)
         self.assertEqual(noted, [True, False])
+        repaint_up.assert_called_once()
+        # Second down while already clear is a no-op until held again.
+        with patch.object(ctrl, "_repaint") as repaint_again:
+            self.assertTrue(ctrl.handle_key("D", phase="down"))
+        self.assertTrue(ctrl.show_descriptors)
+        repaint_again.assert_called_once()
 
     def test_pause_grays_out_and_blocks_actions(self) -> None:
         pauses: list[bool] = []
@@ -247,6 +253,37 @@ class LiveControlScrollModelTests(unittest.TestCase):
         self.assertLessEqual(step_up - fling_up, 0.05)
         self.assertLessEqual(fling_down - step_down, 0.05)
         self.assertLessEqual(fling_up, 0.63)
+
+
+class DescribeLayoutTests(unittest.TestCase):
+    def test_label_pathfinds_around_blocking_icon(self) -> None:
+        """Tab-mid attach must not park the label box on a buy icon sitting above it."""
+
+        layout = _DescribeLayout(bounds=_Box(0, 0, 500, 900))
+        attach = (200.0, 820.0)
+        layout.add_circle(*attach, _MARKER_R)
+        blocker = (200.0, 760.0)  # straight-up buy-5 style collision
+        layout.add_circle(*blocker, _MARKER_R)
+        layout.add_circle(140.0, 760.0, _MARKER_R)
+        layout.add_circle(260.0, 760.0, _MARKER_R)
+        half_w, half_h = 72.0, 12.0
+        placed = layout.place(attach, half_w, half_h, prefer="up")
+        self.assertIsNotNone(placed)
+        assert placed is not None
+        cx, cy, _mode = placed
+        box = _Box(cx - half_w, cy - half_h, cx + half_w, cy + half_h)
+        self.assertFalse(box.contains_point(*blocker))
+        self.assertFalse(
+            box.overlaps(
+                _Box(
+                    blocker[0] - _MARKER_R - 8,
+                    blocker[1] - _MARKER_R - 8,
+                    blocker[0] + _MARKER_R + 8,
+                    blocker[1] + _MARKER_R + 8,
+                )
+            )
+        )
+        self.assertLess(cy, attach[1])
 
 
 if __name__ == "__main__":

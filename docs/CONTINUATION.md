@@ -80,6 +80,6 @@ On any CSV, observation digest, OCR bench, or `run_report.json` that touches HUD
 
 ## Suggested next tasks
 
-1. Smoke Live Control: Restart → anchor → **U→1** → clicks show keys, non-clicks show icons; bold deck line **D = SWITCH ICONS TO HOTKEYS**; D flips marks; Esc exit.
+1. Smoke Live Control: Restart → anchor → **U→1** → clicks show keys, non-clicks show icons; bold deck line **HOLD D = DESCRIBE**; hold D for hotkeys + HV descriptors; Esc exit.
 2. Optional: taxonomy / flight-deck leaf to Start a named mission by slug.
 3. Perception resume (only if bad data): Missions → OCR fixture bench; wire `detect_hud_currency_mode` — [HANDOFF-PERCEPTION.md](HANDOFF-PERCEPTION.md).

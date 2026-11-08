@@ -112,7 +112,7 @@ class PromptTests(unittest.TestCase):
             text,
             "LCO is active\n"
             "Clicks show hotkeys · scroll / stat / refresh show icons\n"
-            "` pauses · Esc exits LCO",
+            "Hold D to describe · ` pauses · Esc exits LCO",
         )
         # Accordion leave labels must not leak into the LCO surface.
         self.assertNotIn("Enter Live Control", text)
@@ -124,10 +124,10 @@ class PromptTests(unittest.TestCase):
         self.assertIn("typing", paused.lower())
 
     def test_live_control_legend_hint_is_bold_d_instruction(self) -> None:
-        self.assertEqual(live_control_legend_hint(), "D = SWITCH ICONS TO HOTKEYS")
+        self.assertEqual(live_control_legend_hint(), "HOLD D = DESCRIBE")
         self.assertEqual(
-            live_control_legend_hint(show_hotkeys=True),
-            "D = SWITCH HOTKEYS BACK TO ICONS",
+            live_control_legend_hint(show_descriptors=True),
+            "HOLDING D = DESCRIBE",
         )
         self.assertEqual(live_control_legend_hint(paused=True), "` = RESUME LCO")
 

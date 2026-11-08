@@ -67,14 +67,14 @@ def inactive_prompt(*, activate_key: str) -> str:
     return f"Activate Flight Deck [{activate_key}]"
 
 
-def live_control_legend_hint(*, show_hotkeys: bool = False, paused: bool = False) -> str:
-    """Bold flight-deck headline while LCO is on — D flips icon ↔ hotkey marks."""
+def live_control_legend_hint(*, show_descriptors: bool = False, paused: bool = False) -> str:
+    """Bold flight-deck headline while LCO is on — hold D for descriptors."""
 
     if paused:
         return "` = RESUME LCO"
-    if show_hotkeys:
-        return "D = SWITCH HOTKEYS BACK TO ICONS"
-    return "D = SWITCH ICONS TO HOTKEYS"
+    if show_descriptors:
+        return "HOLDING D = DESCRIBE"
+    return "HOLD D = DESCRIBE"
 
 
 def live_control_active_prompt(*, paused: bool = False) -> str:
@@ -88,7 +88,7 @@ def live_control_active_prompt(*, paused: bool = False) -> str:
     return (
         "LCO is active\n"
         "Clicks show hotkeys · scroll / stat / refresh show icons\n"
-        "` pauses · Esc exits LCO"
+        "Hold D to describe · ` pauses · Esc exits LCO"
     )
 
 

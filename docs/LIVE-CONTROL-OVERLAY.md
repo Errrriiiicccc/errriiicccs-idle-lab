@@ -8,7 +8,7 @@
 
 Keyboard-driven overlay over **main gameplay**. Positions come from the typed object map (tabs, panels, scroll lists, buy buttons), not live observation folders — except Troubleshoot, which also writes Observation evidence.
 
-Overlay marks: **clicks show hotkeys**; **non-clicks show icons**. Press **D** to flip non-click marks to their hotkeys (and back). Flight deck shows a bold **D = …** line while LCO is on.
+Overlay marks: **clicks show hotkeys**; **non-clicks show icons**. **Hold D** to flip icons to hotkeys and paint HV diagram descriptors (group labels for tabs / buys / scroll; singleton stems for V and B). Flight deck shows a bold **HOLD D = DESCRIBE** line while LCO is on.
 
 ## Hotkeys (default)
 
@@ -16,11 +16,11 @@ Overlay marks: **clicks show hotkeys**; **non-clicks show icons**. Press **D** t
 | --- | --- | --- |
 | Q / W / E | Attack / Defense / Utility tab (no retap if already active) | Hotkey (click) |
 | 1–6 | Buy on the visible 2×3 grid | Hotkey (click) |
-| R / F | One card-row drag | ▲ / ▼ (or R / F after D) |
-| T / G | Momentum fling toward list top / bottom | stacked ▲▲▲ / ▼▼▼ (or T / G after D) |
-| V | Stat collect atom once | ★ (or V after D) |
-| B | Redetect panel + buy grid (no scroll) | ↻ (or B after D) |
-| D | Toggle non-click icons ↔ hotkeys | — |
+| R / F | One card-row drag | ▲ / ▼ (R / F while holding D) |
+| T / G | Momentum fling toward list top / bottom | stacked ▲▲▲ / ▼▼▼ (T / G while holding D) |
+| V | Stat collect atom once | clipboard (V while holding D) |
+| B | Redetect panel + buy grid (no scroll) | ↻ (B while holding D) |
+| D | Hold: icons → hotkeys + HV descriptors | — |
 | ` | Pause / resume LCO (gray inert marks; session stays) | — |
 | Esc | Exit Live Control (and stop Observation if Troubleshoot owns it) |
 
@@ -45,7 +45,7 @@ Upgrade lists are short **continuous** lists, not discrete pages. **R/F** move o
 
 After enter / tab / **R/F** / **B**, Live Control **detects card rows** from the screenshot (edge energy). Playbook coords are fallback when detection finds nothing.
 
-**Q/W/E** seek list top after the tab tap (game remembers per-tab scroll). **T** flings toward list top. **B** only re-reads the current frame (panel + buy slots) — hit it when markers look misaligned without changing scroll. **D** reveals which keys drive the icon marks. **`** pauses (gray / inert, typing passes through) without exiting; **`** again resumes; **Esc** exits.
+**Q/W/E** seek list top after the tab tap (game remembers per-tab scroll). **T** flings toward list top. **B** only re-reads the current frame (panel + buy slots) — hit it when markers look misaligned without changing scroll. **Hold D** describes related marks with HV connector lines and label rectangles (and flips icons to their keys). **`** pauses (gray / inert, typing passes through) without exiting; **`** again resumes; **Esc** exits.
 
 Amber circles = geometry unsure (mid-scroll / odd gap). Buys still fire — amber is advisory only.
 

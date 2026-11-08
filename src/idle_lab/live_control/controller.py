@@ -75,7 +75,7 @@ class LiveControlController:
         self.active = False
         self.evidence = False
         self.paused = False
-        self.show_hotkeys = False
+        self.show_descriptors = False
         self.playbook: LiveControlPlaybook | None = None
         self.panel_open = False
         self.tab: str | None = None
@@ -122,7 +122,7 @@ class LiveControlController:
         self.tab = panel.tab if panel.panel_open else None
         self.evidence = bool(evidence)
         self.paused = False
-        self.show_hotkeys = False
+        self.show_descriptors = False
         self.active = True
         self._notify_legend()
         self._notify_pause()
@@ -158,7 +158,7 @@ class LiveControlController:
         self.active = False
         self.evidence = False
         self.paused = False
-        self.show_hotkeys = False
+        self.show_descriptors = False
         self.overlay.hide()
         self._log(f"Live Control OFF ({reason})", "warn")
         self.playbook = None
@@ -181,6 +181,8 @@ class LiveControlController:
         action = self.playbook.action_for_token(token)
         if action is None:
             return False
+        if action == "describe":
+            return self._set_describe(held=phase == "down")
         if phase != "down":
             return True
         if self.paused:
@@ -195,6 +197,9 @@ class LiveControlController:
             return False
         self.paused = not self.paused
         if self.paused:
+            if self.show_descriptors:
+                self.show_descriptors = False
+                self._notify_legend()
             self._log("Live Control paused — marks inert. ` resumes · Esc exits.", "warn")
             self._repaint("Paused")
         else:
@@ -258,8 +263,9 @@ class LiveControlController:
             self._do_stat_collect()
         elif action == "refresh":
             self._do_refresh()
-        elif action == "toggle_legend":
-            self._toggle_legend()
+        elif action == "describe":
+            # Hold is handled in handle_key; never fire as a one-shot dispatch.
+            return
         else:
             raise LiveControlError(f"unknown Live Control action: {action}")
 
@@ -267,7 +273,7 @@ class LiveControlController:
         if self.on_legend_change is None:
             return
         try:
-            self.on_legend_change(bool(self.show_hotkeys))
+            self.on_legend_change(bool(self.show_descriptors))
         except Exception as exc:  # noqa: BLE001
             self._log(f"Live Control legend notify failed: {exc}", "warn")
 
@@ -279,15 +285,20 @@ class LiveControlController:
         except Exception as exc:  # noqa: BLE001
             self._log(f"Live Control pause notify failed: {exc}", "warn")
 
-    def _toggle_legend(self) -> None:
+    def _set_describe(self, *, held: bool) -> bool:
+        """Hold D: show hotkey marks + HV descriptors; release clears."""
+
         if self.paused:
-            self._log("Live Control paused — press ` to resume.", "warn")
-            return
-        self.show_hotkeys = not self.show_hotkeys
-        mode = "hotkeys" if self.show_hotkeys else "icons"
-        self._log(f"Legend → {mode}", "ok")
+            if held:
+                self._log("Live Control paused — press ` to resume.", "warn")
+            return True
+        want = bool(held)
+        if self.show_descriptors == want:
+            return True
+        self.show_descriptors = want
         self._notify_legend()
-        self._repaint(f"Legend · {mode}")
+        self._repaint("Describe" if want else "Describe off")
+        return True
 
     def _anchor_ready(self) -> tuple[int, Rect]:
         _title, hwnd, rect = self.get_anchor()
@@ -729,7 +740,7 @@ class LiveControlController:
             status=status,
             surface_ok=True,
             live_slots=self.live_slots,
-            show_hotkeys=self.show_hotkeys,
+            show_descriptors=self.show_descriptors,
             paused=self.paused,
         )
         self.overlay.show(self.playbook, rect, state)

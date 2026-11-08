@@ -133,7 +133,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._lab_visible = True
         self._show_descriptions = False
         self._live_control_active = False
-        self._lco_show_hotkeys = False
+        self._lco_show_descriptors = False
         self._lco_paused = False
         self._expand_vk = DEFAULT_EXPAND_VK
         self._keymap: FlightDeckKeymap | None = None
@@ -325,17 +325,17 @@ class FlightDeckWindow(ctk.CTkToplevel):
             # Leave the U section when returning — Esc already means exit LCO.
             self._open_menu_key = None
             self._show_descriptions = False
-            self._lco_show_hotkeys = False
+            self._lco_show_descriptors = False
             self._lco_paused = False
         if not self._live_control_active:
-            self._lco_show_hotkeys = False
+            self._lco_show_descriptors = False
             self._lco_paused = False
         self._render_chrome()
 
-    def set_live_control_legend(self, show_hotkeys: bool) -> None:
-        """Update the bold D hint when LCO toggles icon ↔ hotkey marks."""
+    def set_live_control_legend(self, show_descriptors: bool) -> None:
+        """Update the bold D hint while LCO hold-describe is active."""
 
-        self._lco_show_hotkeys = bool(show_hotkeys)
+        self._lco_show_descriptors = bool(show_descriptors)
         if self._live_control_active:
             self._render_menu()
             self._fit_live_control_size()
@@ -723,7 +723,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
             hint_color = _MUTED if self._lco_paused else _WARN
             self.menu_path.configure(
                 text=live_control_legend_hint(
-                    show_hotkeys=self._lco_show_hotkeys,
+                    show_descriptors=self._lco_show_descriptors,
                     paused=self._lco_paused,
                 ),
                 text_color=hint_color,

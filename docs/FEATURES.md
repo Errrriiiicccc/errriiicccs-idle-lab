@@ -25,7 +25,7 @@ Product purpose and north star: [VISION.md](VISION.md). This file lists **what t
 - While a run is active: Pause / Stop + run name/status (menu still available).
 - **Esc peel** (active only): Live Control exit → remap cancel → close open letter-section → close-confirm. (The root hotkey list is not a peel layer.)
 - Accordion catalog [`automations/flight_deck.json`](../automations/flight_deck.json) (separate from Lab Loops taxonomy): letters **U/O/C/N/A/M** open one section; digits run leaves; **X** collapses section/menu; **D** descriptions. Max two keys deep. No Space flagship.
-- **Live Control Overlay (U→1 enter / U→2 troubleshoot):** overlay from the Tower object map [`automations/maps/tower_main_gameplay.objects.json`](../automations/maps/tower_main_gameplay.objects.json). Clicks show hotkeys (Q/W/E, 1–6); non-clicks show icons (scroll / ★ stat / ↻ refresh). **D** flips icons ↔ hotkeys. **`** pauses (gray inert) / resumes; Esc exits. Detail: [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md), [OBJECT-MAP.md](OBJECT-MAP.md).
+- **Live Control Overlay (U→1 enter / U→2 troubleshoot):** overlay from the Tower object map [`automations/maps/tower_main_gameplay.objects.json`](../automations/maps/tower_main_gameplay.objects.json). Clicks show hotkeys (Q/W/E, 1–6); non-clicks show icons (scroll / clipboard stat / ↻ refresh). **Hold D** flips icons → hotkeys and paints HV descriptors. **`** pauses (gray inert) / resumes; Esc exits. Detail: [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md), [OBJECT-MAP.md](OBJECT-MAP.md).
 - **Humanize** defaults to **Off** (precision). Menu still offers Light/Medium/Heavy for experiments.
 
 ## Bench (presets)
