@@ -145,19 +145,40 @@
                       "id": "loops.events.real.gameplay.status_buy",
                       "key": "Space",
                       "label": "Status + buy",
-                      "description": "Panel status, gem check, Health then Attack.",
+                      "description": "Orchestrator: panel → gem → Health → Damage (run_event).",
                       "ref": { "kind": "event", "id": "endgame_status_buy" }
                     },
                     {
-                      "id": "loops.events.real.gameplay.stat_collect",
+                      "id": "loops.events.real.gameplay.gem_box",
                       "key": "2",
+                      "label": "Gem box check",
+                      "description": "OCR gem box; tap only if PRESENT.",
+                      "ref": { "kind": "event", "id": "gem_box_check" }
+                    },
+                    {
+                      "id": "loops.events.real.gameplay.buy_health",
+                      "key": "3",
+                      "label": "Buy Health",
+                      "description": "Defense tab → seek Health → buy one.",
+                      "ref": { "kind": "event", "id": "buy_health" }
+                    },
+                    {
+                      "id": "loops.events.real.gameplay.buy_damage",
+                      "key": "4",
+                      "label": "Buy Damage",
+                      "description": "Attack tab → seek Damage → buy one.",
+                      "ref": { "kind": "event", "id": "buy_damage" }
+                    },
+                    {
+                      "id": "loops.events.real.gameplay.stat_collect",
+                      "key": "5",
                       "label": "Stat collect",
                       "description": "One CSV row now (Start selected). Interval every 30s when in a pool.",
                       "ref": { "kind": "event", "id": "stat_collect" }
                     },
                     {
                       "id": "loops.events.real.gameplay.minute_stats",
-                      "key": "3",
+                      "key": "6",
                       "label": "Endgame minute stats",
                       "description": "Older once-a-minute stats atom (used by endgame_tier1).",
                       "ref": { "kind": "event", "id": "endgame_minute_stats" }
@@ -250,6 +271,13 @@
                       "label": "Scroll probe once",
                       "description": "Once: ensure Attack → scroll down 1 row.",
                       "ref": { "kind": "collection", "id": "scroll_probe_once" }
+                    },
+                    {
+                      "id": "loops.collections.real.main.health_damage",
+                      "key": "5",
+                      "label": "Health then Damage",
+                      "description": "Once: buy_health → buy_damage (composed buy smoke).",
+                      "ref": { "kind": "collection", "id": "health_then_damage" }
                     }
                   ]
                 }

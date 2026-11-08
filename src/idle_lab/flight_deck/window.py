@@ -17,6 +17,12 @@ from idle_lab.flight_deck.keys import (
     normalize_menu_key,
     vk_label,
 )
+from idle_lab.flight_deck.shell import (
+    ShellPhase,
+    inactive_prompt,
+    live_control_active_prompt,
+    live_control_legend_hint,
+)
 from idle_lab.models import Rect
 from idle_lab import win32_api
 
@@ -29,8 +35,12 @@ _DANGER = "#F09595"
 
 _GEOMETRY_RE = re.compile(r"^(\d+)x(\d+)([+-]\d+)([+-]\d+)$")
 
-_COLLAPSED_W = 268
+_COLLAPSED_W = 280
 _COLLAPSED_H = 56
+_INACTIVE_H = 64
+_ACTIVE_PROMPT_H = 92
+_LIVE_CONTROL_H = 156
+_QUIT_H = 78
 _EXPANDED_W = 340
 _EXPANDED_W_DETAIL = 420
 
@@ -84,12 +94,18 @@ def sanitize_geometry(value: str | None) -> str | None:
 class FlightDeckWindow(ctk.CTkToplevel):
     """Sparse in-flight HUD. Lab owns when it is shown; this window only renders."""
 
+    # CTk's Windows dark-titlebar path withdraw()s the window; resizable()
+    # schedules another pass ~10ms later. That races deck-first boot and Lab
+    # open (Lab's own titlebar update() flushes the deferred withdraw), so the
+    # deck vanishes. Prefer a mapped deck over a themed titlebar.
+    _deactivate_windows_window_header_manipulation = True
+
     def __init__(
         self,
         master: Any,
         *,
         on_close: Callable[[], None],
-        on_expand_toggle: Callable[[], None],
+        on_activate_toggle: Callable[[], None],
         on_pause: Callable[[], None],
         on_stop: Callable[[], None],
         on_geometry: Callable[[str], None] | None = None,
@@ -103,15 +119,22 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self.protocol("WM_DELETE_WINDOW", on_close)
 
         self._on_close = on_close
-        self._on_expand_toggle = on_expand_toggle
+        self._on_activate_toggle = on_activate_toggle
         self._on_pause = on_pause
         self._on_stop = on_stop
         self._on_geometry = on_geometry
         self._expanded = False
+        self._anchored = False
         self._running = False
         self._paused = False
         self._status_text = ""
+        self._prompt_text = ""
+        self._shell_phase = ShellPhase.INACTIVE
+        self._lab_visible = True
         self._show_descriptions = False
+        self._live_control_active = False
+        self._lco_show_hotkeys = False
+        self._lco_paused = False
         self._expand_vk = DEFAULT_EXPAND_VK
         self._keymap: FlightDeckKeymap | None = None
         # Accordion: which top-level menu letter is open (None = all collapsed).
@@ -123,6 +146,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._build()
         self.bind("<Configure>", self._on_configure)
         self.withdraw()
+        # Break Win32 owner link to Lab so showing Lab does not unmap this deck.
+        self.after(0, self._orphan_from_owner)
 
     def _build(self) -> None:
         self._pad = ctk.CTkFrame(self, fg_color="transparent")
@@ -142,17 +167,19 @@ class FlightDeckWindow(ctk.CTkToplevel):
         )
         self.close_button.pack(side="left")
 
-        self.expand_button = ctk.CTkButton(
+        self.activate_button = ctk.CTkButton(
             self.header,
-            text="Expand [`]",
-            width=110,
+            text="Activate Flight Deck [`]",
+            width=168,
             height=26,
             fg_color="#1E3A4A",
             hover_color="#2A5568",
             text_color=_ACCENT,
-            command=self._on_expand_toggle,
+            command=self._on_activate_toggle,
         )
-        self.expand_button.pack(side="left", padx=(6, 0))
+        self.activate_button.pack(side="left", padx=(6, 0))
+        # Alias kept for any older references during the rename.
+        self.expand_button = self.activate_button
 
         self.pause_button = ctk.CTkButton(
             self.header,
@@ -205,14 +232,121 @@ class FlightDeckWindow(ctk.CTkToplevel):
 
     def set_expand_vk(self, vk: int) -> None:
         self._expand_vk = int(vk)
-        self._sync_expand_button_label()
+        self._sync_activate_button_label()
 
-    def _sync_expand_button_label(self) -> None:
+    @property
+    def shell_phase(self) -> ShellPhase:
+        return self._shell_phase
+
+    @property
+    def anchored(self) -> bool:
+        return self._anchored
+
+    def set_shell_phase(
+        self,
+        phase: ShellPhase | str,
+        *,
+        prompt: str = "",
+        lab_visible: bool | None = None,
+        anchored: bool | None = None,
+    ) -> None:
+        self._shell_phase = phase if isinstance(phase, ShellPhase) else ShellPhase(str(phase))
+        if prompt or self._shell_phase in {ShellPhase.INACTIVE, ShellPhase.ACTIVE, ShellPhase.CLOSE_CONFIRM}:
+            self._prompt_text = prompt or self._prompt_text
+        if lab_visible is not None:
+            self._lab_visible = bool(lab_visible)
+        if anchored is not None:
+            self._anchored = bool(anchored)
+        if self._shell_phase is ShellPhase.INACTIVE:
+            self._expanded = False
+            self._open_menu_key = None
+            self._show_descriptions = False
+        elif self._shell_phase is ShellPhase.ACTIVE and self._anchored:
+            self._expanded = True
+        elif self._shell_phase is ShellPhase.ACTIVE:
+            self._expanded = False
+            self._open_menu_key = None
+            self._show_descriptions = False
+        elif self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            self._expanded = False
+            self._open_menu_key = None
+            self._show_descriptions = False
+        self._render_chrome()
+
+    def set_lab_visible(self, visible: bool) -> None:
+        self._lab_visible = bool(visible)
+        self._render_chrome()
+
+    def set_anchored(self, anchored: bool) -> None:
+        self._anchored = bool(anchored)
+        if self._shell_phase is ShellPhase.ACTIVE and self._anchored:
+            self._expanded = True
+        elif self._shell_phase is ShellPhase.ACTIVE:
+            self._expanded = False
+            self._open_menu_key = None
+        self._render_chrome()
+
+    def _sync_activate_button_label(self) -> None:
         key = vk_label(self._expand_vk)
-        if self._expanded:
-            self.expand_button.configure(text=f"Collapse [{key}]")
+        if self._live_control_active:
+            self.activate_button.configure(
+                text=f"Deactivate [{key}]",
+                state="disabled",
+            )
+        elif self._shell_phase is ShellPhase.INACTIVE:
+            self.activate_button.configure(
+                text=f"Activate Flight Deck [{key}]",
+                state="normal",
+            )
         else:
-            self.expand_button.configure(text=f"Expand [{key}]")
+            self.activate_button.configure(
+                text=f"Deactivate [{key}]",
+                state="normal",
+            )
+
+    def _sync_close_button_label(self) -> None:
+        if self._live_control_active:
+            self.close_button.configure(text="Exit LCO [Esc]")
+        elif self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            self.close_button.configure(text="Stay [Esc]")
+        elif self._expanded and self._open_menu_key:
+            self.close_button.configure(text="Back [Esc]")
+        elif self._expanded and self._anchored:
+            self.close_button.configure(text="Close [Esc]")
+        else:
+            self.close_button.configure(text="Close [Esc]")
+
+    def set_live_control_active(self, active: bool) -> None:
+        """Swap accordion for the LCO status surface while overlay owns keys."""
+
+        was = self._live_control_active
+        self._live_control_active = bool(active)
+        if self._live_control_active and not was:
+            # Leave the U section when returning — Esc already means exit LCO.
+            self._open_menu_key = None
+            self._show_descriptions = False
+            self._lco_show_hotkeys = False
+            self._lco_paused = False
+        if not self._live_control_active:
+            self._lco_show_hotkeys = False
+            self._lco_paused = False
+        self._render_chrome()
+
+    def set_live_control_legend(self, show_hotkeys: bool) -> None:
+        """Update the bold D hint when LCO toggles icon ↔ hotkey marks."""
+
+        self._lco_show_hotkeys = bool(show_hotkeys)
+        if self._live_control_active:
+            self._render_menu()
+            self._fit_live_control_size()
+
+    def set_live_control_paused(self, paused: bool) -> None:
+        """Gray-out pause: ` toggles; Esc still exits the whole LCO session."""
+
+        self._lco_paused = bool(paused)
+        if self._live_control_active:
+            self._render_menu()
+            self._fit_live_control_size()
 
     def set_keymap(self, keymap: FlightDeckKeymap | None) -> None:
         self._keymap = keymap
@@ -230,6 +364,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._render_chrome()
 
     def set_expanded(self, expanded: bool) -> None:
+        if self._shell_phase is not ShellPhase.ACTIVE or not self._anchored:
+            return
         self._expanded = bool(expanded)
         if not self._expanded:
             self._open_menu_key = None
@@ -284,6 +420,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
         Returns a leaf action dict when a command is chosen. Menu stays expanded.
         """
 
+        if self._live_control_active:
+            return None
         if not self._expanded or self._keymap is None:
             return None
         norm = normalize_menu_key(token)
@@ -354,6 +492,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self.attributes("-topmost", True)
         except Exception:
             pass
+        self._orphan_from_owner()
         self._render_chrome()
 
     def hide_deck(self) -> None:
@@ -364,6 +503,16 @@ class FlightDeckWindow(ctk.CTkToplevel):
         try:
             self.lift()
             self.focus_force()
+        except Exception:
+            pass
+
+    def _orphan_from_owner(self) -> None:
+        """Detach from Lab's Win32 owner so Lab show/lift cannot unmap this deck."""
+
+        try:
+            self.update_idletasks()
+            hwnd = win32_api.widget_hwnd(self)
+            win32_api.clear_window_owner(hwnd)
         except Exception:
             pass
 
@@ -415,12 +564,22 @@ class FlightDeckWindow(ctk.CTkToplevel):
     def _fit_collapsed_size(self) -> None:
         x, y = self._xy()
         self._collapsed_pos = (x, y)
+        height = _COLLAPSED_H
+        if self._shell_phase is ShellPhase.INACTIVE:
+            height = _INACTIVE_H
+        elif self._shell_phase is ShellPhase.ACTIVE and not self._anchored:
+            height = _ACTIVE_PROMPT_H
+        elif self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            height = _QUIT_H
         try:
-            self.geometry(clamp_geometry(_COLLAPSED_W, _COLLAPSED_H, x, y))
+            self.geometry(clamp_geometry(_COLLAPSED_W, height, x, y))
         except Exception:
             pass
 
     def _fit_expanded_size(self) -> None:
+        if self._live_control_active:
+            self._fit_live_control_size()
+            return
         x, y = self._xy()
         roots = self._keymap.roots if self._keymap else []
         open_children = len(self.current_nodes())
@@ -438,6 +597,13 @@ class FlightDeckWindow(ctk.CTkToplevel):
         height = max(200, min(height, 560))
         try:
             self.geometry(clamp_geometry(width, height, x, y))
+        except Exception:
+            pass
+
+    def _fit_live_control_size(self) -> None:
+        x, y = self._xy()
+        try:
+            self.geometry(clamp_geometry(_EXPANDED_W, _LIVE_CONTROL_H, x, y))
         except Exception:
             pass
 
@@ -463,37 +629,111 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._geometry_job = self.after(400, save)
 
     def _render_chrome(self) -> None:
+        shell = self._shell_phase
+        self._sync_close_button_label()
+        self._sync_activate_button_label()
+
+        if shell is ShellPhase.INACTIVE:
+            self.pause_button.pack_forget()
+            self.stop_button.pack_forget()
+            if self.close_button.winfo_ismapped():
+                self.close_button.pack_forget()
+            if self.menu_frame.winfo_ismapped():
+                self.menu_frame.pack_forget()
+            if not self.activate_button.winfo_ismapped():
+                self.activate_button.pack(side="left", padx=(0, 0))
+            key = vk_label(self._expand_vk)
+            prompt = self._prompt_text.strip() or inactive_prompt(activate_key=key)
+            self.run_label.configure(text=prompt, text_color=_ACCENT)
+            if not self.run_label.winfo_ismapped():
+                self.run_label.pack(fill="x", pady=(4, 0))
+            self._fit_collapsed_size()
+            return
+
+        if shell is ShellPhase.CLOSE_CONFIRM:
+            self.pause_button.pack_forget()
+            self.stop_button.pack_forget()
+            if self.activate_button.winfo_ismapped():
+                self.activate_button.pack_forget()
+            if self.menu_frame.winfo_ismapped():
+                self.menu_frame.pack_forget()
+            if not self.close_button.winfo_ismapped():
+                self.close_button.pack(side="left")
+            prompt = self._prompt_text.strip() or (
+                "Close flight deck? Enter = yes · Esc = stay"
+                if self._lab_visible
+                else "Quit Idle Lab? Enter = quit · Esc = stay"
+            )
+            self.run_label.configure(text=prompt, text_color=_DANGER)
+            if not self.run_label.winfo_ismapped():
+                self.run_label.pack(fill="x", pady=(4, 0))
+            self._fit_collapsed_size()
+            return
+
+        # ACTIVE
+        if not self.close_button.winfo_ismapped():
+            self.close_button.pack(side="left")
+        if not self.activate_button.winfo_ismapped():
+            self.activate_button.pack(side="left", padx=(6, 0))
+
         if self._running:
             self.pause_button.pack(side="left", padx=(6, 0))
             self.stop_button.pack(side="left", padx=(6, 0))
             self.pause_button.configure(text="Resume (F7)" if self._paused else "Pause (F7)")
-            if self._status_text:
-                color = _WARN if self._paused else _OK
-                self.run_label.configure(text=self._status_text, text_color=color)
-                if not self.run_label.winfo_ismapped():
-                    self.run_label.pack(fill="x", pady=(4, 0))
         else:
             self.pause_button.pack_forget()
             self.stop_button.pack_forget()
-            if self.run_label.winfo_ismapped():
-                self.run_label.pack_forget()
 
-        # Expand/Collapse stays available even while a run is active.
-        if not self.expand_button.winfo_ismapped():
-            self.expand_button.pack(side="left", padx=(6, 0))
-        self._sync_expand_button_label()
-
-        if self._expanded:
+        if self._anchored and self._expanded:
+            if self._live_control_active:
+                self.run_label.configure(text="", text_color=_MUTED)
+                if self.run_label.winfo_ismapped():
+                    self.run_label.pack_forget()
+                if not self.menu_frame.winfo_ismapped():
+                    self.menu_frame.pack(fill="both", expand=True, pady=(6, 0))
+                self._render_menu()
+                self._fit_live_control_size()
+                return
+            if self._running and self._status_text:
+                color = _WARN if self._paused else _OK
+                self.run_label.configure(text=self._status_text, text_color=color)
+            elif not self._lab_visible:
+                self.run_label.configure(text="I = open Lab · R = restart", text_color=_MUTED)
+            else:
+                self.run_label.configure(text="R = restart", text_color=_MUTED)
+            if not self.run_label.winfo_ismapped():
+                self.run_label.pack(fill="x", pady=(4, 0))
             if not self.menu_frame.winfo_ismapped():
                 self.menu_frame.pack(fill="both", expand=True, pady=(6, 0))
             self._render_menu()
             self._fit_expanded_size()
-        else:
-            if self.menu_frame.winfo_ismapped():
-                self.menu_frame.pack_forget()
-            self._fit_collapsed_size()
+            return
+
+        # Active, not anchored (or menu collapsed): prompt for A / I / Enter.
+        if self.menu_frame.winfo_ismapped():
+            self.menu_frame.pack_forget()
+        prompt = self._prompt_text.strip() or "A = set anchor"
+        self.run_label.configure(text=prompt, text_color=_ACCENT)
+        if not self.run_label.winfo_ismapped():
+            self.run_label.pack(fill="x", pady=(4, 0))
+        self._fit_collapsed_size()
 
     def _render_menu(self) -> None:
+        if self._live_control_active:
+            hint_color = _MUTED if self._lco_paused else _WARN
+            self.menu_path.configure(
+                text=live_control_legend_hint(
+                    show_hotkeys=self._lco_show_hotkeys,
+                    paused=self._lco_paused,
+                ),
+                text_color=hint_color,
+                font=ctk.CTkFont(size=13, weight="bold"),
+            )
+            self.menu_list.configure(text=live_control_active_prompt(paused=self._lco_paused))
+            self._sync_close_button_label()
+            return
+        # Restore path styling when leaving the LCO surface.
+        self.menu_path.configure(text_color=_ACCENT, font=ctk.CTkFont(size=12, weight="bold"))
         if self._keymap is None:
             self.menu_path.configure(text="No flight catalog loaded")
             self.menu_list.configure(text="")
@@ -529,3 +769,4 @@ class FlightDeckWindow(ctk.CTkToplevel):
         desc_state = "on — press D to hide" if self._show_descriptions else "press D to show"
         lines.append(f"  {DESCRIBE_TOKEN:<4} Descriptions ({desc_state})")
         self.menu_list.configure(text="\n".join(lines) if lines else "  (empty)")
+        self._sync_close_button_label()

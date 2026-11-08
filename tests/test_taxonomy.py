@@ -49,7 +49,10 @@ class TaxonomyLoadTests(unittest.TestCase):
         assert observe is not None
         shot = keymap.child_for_key(observe.children, "2")
         assert shot is not None
-        self.assertEqual(shot.action["type"], "observe_shot")
+        self.assertEqual(shot.action["type"], "observation_mark")
+        start = keymap.child_for_key(observe.children, "1")
+        assert start is not None
+        self.assertEqual(start.action["type"], "observation_start")
         # No Space flagship on the deck catalog.
         for root_node in keymap.roots:
             self.assertNotEqual(root_node.key.strip().lower(), "space")

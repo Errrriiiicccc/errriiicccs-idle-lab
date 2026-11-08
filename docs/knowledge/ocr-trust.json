@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "updated": "2026-11-06",
+  "policy": [
+    "Perception feature work is paused; this file is the bad-data watchlist.",
+    "When reviewing CSV rows, observation digests, OCR fixture benches, or run_report.json: auto-check every field with status=watching.",
+    "Skip fields with status=trusted unless the user reports a miss or a fixture fails.",
+    "To promote watching → trusted: fixture cases for that field stay green AND at least one live stat_collect (or equivalent) row matches the HUD for that field. Then set status=trusted, set trusted_at, clear watch_notes, and stop auto-reviewing it.",
+    "On a live miss or fixture fail for a trusted field: set status=watching again and note the failure class."
+  ],
+  "bench": {
+    "mission": "ocr-fixture-bench",
+    "unit_tests": ["tests.test_ocr_parse", "tests.test_ocr_fixtures", "tests.test_hud_mode"],
+    "live_atom": "stat_collect",
+    "live_csv": "runs/stat_collect.csv"
+  },
+  "fields": {
+    "wave": {
+      "status": "watching",
+      "parse_as": "wave",
+      "roi": "wave_tower_roi",
+      "fixtures": ["wave_38.png", "wave_87.png"],
+      "live_signal": "stat_collect.wave_number",
+      "watch_notes": "Fixture-green; need one live HUD match before trusted."
+    },
+    "coins_balance": {
+      "status": "watching",
+      "parse_as": "currency_balance",
+      "roi": "coins_roi",
+      "fixtures": ["coins_11.28K.png", "coins_9.77K.png", "coins_7.91K.png", "coins_208.6K.png"],
+      "live_signal": "stat_collect.coins",
+      "watch_notes": "Hard cases (11.28↔11.78, 208.6K monsters) fixture-green; confirm live."
+    },
+    "cash_balance": {
+      "status": "watching",
+      "parse_as": "currency_balance",
+      "roi": "cash_roi",
+      "fixtures": ["cash_8.61K.png", "cash_6.67K.png"],
+      "live_signal": "stat_collect (cash not always logged — check shot/OCR)",
+      "watch_notes": "Fixtures green; cash not in default CSV fields — verify from screenshots when present."
+    },
+    "diamonds": {
+      "status": "watching",
+      "parse_as": "currency_int",
+      "roi": "diamonds_roi",
+      "fixtures": ["diamonds_488.png", "diamonds_546.png", "diamonds_816.png"],
+      "live_signal": "stat_collect.diamonds",
+      "watch_notes": "816↔216 threshold majority fixture-green; confirm live."
+    },
+    "coins_per_min": {
+      "status": "watching",
+      "parse_as": "currency_rate",
+      "roi": "coins_per_min_roi",
+      "fixtures": ["cpm_1.68K.png", "cpm_1.48K.png", "cpm_192.png", "cpm_2.39K.png"],
+      "live_signal": "stat_collect.coins_per_min",
+      "watch_notes": "/min→m and 2.39K cluster fixture-green; confirm live after currency toggle."
+    },
+    "cash_per_min": {
+      "status": "watching",
+      "parse_as": "currency_rate",
+      "roi": "cash_per_min_roi",
+      "fixtures": ["cashmin_4.3K.png", "cashmin_3.61K.png", "cashmin_1.35K.png", "cashmin_16.1K.png"],
+      "live_signal": "stat_collect.cash_per_min",
+      "watch_notes": "Fixture-green; confirm live after currency toggle."
+    },
+    "game_over": {
+      "status": "watching",
+      "parse_as": "game_over",
+      "roi": "game_over_roi",
+      "fixtures": [],
+      "live_signal": "endgame_status_buy / endgame_minute_stats",
+      "watch_notes": "No committed fixture crop yet — review whenever GAME_OVER path fires."
+    },
+    "gem_box_presence": {
+      "status": "watching",
+      "parse_as": "presence",
+      "roi": "gem_box_roi",
+      "fixtures": [],
+      "live_signal": "gem_box_check",
+      "watch_notes": "No fixture; watch false PRESENT taps and missed boxes in console logs."
+    }
+  }
+}

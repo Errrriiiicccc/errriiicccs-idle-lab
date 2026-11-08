@@ -1,59 +1,50 @@
-# Screen Map — usage
+# Observe / Screen Map — usage
 
-Manual screenshot batches for mapping game screens. Same Idle Lab window as Clicker / Automations; uses the **same window anchor**.
+**Observation sessions** are the default Observe path: play the game normally while Idle Lab records pointer events and before/after screenshots into a Screen Map batch folder. Same Idle Lab window; uses the **same window anchor**.
+
+Design detail: [GAMEPLAY-TEST.md](GAMEPLAY-TEST.md).
 
 ## Setup
 
 1. Launch Idle Lab (`pythonw -m idle_lab` from the venv).
-2. Use the top **ANCHOR** bar: **Set anchor**, then click the emulator/game window.
-3. Open the **Screen Map** tab.
+2. Use the top **Anchor** control, then click the emulator/game window.
+3. Open the **Observe** tab (or use the flight deck).
 
-## Capture a batch
+## Start an observation
 
-1. Click **Start batch…** and enter a folder title (e.g. `tower-menus`).
-2. A folder is created under `screen-maps/<batch-slug>/` (project root). Screenshot mode turns **ON**.
-3. Navigate the game to a screen you care about.
-4. Press **Space** → Idle Lab **captures immediately** (loading overlay: Capturing…), then a title dialog opens already focused → type a name → **Save** / Enter (Saving… overlay). Wait until status says Ready before the next Space.
-5. Repeat for every important screen.
-6. Press **Esc** (with no title dialog open) or click **End batch** to finish.
+1. Flight deck **O → 1**, or Observe tab **Start observation**.
+2. Auto title: `Observation YYYY-MM-DD HHMM`. Folder under `screen-maps/<slug>/`.
+3. Play normally — spam-safe timeline (click bursts coalesce; downs debounce). Screenshots are **sparse scaled JPEG keyframes** (deferred session start, burst ends, nav/tabs, scrolls/drags, full-res PNG marks only). Cap ~30 shots/session. Open `DIGEST.md` first when analyzing.
+4. Optional: **O → 2** or **Mark** to bookmark the current screen.
+5. **Esc**, **O → 3**, Observe **Stop observation**, or **Stop all** to end.
+6. Prompt: rename? **Yes** → title dialog; **No** → keep auto title.
 
 ### Esc hierarchy
 
-- Title dialog open → Esc **cancels the dialog only** (bitmap discarded, nothing saved).
-- Otherwise in screenshot mode → Esc **ends the batch**.
-
-### Responsiveness / focus
-
-- While Capturing… or Saving…, a loading overlay covers the Screen Map tab and Space is ignored (no backlog of shots).
-- Title dialogs stay topmost and use Win32 focus steal so you can type without clicking the field first. Space/Esc pass through to the dialog while it is open.
+- Flight deck open → Esc **closes the deck** first.
+- Else observation active → Esc **stops** the observation (rename prompt).
+- Stop all ends without rename prompt.
 
 ## Batch folder contents
 
 ```
 screen-maps/<batch-slug>/
-  01_main-hud.png
-  02_workshop.png
-  manifest.json
+  observation.json      # session header, policy, counts
+  timeline.jsonl        # pointer + mark events
+  01_session-start.png
+  02_before-click-1.png
+  03_after-click-1.png
+  manifest.json         # Screen Map shot index (dual-write)
 ```
 
 `manifest.json` holds batch metadata and one object per shot: `index`, `title`, `filename`, `captured_at`, optional `anchor` hints, plus null placeholders `classification`, `how_opened`, `notes` for a review chat to fill.
 
-## Browse + screenshot viewer
+## Catalog
 
-- Left column lists every batch under `screen-maps/` (Refresh after captures outside this session).
-- Select a batch → right column lists each captured screen. Click a row to open the viewer (←/→ to flip).
-- **View all screenshots** opens the same viewer at the first shot.
-- AI Batches can **Link Screen Map…** and jump here to inspect what was captured.
+Observe tab lists observations on disk. Select a batch → view shots → **View all screenshots** / **Open folder**. Comment bubbles still work on batch or shot.
 
-## After the batch
+## Tips
 
-1. Optionally click **Open folder** (or browse `screen-maps/`).
-2. New Cursor chat → paste [SCREEN-MAP-REVIEW-PROMPT.md](SCREEN-MAP-REVIEW-PROMPT.md) → point at the batch folder.
-3. That chat classifies screens and asks how each was opened. Strategy / loops / CSV belong in a later deep-dive — not in this tab.
-
-Workspace vision notes (outside this repo): `idle-lab/docs/POC/SCREEN-MAP-REVIEW-PROMPT.md`.
-
-## Failures
-
-- Missing / closed / minimized anchor → capture is **refused** with a status message (no silent empty file).
-- Empty batch or shot titles are rejected.
+- Prefer one observation per “story” (upgrade buy order, menu dive-and-return).
+- After chat edits files on disk, hit global **Refresh (F5)**.
+- Missions can still link Screen Map batches; observation folders are valid Screen Map batches.

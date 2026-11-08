@@ -18,18 +18,28 @@ WM_KEYUP = 0x0101
 WM_SYSKEYDOWN = 0x0104
 WM_SYSKEYUP = 0x0105
 WM_QUIT = 0x0012
+WM_MOUSEMOVE = 0x0200
 WM_LBUTTONDOWN = 0x0201
 WM_LBUTTONUP = 0x0202
+WM_RBUTTONDOWN = 0x0204
+WM_RBUTTONUP = 0x0205
+WM_MBUTTONDOWN = 0x0207
+WM_MBUTTONUP = 0x0208
+WM_MOUSEWHEEL = 0x020A
 VK_SPACE = 0x20
 VK_ESCAPE = 0x1B
+VK_RETURN = 0x0D
 VK_F6 = 0x75
 VK_F7 = 0x76
 VK_F8 = 0x77
 VK_0 = 0x30
 VK_9 = 0x39
 VK_A = 0x41
+VK_I = 0x49
+VK_R = 0x52
 VK_Z = 0x5A
 LLKHF_UP = 0x80
+LLMHF_INJECTED = 0x01
 
 
 class KBDLLHOOKSTRUCT(ctypes.Structure):
@@ -62,17 +72,31 @@ class HookFlags:
         self.screenshot_mode = False
         self.title_dialog_open = False
         self.screenshot_busy = False
+        self.observation_active = False
         self.walkthrough_active = False
+        # Live Control Overlay mode (keyboard hit-targets).
+        self.live_control_active = False
+        # LCO session on but grayed out — keys pass through for typing; ` resumes, Esc exits.
+        self.live_control_paused = False
         # True while Loops / Missions / collection / playback / etc. can be Esc-stopped.
         self.stoppable = False
-        # Flight deck: open HUD, nested hotkey menu, or waiting for remap key.
+        # Flight deck activate model: inactive = only activate VK; active = shell + hotkeys.
         self.flight_deck_open = False
+        self.flight_deck_active = False
         self.flight_deck_expanded = False
+        self.flight_deck_anchored = False
         self.flight_deck_remap = False
-        # When True (anchored), expand VK is captured even if the deck window is hidden.
-        self.flight_deck_expand_armed = False
         self.flight_deck_expand_vk = DEFAULT_EXPAND_VK
+        # Always True so Activate works before any window is anchored.
+        self.flight_deck_expand_armed = True
+        self.quit_confirm = False
+        self.lab_visible = True
         self.our_pid = os.getpid()
+
+
+# Observation event flood control (hook thread → UI queue).
+_OBS_QUEUE_SOFT = 64
+_OBS_QUEUE_HARD = 200
 
 
 class InputHooks:
@@ -93,9 +117,14 @@ class InputHooks:
         self._f7_down = False
         self._f8_down = False
         self._expand_down = False
+        self._enter_down = False
+        self._shell_key_down: set[int] = set()
         self._menu_down: set[int] = set()
         self._swallow_up = False
         self._letter_down: set[int] = set()
+        self._last_obs_move_ms = 0
+        self._obs_latest_move: tuple[int, int] | None = None
+        self._obs_events_dropped = 0
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -122,7 +151,37 @@ class InputHooks:
                 items.append(self.events.get_nowait())
             except queue.Empty:
                 break
+        # Coalesced move held while the queue was soft-full.
+        if self._obs_latest_move is not None:
+            x, y = self._obs_latest_move
+            self._obs_latest_move = None
+            items.append(("observation_move", x, y))
         return items
+
+    def _put_observation(self, event: tuple) -> None:
+        """Enqueue observation mouse traffic with backpressure (never block the hook)."""
+
+        kind = event[0]
+        try:
+            qsize = self.events.qsize()
+        except NotImplementedError:  # pragma: no cover
+            qsize = 0
+        if kind == "observation_move":
+            if qsize >= _OBS_QUEUE_SOFT:
+                self._obs_latest_move = (int(event[1]), int(event[2]))
+                self._obs_events_dropped += 1
+                return
+            self._obs_latest_move = None
+            self.events.put(event)
+            return
+        if qsize >= _OBS_QUEUE_HARD:
+            self._obs_events_dropped += 1
+            return
+        if qsize >= _OBS_QUEUE_SOFT and kind == "observation_down":
+            # Prefer keeping ups paired; drop excess downs under soft pressure.
+            self._obs_events_dropped += 1
+            return
+        self.events.put(event)
 
     def _run(self) -> None:
         self._thread_id = int(win32_api.kernel32.GetCurrentThreadId())
@@ -167,7 +226,8 @@ class InputHooks:
         if w_param not in (WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP):
             return self._next(self._kb_hook, n_code, w_param, l_param)
         data = ctypes.cast(l_param, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
-        is_up = bool(data.flags & LLKHF_UP)
+        # Prefer w_param; LLKHF_UP alone has been flaky for some key-up paths.
+        is_up = w_param in (WM_KEYUP, WM_SYSKEYUP) or bool(data.flags & LLKHF_UP)
         vk = int(data.vkCode)
         swallow = False
         # Remap expand key: next non-modifier keydown becomes the binding.
@@ -178,8 +238,27 @@ class InputHooks:
             self.state.flight_deck_remap = False
             self.events.put(("flight_deck_remap_key", vk))
             return 1
-        if vk == VK_SPACE and self.state.flight_deck_expanded:
+        # While LCO is on, Activate/Deactivate must not fire — ` pauses/resumes LCO; Esc exits.
+        if (
+            self.state.live_control_active
+            and vk == int(self.state.flight_deck_expand_vk)
+            and (self.state.flight_deck_expand_armed or self.state.flight_deck_open)
+        ):
+            if is_up:
+                was = self._expand_down
+                self._expand_down = False
+                if was:
+                    self.events.put(("live_control_pause_toggle",))
+            elif not self._expand_down:
+                self._expand_down = True
+            return 1
+        if (
+            vk == VK_SPACE
+            and self.state.flight_deck_expanded
+            and not (self.state.live_control_active and self.state.live_control_paused)
+        ):
             # Flagship menu key while the flight-deck tree is open.
+            # When LCO is paused, Space must pass through so the user can type.
             swallow = True
             if is_up:
                 self._space_down = False
@@ -222,16 +301,19 @@ class InputHooks:
             if self.state.title_dialog_open:
                 pass
             else:
+                # Inactive deck does not own Esc — only Activate does.
                 armed = (
                     self.state.anchor_armed
                     or self.state.recording
                     or self.state.playback
                     or self.state.screenshot_mode
+                    or self.state.observation_active
                     or self.state.walkthrough_active
+                    or self.state.live_control_active
                     or self.state.stoppable
-                    or self.state.flight_deck_open
-                    or self.state.flight_deck_expanded
                     or self.state.flight_deck_remap
+                    or self.state.quit_confirm
+                    or self.state.flight_deck_active
                 )
                 if is_up:
                     self._esc_down = False
@@ -242,22 +324,102 @@ class InputHooks:
                 elif armed:
                     swallow = True
         elif vk == int(self.state.flight_deck_expand_vk) and (
-            self.state.flight_deck_expand_armed
-            or self.state.flight_deck_open
-            or self.state.flight_deck_expanded
+            self.state.flight_deck_expand_armed or self.state.flight_deck_open
         ):
-            # Capture expand while anchored so BlueStacks never sees the default bind.
-            # Handled before menu keys so expand always toggles rather than navigating.
+            # Activate / Deactivate — only global deck key while inactive.
             swallow = True
             if is_up:
                 self._expand_down = False
             elif not self._expand_down:
                 self._expand_down = True
-                self.events.put(("flight_deck_expand",))
-        elif self.state.flight_deck_expanded and (
-            (VK_A <= vk <= VK_Z) or (VK_0 <= vk <= VK_9) or menu_token_from_vk(vk) is not None
+                self.events.put(("flight_deck_activate",))
+        elif self.state.quit_confirm and vk == VK_RETURN:
+            swallow = True
+            if is_up:
+                self._enter_down = False
+            elif not self._enter_down:
+                self._enter_down = True
+                self.events.put(("shell_enter",))
+        elif (
+            self.state.flight_deck_active
+            and (not self.state.flight_deck_anchored)
+            and vk == VK_RETURN
         ):
-            # Nested hotkey menu: swallow and deliver tokens; never forward to the target.
+            swallow = True
+            if is_up:
+                self._enter_down = False
+            elif not self._enter_down:
+                self._enter_down = True
+                self.events.put(("shell_enter",))
+        elif (
+            self.state.flight_deck_active
+            and (not self.state.flight_deck_anchored)
+            and vk == VK_A
+        ):
+            swallow = True
+            if is_up:
+                self._shell_key_down.discard(vk)
+            elif vk not in self._shell_key_down:
+                self._shell_key_down.add(vk)
+                self.events.put(("shell_a",))
+        elif (
+            self.state.live_control_active
+            and not self.state.live_control_paused
+            and (
+                (VK_A <= vk <= VK_Z)
+                or (VK_0 <= vk <= VK_9)
+                or menu_token_from_vk(vk) is not None
+            )
+        ):
+            # Live Control Overlay: playbook hotkeys own letters/digits while armed.
+            # When paused, keys pass through for typing (` resumes, Esc exits).
+            swallow = True
+            token = menu_token_from_vk(vk)
+            if is_up:
+                was_down = vk in self._menu_down
+                self._menu_down.discard(vk)
+                if was_down and token is not None:
+                    self.events.put(("live_control_key", token, "up"))
+            elif vk not in self._menu_down:
+                self._menu_down.add(vk)
+                if token is not None:
+                    self.events.put(("live_control_key", token, "down"))
+        elif (
+            self.state.flight_deck_active
+            and (not self.state.lab_visible)
+            and vk == VK_I
+            and not (self.state.live_control_active and self.state.live_control_paused)
+        ):
+            # Open Lab only while the deck is active.
+            swallow = True
+            if is_up:
+                self._shell_key_down.discard(vk)
+            elif vk not in self._shell_key_down:
+                self._shell_key_down.add(vk)
+                self.events.put(("shell_i",))
+        elif (
+            self.state.flight_deck_active
+            and vk == VK_R
+            and not (self.state.live_control_active and self.state.live_control_paused)
+        ):
+            # Restart while deck is active (before accordion eats R).
+            swallow = True
+            if is_up:
+                self._shell_key_down.discard(vk)
+            elif vk not in self._shell_key_down:
+                self._shell_key_down.add(vk)
+                self.events.put(("shell_r",))
+        elif (
+            self.state.flight_deck_active
+            and self.state.flight_deck_anchored
+            and self.state.flight_deck_expanded
+            and not (self.state.live_control_active and self.state.live_control_paused)
+            and (
+                (VK_A <= vk <= VK_Z)
+                or (VK_0 <= vk <= VK_9)
+                or menu_token_from_vk(vk) is not None
+            )
+        ):
             swallow = True
             if is_up:
                 self._menu_down.discard(vk)
@@ -324,4 +486,34 @@ class InputHooks:
             self._swallow_up = True
             self.events.put(("anchor_click", x, y, hwnd))
             return 1
+        # Observation: pass mouse through to the game; only mirror events to the UI queue.
+        if self.state.observation_active and not self.state.anchor_armed:
+            data = ctypes.cast(l_param, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+            if int(data.flags) & LLMHF_INJECTED:
+                return self._next(self._mouse_hook, n_code, w_param, l_param)
+            x, y = int(data.pt.x), int(data.pt.y)
+            if w_param == WM_MOUSEMOVE:
+                # Coarse enqueue throttle; ObservationController samples further.
+                now_ms = int(data.time)
+                if now_ms - self._last_obs_move_ms >= 40:
+                    self._last_obs_move_ms = now_ms
+                    self._put_observation(("observation_move", x, y))
+            elif w_param == WM_LBUTTONDOWN:
+                self._put_observation(("observation_down", "left", x, y))
+            elif w_param == WM_LBUTTONUP:
+                self._put_observation(("observation_up", "left", x, y))
+            elif w_param == WM_RBUTTONDOWN:
+                self._put_observation(("observation_down", "right", x, y))
+            elif w_param == WM_RBUTTONUP:
+                self._put_observation(("observation_up", "right", x, y))
+            elif w_param == WM_MBUTTONDOWN:
+                self._put_observation(("observation_down", "middle", x, y))
+            elif w_param == WM_MBUTTONUP:
+                self._put_observation(("observation_up", "middle", x, y))
+            elif w_param == WM_MOUSEWHEEL:
+                # high word of mouseData is signed wheel delta (multiples of 120)
+                raw = ctypes.c_short(data.mouseData >> 16).value
+                notches = int(raw // 120) if raw else 0
+                if notches:
+                    self._put_observation(("observation_wheel", x, y, notches))
         return self._next(self._mouse_hook, n_code, w_param, l_param)

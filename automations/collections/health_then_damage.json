@@ -1,0 +1,13 @@
+{
+  "id": "health_then_damage",
+  "title": "Health then Damage",
+  "version": 1,
+  "description": "Once-molecule: buy_health → buy_damage (no gem / game-over preflight). Smoke the composed buy atoms.",
+  "children": ["buy_health", "buy_damage"],
+  "branch_variable": "phase",
+  "branches": {},
+  "loop": false,
+  "stop_when": null,
+  "run": "once",
+  "notes": "Start selected runs both atoms serially. For the full status+gem+buy tick, Start endgame_status_buy instead."
+}

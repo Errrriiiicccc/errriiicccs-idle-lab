@@ -1,0 +1,47 @@
+{
+  "id": "buy_damage",
+  "title": "Buy Damage",
+  "version": 1,
+  "enabled": false,
+  "priority": 41,
+  "timing": {"type": "interval", "every_ms": 60000},
+  "description": "Atom: ensure Attack tab → seek Damage to top → buy one level. Skips when game_over=GAME_OVER.",
+  "notes": "Composed into endgame_status_buy and health_then_damage molecule. Leaves Attack open.",
+  "actions": [
+    {
+      "type": "decide",
+      "variable": "game_over",
+      "match_a": "GAME_OVER",
+      "mode": "equals",
+      "description": "Skip buys after end-of-run.",
+      "explain_a": "game over — skip Damage buy",
+      "explain_b": "run active — Attack/Damage buy",
+      "on_a": [
+        {
+          "type": "log",
+          "message": "buy_damage: skipped (game over)",
+          "level": "warn"
+        }
+      ],
+      "on_b": [
+        {
+          "type": "ensure_upgrade_tab",
+          "tab": "attack",
+          "prefix": "buy_damage_attack",
+          "description": "Switch to Attack only if needed."
+        },
+        {
+          "type": "seek_list_top",
+          "look_for": "Damage",
+          "prefix": "buy_damage_seek",
+          "description": "Scroll Attack up until Damage is on the first row (or unchanged)."
+        },
+        {
+          "type": "click",
+          "target": "damage",
+          "description": "Buy one Damage level on the first Attack card."
+        }
+      ]
+    }
+  ]
+}

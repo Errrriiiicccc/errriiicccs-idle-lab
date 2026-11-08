@@ -77,9 +77,11 @@ def foreground_drag(
             y = int(round(start_y + (end_y - start_y) * t))
             win32_api.set_cursor_pos(x, y)
             _sleep_ms(max(1, step_ms), stop)
-        # Hard stop: finger stays put so the list settles instead of flying.
+        # Optional end hold: long hold kills fling momentum; 0 = release while moving.
         win32_api.set_cursor_pos(end_x, end_y)
-        _sleep_ms(max(50, hold_end_ms), stop)
+        hold = max(0, int(hold_end_ms))
+        if hold:
+            _sleep_ms(hold, stop)
         win32_api.send_left_button(False)
         released = True
         _sleep_ms(30, None)

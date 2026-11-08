@@ -40,7 +40,7 @@ class FlightDeckKeymapTests(unittest.TestCase):
             self.assertIsNotNone(leaf)
             assert leaf is not None
             self.assertTrue(leaf.is_leaf)
-            self.assertEqual(leaf.action["type"], "observe_shot")
+            self.assertEqual(leaf.action["type"], "observation_mark")
 
     def test_rejects_branch_with_action(self) -> None:
         payload = {
@@ -107,7 +107,7 @@ class FlightDeckAccordionTests(unittest.TestCase):
             action = deck.navigate("2")
             self.assertIsNotNone(action)
             assert action is not None
-            self.assertEqual(action["type"], "observe_shot")
+            self.assertEqual(action["type"], "observation_mark")
             self.assertIsNone(deck.navigate("C"))  # switch to Clicks
             self.assertEqual(normalize_menu_key(deck.open_menu_key or ""), "C")
             self.assertIsNone(deck.navigate("C"))  # same letter collapses section
@@ -165,6 +165,7 @@ class FlightDeckSettingsTests(unittest.TestCase):
                 flight_deck_expand_by_anchor={"BlueStacks App Player": 0xC0},
                 flight_deck_geometry="280x120+10+10",
                 flight_deck_user_hidden=True,
+                last_anchor_title="BlueStacks App Player",
             )
             save_settings(path, settings)
             loaded, err = load_settings(path)
@@ -176,6 +177,7 @@ class FlightDeckSettingsTests(unittest.TestCase):
             )
             self.assertEqual(loaded.flight_deck_geometry, "280x120+10+10")
             self.assertTrue(loaded.flight_deck_user_hidden)
+            self.assertEqual(loaded.last_anchor_title, "BlueStacks App Player")
 
 
 if __name__ == "__main__":

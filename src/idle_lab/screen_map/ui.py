@@ -24,6 +24,7 @@ class ScreenMapPanel(ctk.CTkFrame):
         on_refresh_catalog: Callable[[], None],
         on_view_shot: Callable[[BatchSummary, int], None],
         on_view_batch: Callable[[BatchSummary], None],
+        on_mark: Callable[[], None] | None = None,
         on_comment_batch: Callable[[BatchSummary], None] | None = None,
         on_comment_shot: Callable[[BatchSummary, int], None] | None = None,
         comments: CommentStore | None = None,
@@ -32,6 +33,7 @@ class ScreenMapPanel(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent")
         self.on_start_batch = on_start_batch
         self.on_end_batch = on_end_batch
+        self.on_mark = on_mark
         self.on_open_folder = on_open_folder
         self.on_refresh_catalog = on_refresh_catalog
         self.on_view_shot = on_view_shot
@@ -63,19 +65,29 @@ class ScreenMapPanel(ctk.CTkFrame):
         self.refresh_button.pack(side="right", padx=(6, 0))
         self.open_button = ctk.CTkButton(toolbar, text="Open folder", width=110, command=self.on_open_folder)
         self.open_button.pack(side="right", padx=(6, 0))
-        self.end_button = ctk.CTkButton(toolbar, text="End batch", width=100, command=self.on_end_batch)
+        self.end_button = ctk.CTkButton(toolbar, text="Stop observation", width=130, command=self.on_end_batch)
         self.end_button.pack(side="right", padx=(6, 0))
-        self.start_button = ctk.CTkButton(toolbar, text="Start batch…", width=120, command=self.on_start_batch)
+        self.mark_button = ctk.CTkButton(
+            toolbar,
+            text="Mark",
+            width=80,
+            command=self.on_mark or (lambda: None),
+            state="disabled",
+        )
+        self.mark_button.pack(side="right", padx=(6, 0))
+        self.start_button = ctk.CTkButton(
+            toolbar, text="Start observation", width=140, command=self.on_start_batch
+        )
         self.start_button.pack(side="right")
 
         status = ctk.CTkFrame(self._content)
         status.pack(fill="x", padx=8, pady=4)
-        ctk.CTkLabel(status, text="Capture status", font=ctk.CTkFont(size=14, weight="bold")).pack(
+        ctk.CTkLabel(status, text="Observation status", font=ctk.CTkFont(size=14, weight="bold")).pack(
             anchor="w", padx=10, pady=(8, 2)
         )
-        self.mode_label = ctk.CTkLabel(status, text="Screenshot mode: OFF", anchor="w")
+        self.mode_label = ctk.CTkLabel(status, text="Observation: OFF", anchor="w")
         self.mode_label.pack(fill="x", padx=10)
-        self.path_label = ctk.CTkLabel(status, text="Active batch: (none)", anchor="w", wraplength=900)
+        self.path_label = ctk.CTkLabel(status, text="Active observation: (none)", anchor="w", wraplength=900)
         self.path_label.pack(fill="x", padx=10, pady=(2, 0))
         self.count_label = ctk.CTkLabel(status, text="Shots this session: 0", anchor="w")
         self.count_label.pack(fill="x", padx=10, pady=(2, 0))
@@ -87,9 +99,10 @@ class ScreenMapPanel(ctk.CTkFrame):
         ctk.CTkLabel(
             help_frame,
             text=(
-                "Evidence locker for the lab. Use the top Anchor control first. Start a batch, then Space "
-                "captures + titles a shot; Esc ends the batch. Comment bubbles work on a batch or an "
-                "individual shot. Prefer global Refresh (F5) after chat edits files on disk."
+                "Observations record mouse moves, clicks, and scrolls while you play, with before/after "
+                "screenshots dual-written into this Screen Map catalog. Flight deck O→1 start, O→2 mark, "
+                "O→3 or Esc stop. On stop you can rename. Comment bubbles still work on a batch or shot. "
+                "Prefer global Refresh (F5) after chat edits files on disk."
             ),
             anchor="w",
             justify="left",
@@ -105,7 +118,7 @@ class ScreenMapPanel(ctk.CTkFrame):
 
         left = ctk.CTkFrame(columns)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
-        ctk.CTkLabel(left, text="Screenshot batches", font=ctk.CTkFont(size=14, weight="bold")).pack(
+        ctk.CTkLabel(left, text="Observations", font=ctk.CTkFont(size=14, weight="bold")).pack(
             anchor="w", padx=8, pady=(8, 2)
         )
         self.batch_list = ctk.CTkScrollableFrame(left, height=320)
@@ -149,23 +162,27 @@ class ScreenMapPanel(ctk.CTkFrame):
     def set_idle(self) -> None:
         self._busy_message = None
         self._hide_busy()
-        self.mode_label.configure(text="Screenshot mode: OFF")
-        self.path_label.configure(text="Active batch: (none)")
+        self.mode_label.configure(text="Observation: OFF")
+        self.path_label.configure(text="Active observation: (none)")
         self.count_label.configure(text="Shots this session: 0")
         self.hint_label.configure(text="")
         self.start_button.configure(state="normal")
         self.end_button.configure(state="disabled")
+        self.mark_button.configure(state="disabled")
         self.open_button.configure(state="normal")
 
     def set_active(self, folder: Path, titles: list[str], *, ready: bool = True) -> None:
-        self.mode_label.configure(text="Screenshot mode: ON")
-        self.path_label.configure(text=f"Active batch: {folder}")
+        self.mode_label.configure(text="Observation: ON")
+        self.path_label.configure(text=f"Active observation: {folder}")
         self.count_label.configure(text=f"Shots this session: {len(titles)}")
         self.hint_label.configure(
-            text="Ready — press Space to capture." if ready else "Busy — wait for the loading screen to finish."
+            text="Recording — play normally; clicks/scrolls capture frames. Esc stops."
+            if ready
+            else "Flushing frames…"
         )
         self.start_button.configure(state="disabled")
         self.end_button.configure(state="normal")
+        self.mark_button.configure(state="normal" if self.on_mark is not None else "disabled")
         self.open_button.configure(state="normal")
 
     def set_busy(self, message: str | None) -> None:

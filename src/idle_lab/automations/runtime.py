@@ -89,6 +89,7 @@ class AutomationRuntime:
         self.templates_dir = Path(templates_dir) if templates_dir else self.runs_dir.parent / "automations" / "templates"
         self._current_event_id: str | None = None
         self._action_index: int = 0
+        self._run_event_stack: list[str] = []
         self._collection_thread: threading.Thread | None = None
         self._session_events: list[Event] | None = None
 
@@ -369,21 +370,42 @@ class AutomationRuntime:
         return ok
 
     def _run_event(self, event: Event) -> None:
+        if event.id in self._run_event_stack:
+            cycle = " → ".join([*self._run_event_stack, event.id])
+            raise RuntimeError(f"run_event cycle detected: {cycle}")
+        prev_id = self._current_event_id
+        prev_index = self._action_index
+        self._run_event_stack.append(event.id)
         self._current_event_id = event.id
         self._action_index = 0
-        self.log(f"▶ {event.title} ({event.id})", "run")
+        nested = len(self._run_event_stack) > 1
+        prefix = "↳ " if nested else "▶ "
+        self.log(f"{prefix}{event.title} ({event.id})", "run")
         self.trace.append(
             {"source": "loops", "event_id": event.id, "action_type": "event_start", "ok": True},
             is_failure=False,
         )
-        for index, action in enumerate(event.actions):
-            if self._stop.is_set():
-                self.log(f"event {event.id} interrupted", "warn")
-                break
-            self._action_index = index
-            self._dispatch(action.raw)
-        self.log(f"✔ finished {event.id}", "ok")
-        self._current_event_id = None
+        try:
+            for index, action in enumerate(event.actions):
+                if self._stop.is_set():
+                    self.log(f"event {event.id} interrupted", "warn")
+                    break
+                self._action_index = index
+                self._dispatch(action.raw)
+            self.log(f"✔ finished {event.id}", "ok")
+        finally:
+            self._run_event_stack.pop()
+            self._current_event_id = prev_id
+            self._action_index = prev_index
+
+    def _action_run_event(self, raw: dict[str, Any]) -> None:
+        event_id = str(raw.get("event") or raw.get("id") or "").strip()
+        if not event_id:
+            raise ValueError("run_event requires event id")
+        event = self.store.events.get(event_id)
+        if event is None:
+            raise KeyError(f"unknown event: {event_id}")
+        self._run_event(event)
 
     def _dispatch(self, raw: dict[str, Any]) -> None:
         action_type = raw.get("type")
@@ -411,6 +433,7 @@ class AutomationRuntime:
             "scroll_list": self._action_scroll_list,
             "seek_list_top": self._action_seek_list_top,
             "match_template": self._action_match_template,
+            "run_event": self._action_run_event,
         }
         handler = handlers.get(str(action_type))
         if handler is None:

@@ -122,11 +122,15 @@ Composition of atoms (and nested molecules).
 | File | Role |
 | --- | --- |
 | `collections/endgame_phase_loop.json` | Interval molecule — buys + stats + b-roll |
-| `events/endgame_status_buy.json` | Atom: detect_panel → gem → ensure/seek/buy → leave open |
+| `events/endgame_status_buy.json` | Orchestrator: detect_panel → game_over → `run_event` gem/buys → leave open |
+| `events/gem_box_check.json` | Atom: presence OCR + optional gem tap |
+| `events/buy_health.json` / `buy_damage.json` | Atoms: ensure tab → seek → click (skip if game_over) |
+| `collections/health_then_damage.json` | Once molecule: buy_health → buy_damage |
 | `events/stat_collect.json` | Atom: one CSV row (Start once) or every 30s when pooled |
 | `events/stat_broll_5m.json` | Atom: 20s clip + CSV when pooled |
 | `events/list_scroll_down_1.json` / `list_scroll_up_1.json` | Shared scroll atoms |
 | `collections/scroll_probe_once.json` | Once molecule: ensure Attack → scroll down 1 |
+| `run_event` action | Inline another atom’s actions (cycle-guarded) |
 
 ## Sample molecule — Stat collecting
 

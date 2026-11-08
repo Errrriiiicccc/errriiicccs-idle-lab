@@ -56,19 +56,26 @@ def add_shot(
     title: str,
     image: Image.Image,
     anchor: dict[str, Any] | None,
+    image_format: str = "png",
+    jpeg_quality: int = 70,
 ) -> ShotRecord:
     human = (title or "").strip()
     if not human:
         raise ScreenMapError("Screenshot title is required.")
     index = session.shot_count + 1
     shot_slug = sanitize_slug(human, fallback="shot")
-    filename = f"{index:02d}_{shot_slug}.png"
+    fmt = (image_format or "png").strip().lower()
+    ext = "jpg" if fmt in {"jpg", "jpeg"} else "png"
+    filename = f"{index:02d}_{shot_slug}.{ext}"
     path = session.folder / filename
     # Avoid rare collisions if the same title is reused with a different index padding edge case.
     if path.exists():
-        filename = f"{index:02d}_{shot_slug}_{index}.png"
+        filename = f"{index:02d}_{shot_slug}_{index}.{ext}"
         path = session.folder / filename
-    image.save(path)
+    if ext == "jpg":
+        image.convert("RGB").save(path, format="JPEG", quality=int(jpeg_quality), optimize=True)
+    else:
+        image.save(path)
     shot = ShotRecord(
         index=index,
         title=human,

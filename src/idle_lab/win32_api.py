@@ -13,14 +13,19 @@ kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 LRESULT = ctypes.c_ssize_t
 ULONG_PTR = ctypes.c_size_t
 
+GA_PARENT = 1
 GA_ROOT = 2
+GW_OWNER = 4
 GWL_EXSTYLE = -20
+GWLP_HWNDPARENT = -8
 HWND_TOPMOST = -1
 SW_SHOW = 5
 SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
 SWP_SHOWWINDOW = 0x0040
+SWP_NOZORDER = 0x0004
+SWP_FRAMECHANGED = 0x0020
 
 WS_EX_TOPMOST = 0x00000008
 WS_EX_TOOLWINDOW = 0x00000080
@@ -115,14 +120,20 @@ user32.GetParent.argtypes = [wintypes.HWND]
 user32.GetParent.restype = wintypes.HWND
 user32.IsWindow.argtypes = [wintypes.HWND]
 user32.IsWindow.restype = wintypes.BOOL
+user32.IsWindowVisible.argtypes = [wintypes.HWND]
+user32.IsWindowVisible.restype = wintypes.BOOL
 user32.IsIconic.argtypes = [wintypes.HWND]
 user32.IsIconic.restype = wintypes.BOOL
+user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
+user32.GetWindow.restype = wintypes.HWND
 user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
 user32.GetWindowRect.restype = wintypes.BOOL
 user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 user32.GetWindowTextW.restype = ctypes.c_int
 user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+user32.EnumWindows.argtypes = [ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM), wintypes.LPARAM]
+user32.EnumWindows.restype = wintypes.BOOL
 user32.GetForegroundWindow.restype = wintypes.HWND
 user32.SetForegroundWindow.argtypes = [wintypes.HWND]
 user32.SetForegroundWindow.restype = wintypes.BOOL
@@ -257,6 +268,62 @@ def is_iconic(hwnd: int) -> bool:
     return bool(hwnd and user32.IsIconic(hwnd))
 
 
+def is_window_visible(hwnd: int) -> bool:
+    return bool(hwnd and user32.IsWindowVisible(hwnd))
+
+
+_EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+
+def iter_top_level_windows() -> list[tuple[int, str, int, bool, bool]]:
+    """Return ``(hwnd, title, pid, visible, minimized)`` for top-level windows."""
+
+    from idle_lab.window_find import WindowCandidate  # local import keeps models light
+
+    found: list[WindowCandidate] = []
+
+    def _callback(hwnd, _lparam):  # type: ignore[no-untyped-def]
+        hwnd_i = int(hwnd or 0)
+        if not hwnd_i:
+            return True
+        # Top-level: no owner.
+        owner = int(user32.GetWindow(hwnd_i, GW_OWNER) or 0)
+        if owner:
+            return True
+        title = get_window_text(hwnd_i)
+        if not title:
+            return True
+        found.append(
+            WindowCandidate(
+                hwnd=hwnd_i,
+                title=title,
+                pid=pid_of(hwnd_i),
+                visible=is_window_visible(hwnd_i),
+                minimized=is_iconic(hwnd_i),
+            )
+        )
+        return True
+
+    cb = _EnumWindowsProc(_callback)
+    user32.EnumWindows(cb, 0)
+    return [(c.hwnd, c.title, c.pid, c.visible, c.minimized) for c in found]
+
+
+def find_window_by_title(title: str, *, our_pid: int | None = None) -> int | None:
+    """Exact title match among top-level windows; None if missing or ambiguous."""
+
+    import os
+
+    from idle_lab.window_find import WindowCandidate, pick_window_by_title
+
+    pid = int(our_pid if our_pid is not None else os.getpid())
+    candidates = [
+        WindowCandidate(hwnd=h, title=t, pid=p, visible=v, minimized=m)
+        for h, t, p, v, m in iter_top_level_windows()
+    ]
+    return pick_window_by_title(candidates, title, our_pid=pid)
+
+
 def get_window_text(hwnd: int) -> str:
     buffer = ctypes.create_unicode_buffer(512)
     user32.GetWindowTextW(hwnd, buffer, 512)
@@ -271,9 +338,53 @@ def get_window_rect(hwnd: int) -> Rect | None:
 
 
 def widget_hwnd(widget) -> int:
-    child = int(widget.winfo_id())
-    parent = int(user32.GetParent(child) or 0)
-    return parent or child
+    """Win32 HWND for a Tk widget's top-level frame — never its owner.
+
+    GetParent() on an owned top-level returns the owner; that used to make
+    style/orphan calls hit Lab instead of the flight deck. GA_ROOT follows
+    the real parent chain only.
+    """
+
+    hwnd = int(widget.winfo_id())
+    root = int(user32.GetAncestor(hwnd, GA_ROOT) or 0)
+    if root:
+        return root
+    parent = int(user32.GetParent(hwnd) or 0)
+    return parent or hwnd
+
+
+def window_owner(hwnd: int) -> int:
+    if not hwnd:
+        return 0
+    return int(user32.GetWindow(hwnd, GW_OWNER) or 0)
+
+
+def show_window(hwnd: int) -> None:
+    if hwnd and is_window(hwnd):
+        user32.ShowWindow(hwnd, SW_SHOW)
+
+
+def clear_window_owner(hwnd: int) -> None:
+    """Clear Win32 owner so a Toplevel is not hidden/minimized with its Tk master.
+
+    Tk on Windows sets GWLP_HWNDPARENT to the master; owned windows disappear when
+    the owner is shown/lifted/alpha-toggled. Orphaning keeps the flight deck alive.
+    """
+
+    if not hwnd or not is_window(hwnd):
+        return
+    if window_owner(hwnd):
+        user32.SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, 0)
+    user32.SetWindowPos(
+        hwnd,
+        ctypes.c_void_p(HWND_TOPMOST),
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+    )
+    show_window(hwnd)
 
 
 def add_exstyle(hwnd: int, extra: int) -> None:

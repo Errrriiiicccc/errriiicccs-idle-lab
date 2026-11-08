@@ -1,6 +1,6 @@
 # Handoff — image → data (perception) — ACTIVE
 
-**Status:** active (un-tabled 2026-11-06) — owned in parallel with shell/flight-deck redesign  
+**Status:** **paused** (2026-11-06) — feature work stopped; bad-data watch via [knowledge/ocr-trust.json](knowledge/ocr-trust.json). Resume only if watching fields keep failing or Eric asks.  
 **North star:** [VISION.md](VISION.md) §§4–5 / §9  
 **Living field table:** [knowledge/TOWER-PERCEPTION.md](knowledge/TOWER-PERCEPTION.md)  
 **Old Tesseract-tweak thread (history only):** [HANDOFF-OCR.md](HANDOFF-OCR.md)

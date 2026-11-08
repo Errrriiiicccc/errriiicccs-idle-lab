@@ -2,27 +2,46 @@
   "version": 1,
   "roots": [
     {
-      "key": "O",
-      "label": "Observe",
-      "description": "Screen Map capture while anchored.",
+      "key": "U",
+      "label": "Live Control Overlay",
+      "description": "Keyboard hit-targets on main gameplay — you decide, lab actuates.",
       "children": [
         {
           "key": "1",
-          "label": "Start batch",
-          "description": "Create a Screen Map batch and arm capture.",
-          "action": { "type": "observe_start", "title": "Flight deck" }
+          "label": "Enter Live Control",
+          "description": "Screenshot → classify main gameplay → show object-map overlay. Esc exits.",
+          "action": { "type": "live_control_enter" }
         },
         {
           "key": "2",
-          "label": "Capture shot",
-          "description": "Grab the anchored window into the active batch.",
-          "action": { "type": "observe_shot" }
+          "label": "Troubleshoot Live Control",
+          "description": "Live Control hotkeys + Observation frames/meta for each action (scroll/buy evidence).",
+          "action": { "type": "live_control_enter_troubleshoot" }
+        }
+      ]
+    },
+    {
+      "key": "O",
+      "label": "Observe",
+      "description": "Observation session — pointer timeline + Screen Map shots.",
+      "children": [
+        {
+          "key": "1",
+          "label": "Start observation",
+          "description": "Auto-titled session; mouse moves/clicks/scrolls are recorded.",
+          "action": { "type": "observation_start" }
+        },
+        {
+          "key": "2",
+          "label": "Mark",
+          "description": "Bookmark the current screen as a shot in the active observation.",
+          "action": { "type": "observation_mark" }
         },
         {
           "key": "3",
-          "label": "End batch",
-          "description": "Close the active Screen Map batch.",
-          "action": { "type": "observe_end" }
+          "label": "Stop observation",
+          "description": "End the session (Esc also stops). Optional rename prompt.",
+          "action": { "type": "observation_end" }
         }
       ]
     },
@@ -84,8 +103,20 @@
         {
           "key": "2",
           "label": "Status + buy",
-          "description": "Panel status, gems, Health then Attack buys.",
+          "description": "Panel → gem → Health → Damage (orchestrator).",
           "action": { "type": "start_event", "event": "endgame_status_buy" }
+        },
+        {
+          "key": "3",
+          "label": "Buy Health",
+          "description": "Defense → Health buy once.",
+          "action": { "type": "start_event", "event": "buy_health" }
+        },
+        {
+          "key": "4",
+          "label": "Buy Damage",
+          "description": "Attack → Damage buy once.",
+          "action": { "type": "start_event", "event": "buy_damage" }
         }
       ]
     },
@@ -114,6 +145,12 @@
         },
         {
           "key": "4",
+          "label": "Health then Damage",
+          "description": "Once: buy_health → buy_damage.",
+          "action": { "type": "start_collection", "collection": "health_then_damage" }
+        },
+        {
+          "key": "5",
           "label": "Start all enabled",
           "description": "Interval pool: every atom with enabled:true.",
           "action": { "type": "start_enabled_loops" }

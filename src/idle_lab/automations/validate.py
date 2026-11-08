@@ -76,6 +76,12 @@ def _validate_actions(
             name = str(raw.get("preset") or raw.get("name") or "")
             if name and presets and name not in presets:
                 report.add("error", path, f"unknown preset: {name}")
+        if action_type == "run_event":
+            event_id = str(raw.get("event") or raw.get("id") or "").strip()
+            if not event_id:
+                report.add("error", path, "run_event needs event id")
+            elif event_id not in store.events:
+                report.add("error", path, f"unknown event: {event_id}")
         if action_type == "decide":
             for key in ("on_a", "on_b"):
                 nested = raw.get(key) or []
@@ -150,6 +156,23 @@ def _plan_action(
         lines.append(f"{pad}  roi={raw.get('roi')} → var={raw.get('variable')} parse_as={raw.get('parse_as')}")
     elif action_type in {"play_preset", "mouse"}:
         lines.append(f"{pad}  preset={raw.get('preset') or raw.get('name')!r}")
+    elif action_type == "run_event":
+        child_id = str(raw.get("event") or raw.get("id") or "").strip()
+        lines.append(f"{pad}  event={child_id!r}")
+        child = store.events.get(child_id) if child_id else None
+        if child is None:
+            lines.append(f"{pad}  MISSING event {child_id}")
+        else:
+            for nested_index, nested_action in enumerate(child.actions):
+                lines.extend(
+                    _plan_action(
+                        nested_action.raw,
+                        index=nested_index,
+                        store=store,
+                        variables=variables,
+                        indent=indent + 1,
+                    )
+                )
     elif action_type == "wait":
         lines.append(f"{pad}  ms={raw.get('ms') or raw.get('wait_ms')}")
     elif action_type == "wait_until":

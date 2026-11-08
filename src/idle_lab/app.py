@@ -46,6 +46,14 @@ from idle_lab.comments import (
 )
 from idle_lab.flight_deck.keys import DEFAULT_EXPAND_VK, vk_label
 from idle_lab.flight_deck.keymap import KeymapError, default_keymap_path, load_keymap
+from idle_lab.flight_deck.shell import (
+    EscAction,
+    ShellPhase,
+    active_unanchored_prompt,
+    close_confirm_prompt,
+    inactive_prompt,
+    resolve_escape,
+)
 from idle_lab.flight_deck.window import FlightDeckWindow
 from idle_lab.taxonomy import (
     TaxonomyError,
@@ -59,6 +67,13 @@ from idle_lab.image_viewer import open_image_viewer
 from idle_lab.lab_mode import SuperviseGate, humanize_level_tooltip, normalize_lab_mode
 from idle_lab.lab_watch import dir_fingerprint
 from idle_lab.models import ClickPoint, Preset, normalized_to_screen, screen_to_normalized
+from idle_lab.live_control import LiveControlController, LiveControlError
+from idle_lab.live_control.overlay import LiveControlOverlay
+from idle_lab.single_instance import release as release_single_instance
+from idle_lab.single_instance import start_wake_watcher, try_acquire as try_acquire_single_instance
+from idle_lab.tray import TrayController
+from idle_lab.observation import ObservationController, ObservationError
+from idle_lab.observation.session import auto_observation_title
 from idle_lab.overlay import Overlay
 from idle_lab.player import Player
 from idle_lab.presets import PresetError, PresetStore, load_preset, preset_to_dict, project_root, slug
@@ -128,6 +143,8 @@ class App(ctk.CTk):
         self.screen_map_panel: ScreenMapPanel | None = None
         self.ai_batch_panel: AiBatchPanel | None = None
         self.screen_map = ScreenMapController()
+        self.observation = ObservationController()
+        self._observation_ui_refresh_at = 0.0
         self.screen_maps_root = root / "screen-maps"
         self.ai_batches_root = root / "ai-batches"
         self.ai_batch_store = AiBatchStore(self.ai_batches_root)
@@ -173,16 +190,37 @@ class App(ctk.CTk):
         self._end_load()
         self.update_idletasks()
         self.overlay = Overlay(self, self._on_marker_moved, self._on_marker_released)
+        self.live_control_overlay = LiveControlOverlay(self)
+        self._live_control_owns_observation = False
+        self.live_control = LiveControlController(
+            overlay=self.live_control_overlay,
+            project_root=root,
+            get_anchor=self._live_control_anchor,
+            get_humanize=self._humanize_profile,
+            run_event_once=self._live_control_run_event_once,
+            on_evidence=self._live_control_evidence,
+            post_event=self.hooks.events.put,
+            on_legend_change=self._live_control_legend_changed,
+            on_pause_change=self._live_control_pause_changed,
+            log=self._live_control_log,
+            restore_cursor=bool(self.settings.restore_cursor),
+        )
         self.flight_deck = FlightDeckWindow(
             self,
             on_close=self._flight_deck_user_close,
-            on_expand_toggle=self._flight_deck_toggle_expand,
+            on_activate_toggle=self._flight_deck_toggle_activate,
             on_pause=self._flight_deck_pause,
             on_stop=self._stop_all,
             on_geometry=self._flight_deck_store_geometry,
         )
         self._taxonomy = None
         self._flight_deck_keymap = None
+        self._shell_phase = ShellPhase.INACTIVE
+        self._boot_candidate_hwnd: int | None = None
+        self._boot_offer_title: str | None = None
+        self._lab_visible = False
+        self._tray: TrayController | None = None
+        self._lab_saved_geometry: str | None = None
         self._sync_flight_deck_expand_vk()
         errors = self.store.load_all()
         if self.store.presets:
@@ -192,7 +230,8 @@ class App(ctk.CTk):
             self._rebuild_points()
         self._reload_taxonomy()
         self._refresh_screen_map_catalog()
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        # Lab X hides the workbench; full quit is Esc peel → confirm on the deck.
+        self.protocol("WM_DELETE_WINDOW", self._hide_lab)
         try:
             self.hooks.start()
         except OSError as exc:
@@ -205,6 +244,8 @@ class App(ctk.CTk):
         self.after(100, self._drain_ai_batch_runner)
         self.after(1500, self._poll_disk_watch)
         self.after(500, self._poll_activity)
+        tray_error = self._start_tray()
+        start_wake_watcher(self._schedule_ui, self._on_single_instance_wake)
         if settings_error:
             self._status(settings_error, "warn")
         elif errors:
@@ -213,12 +254,17 @@ class App(ctk.CTk):
             self._status("Skipped automation files: " + "; ".join(auto_errors), "error")
         elif ai_errors:
             self._status("Skipped AI batch files: " + "; ".join(ai_errors), "error")
+        elif tray_error:
+            self._status(tray_error, "warn")
         else:
             self._status(
-                "Click Anchor, then the emulator window. F5 = Refresh. "
-                f"Flight deck expand = {vk_label(self._flight_deck_expand_vk_for_anchor())}.",
+                "Flight deck first. Enter re-anchors · A sets anchor · I / tray opens Lab.",
                 "info",
             )
+        # Deck-first: hide Lab without withdraw/iconify (both hide Toplevel children
+        # like the flight deck on Windows). Alpha + off-screen keeps a taskbar button.
+        self._lab_visible = False
+        self.after(0, self._start_deck_first_inactive)
 
     def _build(self) -> None:
         self.status_label = ctk.CTkLabel(self, text="", anchor="w", justify="left", wraplength=980)
@@ -241,8 +287,9 @@ class App(ctk.CTk):
 
         self.screen_map_panel = ScreenMapPanel(
             observe,
-            on_start_batch=self._start_screen_map_batch,
-            on_end_batch=self._end_screen_map_batch,
+            on_start_batch=self._start_observation,
+            on_end_batch=lambda: self._stop_observation(reason="operator", prompt_rename=True),
+            on_mark=self._mark_observation,
             on_open_folder=self._open_screen_map_folder,
             on_refresh_catalog=self._refresh_screen_map_catalog,
             on_view_shot=self._view_screen_map_shot,
@@ -395,7 +442,7 @@ class App(ctk.CTk):
         self.flight_deck_button.pack(side="left", padx=(10, 0))
         self.remap_expand_button = ctk.CTkButton(
             anchor_row,
-            text=f"Expand [{vk_label(self.settings.flight_deck_expand_vk or DEFAULT_EXPAND_VK)}]",
+            text=f"Activate [{vk_label(self.settings.flight_deck_expand_vk or DEFAULT_EXPAND_VK)}]",
             width=110,
             height=28,
             fg_color="#2A3140",
@@ -473,7 +520,7 @@ class App(ctk.CTk):
             command=self._on_humanize,
             width=100,
         )
-        self.humanize_menu.set(_HUMANIZE_LABELS.get(normalize_level(self.settings.humanize_level), "Medium"))
+        self.humanize_menu.set(_HUMANIZE_LABELS.get(normalize_level(self.settings.humanize_level), "Off"))
         self.humanize_menu.pack(side="left", padx=(0, 8))
         ctk.CTkLabel(options, text="Countdown").pack(side="left", padx=(8, 4))
         self.countdown_menu = ctk.CTkOptionMenu(
@@ -772,21 +819,29 @@ class App(ctk.CTk):
             self._status(error, "error")
             return
         status, _hwnd, rect, title = self.anchor_target.snapshot()
+        self.settings.last_anchor_title = (title or "").strip() or None
+        try:
+            self._save_settings()
+        except Exception:
+            pass
         self._status(f"Anchored to {title}.", "ok")
-        # Show immediately (don't wait for the next anchor poll).
-        if not self.settings.flight_deck_user_hidden:
-            self._show_flight_deck()
-        else:
-            self.hooks.state.flight_deck_expand_armed = status in ("ok", "minimized")
-            self._sync_flight_deck_expand_vk()
+        self._leave_boot_into_deck(status=status, rect=rect)
 
     def _clear_anchor(self) -> None:
         if self._busy():
             return
         self._cancel_anchor_mode()
         self.anchor_target.clear()
+        self.settings.last_anchor_title = None
+        try:
+            self._save_settings()
+        except Exception:
+            pass
         self.overlay.set_visible(False)
-        self._hide_flight_deck(user_hidden=False)
+        if self._shell_phase is ShellPhase.ACTIVE:
+            self._activate_flight_deck()
+        else:
+            self._enter_inactive()
         self._status("Anchor cleared.", "info")
 
     # --- Flight deck (in-flight HUD) ---
@@ -834,7 +889,7 @@ class App(ctk.CTk):
         self.hooks.state.flight_deck_expand_vk = vk
         self.flight_deck.set_expand_vk(vk)
         if getattr(self, "remap_expand_button", None) is not None:
-            self.remap_expand_button.configure(text=f"Expand [{vk_label(vk)}]")
+            self.remap_expand_button.configure(text=f"Activate [{vk_label(vk)}]")
 
     def _flight_deck_store_geometry(self, geometry: str) -> None:
         from idle_lab.flight_deck.window import sanitize_geometry
@@ -854,11 +909,12 @@ class App(ctk.CTk):
         except Exception:
             return False
 
-    def _show_flight_deck(self, *, expand: bool = False) -> None:
+    def _show_flight_deck(self, *, allow_unanchored: bool = True) -> None:
         status, _hwnd, rect, _title = self.anchor_target.snapshot()
-        if status not in ("ok", "minimized"):
-            self._status("Anchor a window before opening the flight deck.", "error")
-            return
+        anchored = status in ("ok", "minimized")
+        if not anchored and not allow_unanchored and self._shell_phase is ShellPhase.INACTIVE:
+            # Inactive chrome is always allowed; activate handles anchoring next.
+            pass
         self.settings.flight_deck_user_hidden = False
         self._save_settings()
         self._sync_flight_deck_expand_vk()
@@ -869,63 +925,418 @@ class App(ctk.CTk):
         self.hooks.state.flight_deck_open = True
         self.hooks.state.flight_deck_expand_armed = True
         self._sync_flight_deck_run_state()
-        if expand:
-            self._flight_deck_set_expanded(True)
         self._update_flight_deck_lab_button()
+        self._sync_shell_hook_flags()
 
     def _hide_flight_deck(self, *, user_hidden: bool) -> None:
+        """Withdraw the deck window (Lab stays up). Not the same as deactivate."""
+
+        if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            self._cancel_close_confirm()
+        self.flight_deck.collapse_menu()
         self.flight_deck.hide_deck()
+        self._shell_phase = ShellPhase.INACTIVE
         self.hooks.state.flight_deck_open = False
+        self.hooks.state.flight_deck_active = False
         self.hooks.state.flight_deck_expanded = False
-        self.hooks.state.flight_deck_remap = False
         if user_hidden:
             self.settings.flight_deck_user_hidden = True
             self._save_settings()
-        # Stay expand-armed while still anchored so ` reopens the deck.
-        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
-        self.hooks.state.flight_deck_expand_armed = status in ("ok", "minimized")
         self._update_flight_deck_lab_button()
+        self._sync_shell_hook_flags()
 
     def _flight_deck_user_close(self) -> None:
-        self._hide_flight_deck(user_hidden=True)
-        self._status("Flight deck closed. Use Flight deck or expand key to reopen.", "info")
+        """Close button → confirm. Hidden while inactive."""
+
+        if self._shell_phase is ShellPhase.INACTIVE:
+            return
+        if self.live_control.active:
+            self._exit_live_control(reason="operator")
+            return
+        if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            self._cancel_close_confirm()
+            return
+        self._enter_close_confirm()
+
+    def _sync_shell_hook_flags(self) -> None:
+        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+        anchored = status in ("ok", "minimized")
+        active = self._shell_phase is ShellPhase.ACTIVE
+        deck_visible = self._flight_deck_is_visible()
+        self.hooks.state.quit_confirm = self._shell_phase is ShellPhase.CLOSE_CONFIRM
+        self.hooks.state.lab_visible = bool(self._lab_visible)
+        # Keep Activate armed even when the deck window is withdrawn after Close.
+        self.hooks.state.flight_deck_open = bool(deck_visible)
+        self.hooks.state.flight_deck_expand_armed = True
+        self.hooks.state.flight_deck_active = bool(active and deck_visible)
+        self.hooks.state.flight_deck_anchored = bool(anchored and active and deck_visible)
+        self.hooks.state.flight_deck_expanded = bool(
+            active and anchored and deck_visible and self.flight_deck.expanded
+        )
+
+    def _is_lab_visible(self) -> bool:
+        return bool(self._lab_visible)
+
+    def _is_anchored(self) -> bool:
+        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+        return status in ("ok", "minimized")
+
+    def _refresh_boot_candidate(self) -> None:
+        self._boot_candidate_hwnd = None
+        self._boot_offer_title = None
+        last = (self.settings.last_anchor_title or "").strip() or None
+        if not last:
+            return
+        hwnd = win32_api.find_window_by_title(last, our_pid=self.hooks.state.our_pid)
+        self._boot_offer_title = last
+        if hwnd:
+            self._boot_candidate_hwnd = int(hwnd)
+
+    def _active_unanchored_prompt_text(self) -> str:
+        self._refresh_boot_candidate()
+        last = self._boot_offer_title
+        return active_unanchored_prompt(
+            last_title=last,
+            candidate_found=bool(self._boot_candidate_hwnd),
+            lab_visible=self._is_lab_visible(),
+        )
+
+    def _start_deck_first_inactive(self) -> None:
+        self._hide_lab(quiet=True)
+        self.update_idletasks()
+        self._enter_inactive()
+
+    def _enter_inactive(self) -> None:
+        self._shell_phase = ShellPhase.INACTIVE
+        key = vk_label(self._flight_deck_expand_vk_for_anchor())
+        prompt = inactive_prompt(activate_key=key)
+        self.flight_deck.set_shell_phase(
+            ShellPhase.INACTIVE,
+            prompt=prompt,
+            lab_visible=self._is_lab_visible(),
+            anchored=False,
+        )
+        self._show_flight_deck(allow_unanchored=True)
+        self._sync_shell_hook_flags()
+        self._status(prompt, "info")
+
+    def _activate_flight_deck(self) -> None:
+        self._shell_phase = ShellPhase.ACTIVE
+        anchored = self._is_anchored()
+        if anchored:
+            status, _hwnd, rect, _title = self.anchor_target.snapshot()
+            self.flight_deck.set_shell_phase(
+                ShellPhase.ACTIVE,
+                prompt="",
+                lab_visible=self._is_lab_visible(),
+                anchored=True,
+            )
+            self.flight_deck.set_expanded(True)
+            self._show_flight_deck()
+            self._status("Flight deck active.", "ok")
+            _ = status, rect
+        else:
+            prompt = self._active_unanchored_prompt_text()
+            self.flight_deck.set_shell_phase(
+                ShellPhase.ACTIVE,
+                prompt=prompt,
+                lab_visible=self._is_lab_visible(),
+                anchored=False,
+            )
+            self._show_flight_deck(allow_unanchored=True)
+            self._status(prompt, "info")
+        self.flight_deck.focus_deck()
+        try:
+            hwnd = win32_api.widget_hwnd(self.flight_deck)
+            if hwnd:
+                win32_api.focus_window(hwnd)
+        except Exception:
+            pass
+        self._sync_shell_hook_flags()
+
+    def _deactivate_flight_deck(self) -> None:
+        """Idle companion: deck stays visible, only Activate key listens."""
+
+        if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            self._cancel_close_confirm()
+            return
+        self.flight_deck.collapse_menu()
+        self._enter_inactive()
+        self._status("Flight deck idle — press Activate to listen again.", "info")
+
+    def _flight_deck_toggle_activate(self) -> None:
+        if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            return
+        if self._shell_phase is ShellPhase.INACTIVE:
+            self._activate_flight_deck()
+            return
+        if self.live_control.active:
+            self._status("Exit LCO (Esc) before deactivating the flight deck.", "warn")
+            return
+        self._deactivate_flight_deck()
+
+    def _leave_boot_into_deck(self, *, status: str, rect) -> None:
+        """After a successful anchor while active: show hotkey deck."""
+
+        self._shell_phase = ShellPhase.ACTIVE
+        self.flight_deck.set_shell_phase(
+            ShellPhase.ACTIVE,
+            prompt="",
+            lab_visible=self._is_lab_visible(),
+            anchored=True,
+        )
+        self.flight_deck.set_expanded(True)
+        self._show_flight_deck()
+        self._sync_shell_hook_flags()
+        self._status("Anchored — flight deck hotkeys ready.", "ok")
+        _ = status, rect
+
+    def _schedule_ui(self, fn) -> None:
+        """Marshal tray / background callbacks onto the Tk UI thread."""
+
+        try:
+            self.after(0, fn)
+        except Exception:
+            pass
+
+    def _start_tray(self) -> str | None:
+        self._tray = TrayController(
+            schedule=self._schedule_ui,
+            on_open_lab=self._show_lab,
+            on_show_deck=self._tray_show_flight_deck,
+            on_quit=self._on_close,
+            on_error=lambda msg: self._status(msg, "warn"),
+        )
+        return self._tray.start()
+
+    def _on_single_instance_wake(self) -> None:
+        """Another launch attempted — surface Lab + deck instead of a second process."""
+
+        self._show_lab()
+        try:
+            self._tray_show_flight_deck()
+        except Exception:
+            pass
+        self._status("Already running — brought Idle Lab to the front.", "info")
+
+    def _tray_show_flight_deck(self) -> None:
+        if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            self._show_flight_deck(allow_unanchored=True)
+            return
+        if self._shell_phase is ShellPhase.INACTIVE:
+            self._activate_flight_deck()
+            return
+        self._show_flight_deck(allow_unanchored=True)
+        self.flight_deck.focus_deck()
+
+    def _hide_lab(self, *, quiet: bool = False) -> None:
+        """Hide Lab UI but keep HWND mapped so the flight-deck Toplevel can show.
+
+        On Windows, ``withdraw`` / ``iconify`` on the root also hide child Toplevels
+        (the flight deck). Alpha-0 + park off-screen keeps a taskbar button.
+        """
+
+        try:
+            if self._lab_saved_geometry is None:
+                geo = str(self.geometry() or "").strip()
+                if geo and "x" in geo:
+                    self._lab_saved_geometry = geo
+            screen = win32_api.virtual_screen()
+            self.geometry(f"1100x920+{screen.right + 120}+{screen.bottom + 120}")
+            self.attributes("-alpha", 0.0)
+            self.state("normal")
+            self.deiconify()
+            self.update_idletasks()
+        except Exception:
+            pass
+        self._lab_visible = False
+        self.flight_deck.set_lab_visible(False)
+        if self._shell_phase is ShellPhase.ACTIVE and not self._is_anchored():
+            prompt = self._active_unanchored_prompt_text()
+            self.flight_deck.set_shell_phase(
+                ShellPhase.ACTIVE,
+                prompt=prompt,
+                lab_visible=False,
+                anchored=False,
+            )
+        self._sync_shell_hook_flags()
+        if not quiet:
+            self._status(
+                "Lab hidden (Activate deck then I, or use tray / taskbar).",
+                "info",
+            )
+
+    def _show_lab(self) -> None:
+        # Remember whether the deck should stay up — lifting the Lab parent on
+        # Windows often unmaps the flight-deck Toplevel as a side effect.
+        keep_deck = (
+            self._shell_phase in {ShellPhase.INACTIVE, ShellPhase.CLOSE_CONFIRM}
+            or self._flight_deck_is_visible()
+            or not self.settings.flight_deck_user_hidden
+        )
+        # Orphan before Lab maps/lifts so ownership cannot drag the deck under.
+        try:
+            self.flight_deck._orphan_from_owner()
+        except Exception:
+            pass
+        try:
+            self.attributes("-alpha", 1.0)
+            if self._lab_saved_geometry:
+                self.geometry(self._lab_saved_geometry)
+            else:
+                screen = win32_api.virtual_screen()
+                self.geometry(f"1100x920+{screen.left + 80}+{screen.top + 60}")
+            self.deiconify()
+            self.state("normal")
+            self.lift()
+            self.focus_force()
+            self.update_idletasks()
+        except Exception:
+            pass
+        try:
+            hwnd = win32_api.widget_hwnd(self)
+            if hwnd:
+                win32_api.focus_window(hwnd)
+        except Exception:
+            pass
+        self._lab_visible = True
+        self.flight_deck.set_lab_visible(True)
+        if self._shell_phase is ShellPhase.ACTIVE and not self._is_anchored():
+            prompt = self._active_unanchored_prompt_text()
+            self.flight_deck.set_shell_phase(
+                ShellPhase.ACTIVE,
+                prompt=prompt,
+                lab_visible=True,
+                anchored=False,
+            )
+        self._sync_shell_hook_flags()
+        if keep_deck:
+            # Parent lift can still race the orphan; re-show deck on the next ticks.
+            self.after(0, self._reassert_flight_deck_after_lab_show)
+            self.after(50, self._reassert_flight_deck_after_lab_show)
+            self.after(200, self._reassert_flight_deck_after_lab_show)
+        self._status("Lab open.", "ok")
+
+    def _reassert_flight_deck_after_lab_show(self) -> None:
+        if self._shell_phase is ShellPhase.INACTIVE:
+            self._show_flight_deck(allow_unanchored=True)
+        elif self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            self._show_flight_deck(allow_unanchored=True)
+        elif not self.settings.flight_deck_user_hidden:
+            status, _hwnd, _rect, _title = self.anchor_target.snapshot()
+            if status in ("ok", "minimized", "closed"):
+                self._show_flight_deck()
+            elif self._shell_phase is ShellPhase.ACTIVE:
+                self._show_flight_deck(allow_unanchored=True)
+        try:
+            self.flight_deck._orphan_from_owner()
+            self.flight_deck.lift()
+            self.flight_deck.attributes("-topmost", True)
+        except Exception:
+            pass
+
+    def _enter_close_confirm(self) -> None:
+        self._shell_phase = ShellPhase.CLOSE_CONFIRM
+        prompt = close_confirm_prompt(lab_visible=self._is_lab_visible())
+        self.flight_deck.set_shell_phase(
+            ShellPhase.CLOSE_CONFIRM,
+            prompt=prompt,
+            lab_visible=self._is_lab_visible(),
+            anchored=self._is_anchored(),
+        )
+        self._show_flight_deck(allow_unanchored=True)
+        self.flight_deck.focus_deck()
+        try:
+            hwnd = win32_api.widget_hwnd(self.flight_deck)
+            if hwnd:
+                win32_api.focus_window(hwnd)
+        except Exception:
+            pass
+        self._sync_shell_hook_flags()
+        self._status(prompt, "warn")
+
+    def _cancel_close_confirm(self) -> None:
+        if self._shell_phase is not ShellPhase.CLOSE_CONFIRM:
+            return
+        # Stay active — close cancelled, not deactivated.
+        self._activate_flight_deck()
+        self._status("Close cancelled.", "info")
+
+    def _confirm_close_flight_deck(self) -> None:
+        """Enter on close-confirm: quit app if Lab hidden; else withdraw deck only."""
+
+        if self._shell_phase is not ShellPhase.CLOSE_CONFIRM:
+            return
+        if self._is_lab_visible():
+            self._hide_flight_deck(user_hidden=True)
+            self._status("Flight deck closed. Activate deck from Lab or tray to reopen.", "info")
+            return
+        self._on_close()
+
+    def _handle_shell_enter(self) -> None:
+        if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
+            self._confirm_close_flight_deck()
+            return
+        if self._shell_phase is not ShellPhase.ACTIVE or self._is_anchored():
+            return
+        self._refresh_boot_candidate()
+        hwnd = self._boot_candidate_hwnd
+        if not hwnd:
+            self._status("No live window to re-anchor. Press A to set a new anchor.", "warn")
+            return
+        self._apply_anchor(int(hwnd))
+
+    def _handle_shell_a(self) -> None:
+        if self._shell_phase is not ShellPhase.ACTIVE or self._is_anchored():
+            return
+        self._toggle_anchor_mode()
+
+    def _handle_shell_i(self) -> None:
+        if self._shell_phase is not ShellPhase.ACTIVE:
+            return
+        if self._is_lab_visible():
+            return
+        self._show_lab()
+
+    def _handle_shell_r(self) -> None:
+        if self._shell_phase is not ShellPhase.ACTIVE:
+            return
+        self._restart_lab()
+
+    def _handle_shell_escape(self) -> None:
+        action = resolve_escape(
+            phase=self._shell_phase,
+            live_control_active=bool(self.live_control.active),
+            remap_active=bool(self.hooks.state.flight_deck_remap),
+            deck_active=self._shell_phase is ShellPhase.ACTIVE,
+            deck_expanded=bool(self.flight_deck.expanded),
+            open_menu=bool(self.flight_deck.open_menu_key),
+        )
+        if action is EscAction.EXIT_LIVE_CONTROL:
+            self._exit_live_control(reason="escape")
+        elif action is EscAction.CANCEL_REMAP:
+            self.hooks.state.flight_deck_remap = False
+            self._status("Activate remap cancelled.", "info")
+        elif action is EscAction.CANCEL_CLOSE:
+            self._cancel_close_confirm()
+        elif action is EscAction.CLOSE_SECTION:
+            self.flight_deck.go_back()
+            self._sync_shell_hook_flags()
+        elif action is EscAction.COLLAPSE_MENU:
+            self.flight_deck.go_back()
+            self._sync_shell_hook_flags()
+        elif action is EscAction.ENTER_CLOSE_CONFIRM:
+            self._enter_close_confirm()
 
     def _toggle_flight_deck_from_lab(self) -> None:
-        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
-        if status not in ("ok", "minimized", "closed"):
-            self._status("Anchor a window before opening the flight deck.", "error")
-            return
-        if self._flight_deck_is_visible():
-            self._flight_deck_user_close()
-        else:
-            self._show_flight_deck()
+        # Lab button: activate if inactive, deactivate if active.
+        self._flight_deck_toggle_activate()
 
     def _update_flight_deck_lab_button(self) -> None:
         if getattr(self, "flight_deck_button", None) is None:
             return
-        open_now = self._flight_deck_is_visible()
-        self.flight_deck_button.configure(text="Close deck" if open_now else "Flight deck")
-
-    def _flight_deck_set_expanded(self, expanded: bool) -> None:
-        if expanded and not self._flight_deck_is_visible():
-            self._show_flight_deck(expand=False)
-        self.flight_deck.set_expanded(expanded)
-        self.hooks.state.flight_deck_expanded = bool(self.flight_deck.expanded)
-        self.hooks.state.flight_deck_open = self._flight_deck_is_visible()
-        if self.flight_deck.expanded:
-            self.flight_deck.focus_deck()
-            try:
-                hwnd = win32_api.widget_hwnd(self.flight_deck)
-                if hwnd:
-                    win32_api.focus_window(hwnd)
-            except Exception:
-                pass
-
-    def _flight_deck_toggle_expand(self) -> None:
-        if not self._flight_deck_is_visible():
-            self._show_flight_deck(expand=True)
-            return
-        self._flight_deck_set_expanded(not self.flight_deck.expanded)
+        active = self._shell_phase is ShellPhase.ACTIVE
+        self.flight_deck_button.configure(text="Deactivate deck" if active else "Activate deck")
 
     def _flight_deck_pause(self) -> None:
         if self.player.is_active:
@@ -939,7 +1350,7 @@ class App(ctk.CTk):
         if status not in ("ok", "minimized", "closed"):
             self._status("Anchor a window first so the expand key can be saved per anchor.", "warn")
         self.hooks.state.flight_deck_remap = True
-        self._status("Press the new expand key (Esc cancels). Saved for this anchor when set.", "warn")
+        self._status("Press the new Activate key (Esc cancels). Saved for this anchor when set.", "warn")
 
     def _apply_flight_deck_remap(self, vk: int) -> None:
         vk = int(vk)
@@ -969,16 +1380,154 @@ class App(ctk.CTk):
                 self._flight_deck_start_collection(str(action["collection"]), path=path)
             elif kind == "start_enabled_loops":
                 self._start_automations_all_enabled()
-            elif kind == "observe_start":
-                self._flight_deck_observe_start(str(action.get("title") or "Flight deck"))
-            elif kind == "observe_shot":
-                self._flight_deck_observe_shot()
-            elif kind == "observe_end":
-                self._end_screen_map_batch()
+            elif kind in {"observation_start", "observe_start"}:
+                title = str(action.get("title") or "").strip() or None
+                self._start_observation(title=title)
+            elif kind in {"observation_mark", "observe_shot"}:
+                self._mark_observation()
+            elif kind in {"observation_end", "observe_end"}:
+                self._stop_observation(reason="operator", prompt_rename=True)
+            elif kind == "live_control_enter":
+                self._enter_live_control()
+            elif kind == "live_control_enter_troubleshoot":
+                self._enter_live_control_troubleshoot()
+            elif kind == "live_control_exit":
+                self._exit_live_control(reason="operator")
+            elif kind == "live_control_toggle":
+                if self.live_control.active:
+                    self._exit_live_control(reason="toggle")
+                else:
+                    self._enter_live_control()
             else:
                 self._status(f"Flight deck: unknown action type “{kind}”.", "error")
         except Exception as exc:
             self._status(f"Flight deck failed ({path}): {exc}", "error")
+
+    def _live_control_anchor(self) -> tuple[str | None, int | None, object]:
+        status, hwnd, rect, title = self.anchor_target.snapshot()
+        if status != "ok":
+            return None, None, None
+        return title, hwnd, rect
+
+    def _live_control_log(self, message: str, level: str = "info") -> None:
+        self._status(message, level if level in STATUS_COLOR else "info")
+        if self.auto_panel is not None:
+            try:
+                self.auto_panel.append_console(message, level if level in {"ok", "warn", "error", "run", "info"} else "info")
+            except Exception:
+                pass
+
+    def _live_control_legend_changed(self, show_hotkeys: bool) -> None:
+        if getattr(self, "flight_deck", None) is None:
+            return
+        self.flight_deck.set_live_control_legend(bool(show_hotkeys))
+
+    def _live_control_pause_changed(self, paused: bool) -> None:
+        self.hooks.state.live_control_paused = bool(paused)
+        if getattr(self, "flight_deck", None) is None:
+            return
+        self.flight_deck.set_live_control_paused(bool(paused))
+
+    def _live_control_run_event_once(self, event_id: str) -> None:
+        if self.auto_runtime.is_running or self.auto_runtime.collection_running:
+            raise LiveControlError("Stop Loops before Stat collect from Live Control.")
+        if self.player.is_active or self.ai_batch_runner.is_running:
+            raise LiveControlError("Stop Bench/Mission before Stat collect from Live Control.")
+        self.auto_runtime.run_event_once(event_id)
+
+    def _live_control_evidence(
+        self,
+        *,
+        action: str,
+        phase: str,
+        detail: str = "",
+        meta: dict | None = None,
+        capture: bool = True,
+    ) -> None:
+        if not self.observation.active:
+            return
+        status, _hwnd, rect, title = self.anchor_target.snapshot()
+        try:
+            self.observation.note_live_control(
+                action=action,
+                phase=phase,
+                detail=detail,
+                meta=meta or {},
+                anchor_title=title if status == "ok" else None,
+                anchor_rect=rect if status == "ok" else None,
+                capture=capture and status == "ok",
+            )
+        except ObservationError as exc:
+            self._status(f"Live Control evidence: {exc}", "warn")
+
+    def _enter_live_control(self) -> None:
+        if self.observation.active or self.screen_map.active:
+            self._status("Stop Observation / Screen Map before Live Control Overlay.", "warn")
+            return
+        if self.recorder.active or self.player.is_active:
+            self._status("Stop Bench recording/playback before Live Control Overlay.", "warn")
+            return
+        if self.walkthrough is not None and self.walkthrough.active:
+            self._status("Stop Walkthrough before Live Control Overlay.", "warn")
+            return
+        try:
+            self.live_control.enter(evidence=False)
+            self.hooks.state.live_control_active = True
+            self.hooks.state.live_control_paused = False
+            self._live_control_owns_observation = False
+            self.flight_deck.set_live_control_active(True)
+            self._sync_shell_hook_flags()
+        except LiveControlError as exc:
+            self._status(str(exc), "error")
+
+    def _enter_live_control_troubleshoot(self) -> None:
+        """Live Control + Observation: playbook hotkeys with framed evidence for each action."""
+
+        if self.live_control.active:
+            self._status("Exit Live Control first, then U → 2 for Troubleshoot.", "warn")
+            return
+        if self.observation.active or self.screen_map.active:
+            self._status("Stop Observation / Screen Map before Troubleshoot Live Control.", "warn")
+            return
+        if self.recorder.active or self.player.is_active:
+            self._status("Stop Bench recording/playback before Troubleshoot Live Control.", "warn")
+            return
+        if self.walkthrough is not None and self.walkthrough.active:
+            self._status("Stop Walkthrough before Troubleshoot Live Control.", "warn")
+            return
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        self._start_observation(title=f"live-control-troubleshoot-{stamp}")
+        if not self.observation.active:
+            return
+        try:
+            self.live_control.enter(evidence=True)
+            self.hooks.state.live_control_active = True
+            self.hooks.state.live_control_paused = False
+            self._live_control_owns_observation = True
+            self.flight_deck.set_live_control_active(True)
+            self._sync_shell_hook_flags()
+            self._status(
+                f"Live Control Troubleshoot ON · evidence → {self.observation.folder.name if self.observation.folder else '?'}",
+                "run",
+            )
+        except LiveControlError as exc:
+            self._live_control_owns_observation = False
+            self.flight_deck.set_live_control_active(False)
+            self._stop_observation(reason="live-control-enter-failed", prompt_rename=False)
+            self._status(str(exc), "error")
+
+    def _exit_live_control(self, *, reason: str = "operator") -> None:
+        if not self.live_control.active:
+            return
+        self.live_control.exit(reason=reason)
+        self.hooks.state.live_control_active = False
+        self.hooks.state.live_control_paused = False
+        self.flight_deck.set_live_control_active(False)
+        self._sync_shell_hook_flags()
+        if self._live_control_owns_observation:
+            self._live_control_owns_observation = False
+            if self.observation.active or self.screen_map.active:
+                self._stop_observation(reason="live-control-exit", prompt_rename=False)
 
     def _flight_deck_play_preset(self, name: str, *, path: str) -> None:
         if self.recorder.active or self.player.is_active:
@@ -1035,79 +1584,139 @@ class App(ctk.CTk):
         if self.auto_runtime.collection_running or self.auto_runtime.is_running:
             self._status(f"Flight deck · {path}", "run")
 
-    def _flight_deck_observe_start(self, title: str) -> None:
-        if self.screen_map.active:
-            self._status("Observe batch already active — Capture shot or End batch.", "warn")
+    def _start_observation(self, title: str | None = None) -> None:
+        if self.observation.active or self.screen_map.active:
+            self._status("An observation is already active — Mark or Stop.", "warn")
             return
         if self.recorder.active or self.player.is_active:
-            self._status("Finish recording/playback before Observe.", "warn")
+            self._status("Finish Bench recording/playback before Observe.", "warn")
             return
-        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
-        if status != "ok":
+        if self.auto_runtime.is_running or self.auto_runtime.collection_running:
+            self._status("Stop Loops before starting an observation.", "warn")
+            return
+        if self.ai_batch_runner.is_running:
+            self._status("Stop the Mission before starting an observation.", "warn")
+            return
+        status, _hwnd, rect, window_title = self.anchor_target.snapshot()
+        if status != "ok" or rect is None:
             self._status("Anchor a window before Observe.", "error")
             return
-        stamp = time.strftime("%Y-%m-%d %H%M")
-        batch_title = f"{(title or 'Flight deck').strip()} {stamp}".strip()
+        human = (title or "").strip() or auto_observation_title()
         try:
-            self.screen_maps_root.mkdir(parents=True, exist_ok=True)
-            session = create_batch(self.screen_maps_root, batch_title)
-            self.screen_map.start(session)
-        except ScreenMapError as exc:
+            batch = self.observation.start(
+                self.screen_maps_root,
+                title=human,
+                anchor_title=window_title,
+                anchor_rect=rect,
+            )
+            self.screen_map.start(batch)
+        except (ObservationError, ScreenMapError, OSError) as exc:
+            if self.observation.active:
+                try:
+                    self.observation.stop(reason="error")
+                except Exception:
+                    pass
             self._status(str(exc), "error")
             return
-        except OSError as exc:
-            self._status(f"Could not create batch folder: {exc}", "error")
-            return
-        self.hooks.state.screenshot_mode = True
+        self.hooks.state.observation_active = True
+        self.hooks.state.screenshot_mode = False
         self.hooks.state.title_dialog_open = False
         self.hooks.state.screenshot_busy = False
         self._screen_map_busy = False
         self._refresh_screen_map_panel()
         self._refresh_screen_map_catalog()
-        self._status(f"Observe ON · {session.folder.name} — Space→2 captures.", "run")
+        self._update_activity()
+        self._status(f"Observation ON · {batch.folder.name} — play normally; Esc stops.", "run")
 
-    def _flight_deck_observe_shot(self) -> None:
-        if not self.screen_map.active or self.screen_map.dialog_open or self._screen_map_busy:
-            self._status("Start an Observe batch first (Space → Space).", "warn")
+    def _mark_observation(self) -> None:
+        if not self.observation.active:
+            self._status("Start an observation first (O→1).", "warn")
             return
-        if self.recorder.active or self.player.is_active:
-            self._status("Cannot capture while recording or playing back.", "warn")
-            return
-        self._set_screen_map_busy(True, "Capturing…")
         status, _hwnd, rect, window_title = self.anchor_target.snapshot()
-        if status != "ok" or rect is None:
-            self._set_screen_map_busy(False)
-            self._status(f"Anchor not ready ({status}) — capture refused.", "error")
-            return
         try:
-            image = grab_anchor(rect)
-        except CaptureError as exc:
-            self._set_screen_map_busy(False)
-            self._status(f"Capture failed: {exc}", "error")
+            self.observation.mark(anchor_title=window_title, anchor_rect=rect if status == "ok" else None)
+        except ObservationError as exc:
+            self._status(str(exc), "error")
             return
-        session = self.screen_map.session
-        if session is None:
-            self._set_screen_map_busy(False)
-            self._status("Batch session missing.", "error")
+        self._status("Observation mark queued.", "ok")
+
+    def _stop_observation(self, *, reason: str = "operator", prompt_rename: bool = False) -> None:
+        if not self.observation.active and not self.screen_map.active:
+            self._status("No observation is active.", "warn")
             return
-        title = f"shot {session.shot_count + 1}"
-        anchor_meta = {
-            "window_title": window_title,
-            "width": rect.width,
-            "height": rect.height,
-            "left": rect.left,
-            "top": rect.top,
-        }
-        try:
-            shot = add_shot(session, title=title, image=image, anchor=anchor_meta)
-        except (ScreenMapError, OSError) as exc:
-            self._set_screen_map_busy(False)
-            self._status(f"Could not save shot: {exc}", "error")
-            return
-        self._set_screen_map_busy(False)
+        if self._live_control_owns_observation:
+            self._live_control_owns_observation = False
+            if self.live_control.active:
+                self.live_control.evidence = False
+        summary = None
+        if self.observation.active:
+            summary = self.observation.stop(reason=reason)
+        if self.screen_map.active:
+            self.screen_map.end()
+        self.hooks.state.observation_active = False
+        self.hooks.state.screenshot_mode = False
         self._refresh_screen_map_panel()
         self._refresh_screen_map_catalog()
-        self._status(f"Saved {shot.filename}", "ok")
+        self._update_activity()
+        if summary is None:
+            self._status("Observation stopped.", "warn")
+            return
+        self._status(
+            f"Observation finished: {summary.shot_count} shot(s), {summary.event_count} events · {summary.folder.name}",
+            "ok",
+        )
+        if prompt_rename and reason == "operator":
+            self._maybe_rename_observation(summary.folder, summary.title)
+
+    def _maybe_rename_observation(self, folder, current_title: str) -> None:
+        rename = messagebox.askyesno(
+            "Rename observation?",
+            f"Rename this observation?\n\nCurrent title:\n“{current_title}”\n\nYes = rename, No = keep.",
+            parent=self,
+        )
+        if not rename:
+            return
+        new_title = self._ask_name("Rename observation", current_title)
+        if not new_title:
+            return
+        try:
+            # Controller still holds last folder path after stop.
+            self.observation.folder = folder
+            renamed = self.observation.rename(new_title)
+        except ObservationError as exc:
+            self._status(str(exc), "error")
+            return
+        except OSError as exc:
+            self._status(f"Could not rename observation: {exc}", "error")
+            return
+        self._refresh_screen_map_catalog()
+        if self.screen_map_panel is not None:
+            self.screen_map_panel.focus_batch(renamed.name)
+        self._status(f"Observation renamed: {renamed.name}", "ok")
+
+    def _observation_anchor(self):
+        status, _hwnd, rect, window_title = self.anchor_target.snapshot()
+        if status != "ok":
+            return window_title, None
+        return window_title, rect
+
+    def _drain_observation_ui(self) -> None:
+        saw_shot = False
+        for event in self.observation.drain_ui():
+            kind = event[0]
+            if kind == "error":
+                self._status(str(event[1]), "error")
+            elif kind == "shot":
+                saw_shot = True
+            elif kind == "ended":
+                self._refresh_screen_map_panel()
+                self._refresh_screen_map_catalog()
+        if saw_shot:
+            now = time.perf_counter()
+            # Spam-safe: panel refresh at most ~3 Hz while recording.
+            if now - self._observation_ui_refresh_at >= 0.35:
+                self._observation_ui_refresh_at = now
+                self._refresh_screen_map_panel()
 
     def _sync_flight_deck_run_state(self) -> None:
         running = bool(
@@ -1128,26 +1737,25 @@ class App(ctk.CTk):
         self.hooks.state.flight_deck_open = self._flight_deck_is_visible()
 
     def _maybe_auto_show_flight_deck(self, status: str, rect) -> None:
-        anchored = status in ("ok", "minimized")
-        self.hooks.state.flight_deck_expand_armed = anchored
-        if not anchored:
-            if self._flight_deck_is_visible():
-                self._hide_flight_deck(user_hidden=False)
-            return
-        self._sync_flight_deck_expand_vk()
-        if self.settings.flight_deck_user_hidden:
-            return
-        if not self._flight_deck_is_visible():
-            self.flight_deck.show_deck(
-                beside=rect if status == "ok" else None,
-                geometry=self.settings.flight_deck_geometry,
-            )
-            self.hooks.state.flight_deck_open = True
-            self._sync_flight_deck_run_state()
-            self._update_flight_deck_lab_button()
-        else:
-            # Recover if a prior session parked the deck off-screen.
+        # Activate model: deck stays visible; poller only syncs flags + onscreen.
+        self.hooks.state.flight_deck_expand_armed = True
+        if self._shell_phase is ShellPhase.ACTIVE:
+            anchored = status in ("ok", "minimized")
+            self.flight_deck.set_anchored(anchored)
+            if anchored and not self.flight_deck.expanded:
+                self.flight_deck.set_expanded(True)
+            elif not anchored and self._shell_phase is ShellPhase.ACTIVE:
+                prompt = self._active_unanchored_prompt_text()
+                self.flight_deck.set_shell_phase(
+                    ShellPhase.ACTIVE,
+                    prompt=prompt,
+                    lab_visible=self._is_lab_visible(),
+                    anchored=False,
+                )
+        self._sync_shell_hook_flags()
+        if self._flight_deck_is_visible():
             self.flight_deck.ensure_onscreen()
+        _ = rect
 
     def _edited_points(self) -> list[ClickPoint]:
         if self.recorder.active:
@@ -1697,24 +2305,64 @@ class App(ctk.CTk):
                         self._rebuild_points()
                         self._status(f"Point {len(self.recorder.points)} added.", "warn")
                 elif kind == "screen_map_space":
-                    self._screen_map_space()
+                    # Legacy Space capture — observations use mouse tracking instead.
+                    if not self.observation.active:
+                        self._screen_map_space()
+                elif kind == "observation_move":
+                    if self.observation.active:
+                        title, rect = self._observation_anchor()
+                        self.observation.handle_move(int(event[1]), int(event[2]), anchor_title=title, anchor_rect=rect)
+                elif kind == "observation_down":
+                    if self.observation.active:
+                        title, rect = self._observation_anchor()
+                        self.observation.handle_button(
+                            down=True,
+                            button=str(event[1]),
+                            x=int(event[2]),
+                            y=int(event[3]),
+                            anchor_title=title,
+                            anchor_rect=rect,
+                        )
+                elif kind == "observation_up":
+                    if self.observation.active:
+                        title, rect = self._observation_anchor()
+                        self.observation.handle_button(
+                            down=False,
+                            button=str(event[1]),
+                            x=int(event[2]),
+                            y=int(event[3]),
+                            anchor_title=title,
+                            anchor_rect=rect,
+                        )
+                elif kind == "observation_wheel":
+                    if self.observation.active:
+                        title, rect = self._observation_anchor()
+                        self.observation.handle_wheel(
+                            x=int(event[1]),
+                            y=int(event[2]),
+                            dy=int(event[3]),
+                            anchor_title=title,
+                            anchor_rect=rect,
+                        )
                 elif kind == "walkthrough_space":
                     self._walkthrough_space()
                 elif kind == "walkthrough_key":
                     self._walkthrough_key(str(event[1]))
                 elif kind == "escape":
-                    if self.hooks.state.flight_deck_remap:
-                        self.hooks.state.flight_deck_remap = False
-                        self._status("Expand remap cancelled.", "info")
-                    elif self._flight_deck_is_visible():
-                        # Esc always closes the flight deck (expand/collapse is the expand key).
-                        self._flight_deck_user_close()
+                    if (
+                        self._shell_phase in {ShellPhase.ACTIVE, ShellPhase.CLOSE_CONFIRM}
+                        or self.live_control.active
+                        or self.hooks.state.flight_deck_remap
+                    ):
+                        self._handle_shell_escape()
                     elif self._anchor_waiting or self.hooks.state.anchor_armed:
                         self._cancel_anchor_mode()
                     elif self.walkthrough is not None and self.walkthrough.active:
                         self._stop_collection_walkthrough()
                     elif self.recorder.active:
                         self._finish_recording()
+                    elif self.observation.active:
+                        self._stop_observation(reason="operator", prompt_rename=True)
                     elif (
                         self.player.is_active
                         or self.auto_runtime.is_running
@@ -1725,13 +2373,34 @@ class App(ctk.CTk):
                         self._stop_all()
                     elif self.screen_map.active and not self._screen_map_busy:
                         self._end_screen_map_batch()
-                elif kind == "flight_deck_expand":
-                    self._flight_deck_toggle_expand()
+                elif kind == "shell_enter":
+                    self._handle_shell_enter()
+                elif kind == "shell_a":
+                    self._handle_shell_a()
+                elif kind == "shell_i":
+                    self._handle_shell_i()
+                elif kind == "shell_r":
+                    self._handle_shell_r()
+                elif kind == "flight_deck_activate":
+                    self._flight_deck_toggle_activate()
+                elif kind == "live_control_key":
+                    if self.live_control.active:
+                        phase = str(event[2]) if len(event) > 2 else "down"
+                        self.live_control.handle_key(str(event[1]), phase=phase)
+                elif kind == "live_control_pause_toggle":
+                    if self.live_control.active:
+                        self.live_control.toggle_pause()
+                elif kind == "live_control_scroll":
+                    if self.live_control.active:
+                        mode = str(event[2]) if len(event) > 2 else "step"
+                        retries = int(event[3]) if len(event) > 3 else 0
+                        self.live_control.run_scroll(str(event[1]), mode=mode, _retries=retries)
                 elif kind == "flight_deck_menu_key":
-                    action = self.flight_deck.navigate(str(event[1]))
-                    self.hooks.state.flight_deck_expanded = bool(self.flight_deck.expanded)
-                    if action is not None:
-                        self._dispatch_flight_deck_action(action)
+                    if self._shell_phase is ShellPhase.ACTIVE and self._is_anchored():
+                        action = self.flight_deck.navigate(str(event[1]))
+                        self._sync_shell_hook_flags()
+                        if action is not None:
+                            self._dispatch_flight_deck_action(action)
                 elif kind == "flight_deck_remap_key":
                     self._apply_flight_deck_remap(int(event[1]))
                 elif kind == "f6":
@@ -1739,7 +2408,7 @@ class App(ctk.CTk):
                         pass
                     elif self.player.is_active:
                         self._stop_playback()
-                    elif not self.recorder.active and not self.screen_map.active:
+                    elif not self.recorder.active and not self.screen_map.active and not self.observation.active:
                         self._start_playback()
                 elif kind == "f7" and self.player.is_active:
                     self._toggle_pause()
@@ -1747,6 +2416,10 @@ class App(ctk.CTk):
                     self._stop_all()
         except Exception as exc:
             self._status(f"Hotkey handler failed: {exc}", "error")
+        try:
+            self._drain_observation_ui()
+        except Exception as exc:
+            self._status(f"Observation UI update failed: {exc}", "error")
         if self._alive:
             self.after(30, self._drain_hooks)
 
@@ -1790,6 +2463,7 @@ class App(ctk.CTk):
         self.hooks.state.recording = False
         self.hooks.state.playback = False
         self.hooks.state.screenshot_mode = False
+        self.hooks.state.observation_active = False
         self.hooks.state.title_dialog_open = False
         self.hooks.state.screenshot_busy = False
         self.hooks.state.walkthrough_active = False
@@ -1797,6 +2471,24 @@ class App(ctk.CTk):
         self.hooks.state.flight_deck_expanded = False
         self.hooks.state.flight_deck_remap = False
         self.hooks.state.flight_deck_expand_armed = False
+        self.hooks.state.flight_deck_active = False
+        self.hooks.state.quit_confirm = False
+        self.hooks.state.lab_visible = False
+        try:
+            if self._tray is not None:
+                self._tray.stop()
+                self._tray = None
+        except Exception:
+            pass
+        try:
+            release_single_instance()
+        except Exception:
+            pass
+        try:
+            if self.observation.active:
+                self.observation.stop(reason="app_close")
+        except Exception:
+            pass
         try:
             self._stop_collection_walkthrough()
         except Exception:
@@ -1821,11 +2513,18 @@ class App(ctk.CTk):
                 self.guide_overlay.destroy()
         except Exception:
             pass
+        try:
+            if getattr(self, "live_control", None) is not None and self.live_control.active:
+                self.live_control.exit(reason="quit")
+            if getattr(self, "live_control_overlay", None) is not None:
+                self.live_control_overlay.destroy()
+        except Exception:
+            pass
         self.destroy()
 
     def _start_collection_walkthrough(self, collection: Collection) -> None:
-        if self.recorder.active or self.player.is_active or self.screen_map.active:
-            self._status("Stop recording/playback/screen-map before Walkthrough.", "warn")
+        if self.recorder.active or self.player.is_active or self.screen_map.active or self.observation.active:
+            self._status("Stop recording/playback/observation before Walkthrough.", "warn")
             return
         if self.guide_overlay is None:
             self.guide_overlay = GuideOverlay(self)
@@ -1888,13 +2587,15 @@ class App(ctk.CTk):
         if self.screen_map_panel is None:
             return
         session = self.screen_map.session
+        if self.observation.active and self.observation.batch is not None:
+            session = self.observation.batch
         if session is None:
             self.screen_map_panel.set_idle()
         else:
             self.screen_map_panel.set_active(
                 session.folder,
                 session.titles,
-                ready=not self._screen_map_busy,
+                ready=self.observation.active or not self._screen_map_busy,
             )
 
     def _set_screen_map_busy(self, busy: bool, message: str | None = None) -> None:
@@ -1912,38 +2613,14 @@ class App(ctk.CTk):
             pass
 
     def _start_screen_map_batch(self) -> None:
-        if self.screen_map.active:
-            self._status("A Screen Map batch is already running.", "warn")
-            return
-        if self.recorder.active or self.player.is_active:
-            self._status("Finish recording/playback before starting a Screen Map batch.", "warn")
-            return
-        status, _hwnd, _rect, _title = self.anchor_target.snapshot()
-        if status != "ok":
-            self._status("Anchor a window before starting a Screen Map batch.", "error")
-            return
-        title = self._ask_name("Screen Map batch", "tower-screens")
-        if not title:
-            return
-        try:
-            self.screen_maps_root.mkdir(parents=True, exist_ok=True)
-            session = create_batch(self.screen_maps_root, title)
-            self.screen_map.start(session)
-        except ScreenMapError as exc:
-            self._status(str(exc), "error")
-            return
-        except OSError as exc:
-            self._status(f"Could not create batch folder: {exc}", "error")
-            return
-        self.hooks.state.screenshot_mode = True
-        self.hooks.state.title_dialog_open = False
-        self.hooks.state.screenshot_busy = False
-        self._screen_map_busy = False
-        self._refresh_screen_map_panel()
-        self._refresh_screen_map_catalog()
-        self._status(f"Screenshot mode ON. Space captures, then title. Batch: {session.folder}", "run")
+        """Observe tab entry — Observations replaced Space-titled batches."""
+
+        self._start_observation()
 
     def _end_screen_map_batch(self) -> None:
+        if self.observation.active:
+            self._stop_observation(reason="operator", prompt_rename=True)
+            return
         if self._screen_map_title_dialog is not None:
             try:
                 if self._screen_map_title_dialog.winfo_exists():
@@ -1958,7 +2635,7 @@ class App(ctk.CTk):
         self._refresh_screen_map_panel()
         self._refresh_screen_map_catalog()
         if session is None:
-            self._status("Screenshot mode OFF.", "warn")
+            self._status("Observation OFF.", "warn")
             return
         self._status(
             f"Batch finished: {session.shot_count} shot(s) in {session.folder}",
@@ -1966,9 +2643,10 @@ class App(ctk.CTk):
         )
 
     def _open_screen_map_folder(self) -> None:
-        session = self.screen_map.session
-        if session is not None:
-            folder = session.folder
+        if self.observation.active and self.observation.folder is not None:
+            folder = self.observation.folder
+        elif self.screen_map.session is not None:
+            folder = self.screen_map.session.folder
         elif self.screen_map_panel is not None and self.screen_map_panel.selected_batch is not None:
             folder = self.screen_map_panel.selected_batch.folder
         else:
@@ -2798,7 +3476,13 @@ class App(ctk.CTk):
         if self.auto_runtime.is_running or self.auto_runtime.collection_running:
             self.auto_runtime.stop()
             stopped.append("Loops")
-        if self.screen_map.active:
+        if self.observation.active:
+            try:
+                self._stop_observation(reason="stop_all", prompt_rename=False)
+                stopped.append("Observation")
+            except Exception:
+                pass
+        elif self.screen_map.active:
             try:
                 self._end_screen_map_batch()
                 stopped.append("Observe capture")
@@ -2807,6 +3491,9 @@ class App(ctk.CTk):
         if self.walkthrough is not None and self.walkthrough.active:
             self._stop_collection_walkthrough()
             stopped.append("Walkthrough")
+        if self.live_control.active:
+            self._exit_live_control(reason="stop_all")
+            stopped.append("Live Control Overlay")
         self._update_activity()
         if stopped:
             self._status("Stopped: " + ", ".join(stopped) + ".", "warn")
@@ -2819,6 +3506,11 @@ class App(ctk.CTk):
         self._stop_all()
         try:
             self._save_settings()
+        except Exception:
+            pass
+        # Release before spawn so the successor can take the single-instance lock.
+        try:
+            release_single_instance()
         except Exception:
             pass
         root = project_root()
@@ -2863,6 +3555,9 @@ class App(ctk.CTk):
             if blocking:
                 return f"Activity: Loops · {blocking}"
             return "Activity: Loops"
+        if self.observation.active:
+            shots = self.observation.shot_count
+            return f"Activity: Observe · recording ({shots} shots)"
         if self.screen_map.active:
             return "Activity: Observe · capturing"
         if self.player.is_active:
@@ -2885,6 +3580,7 @@ class App(ctk.CTk):
                 or self.ai_batch_runner.is_running
                 or self.player.is_active
                 or self.recorder.active
+                or self.observation.active
                 or self.screen_map.active
                 or (self.walkthrough is not None and self.walkthrough.active)
             )
@@ -3032,8 +3728,17 @@ class App(ctk.CTk):
 
 
 def main() -> None:
+    if sys.platform == "win32" and not try_acquire_single_instance():
+        # Existing process was signaled to come forward.
+        return
     win32_api.set_dpi_aware()
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
     app = App()
-    app.mainloop()
+    try:
+        app.mainloop()
+    finally:
+        try:
+            release_single_instance()
+        except Exception:
+            pass

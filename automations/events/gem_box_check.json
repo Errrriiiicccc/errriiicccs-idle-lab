@@ -1,0 +1,35 @@
+{
+  "id": "gem_box_check",
+  "title": "Gem box check",
+  "version": 1,
+  "enabled": false,
+  "priority": 42,
+  "timing": {"type": "interval", "every_ms": 60000},
+  "description": "Atom: OCR gem-box ROI; tap via preset only when PRESENT.",
+  "notes": "Composed into endgame_status_buy via run_event. Enabled:false — Start selected still runs once.",
+  "actions": [
+    {
+      "type": "ocr",
+      "roi": "gem_box_roi",
+      "variable": "gem_box",
+      "parse_as": "presence",
+      "description": "Opportunistic gem-box presence check."
+    },
+    {
+      "type": "decide",
+      "variable": "gem_box",
+      "match_a": "PRESENT",
+      "mode": "equals",
+      "description": "Tap the gem box only when the ROI looks occupied.",
+      "explain_a": "gem box present — tap it",
+      "explain_b": "no gem box — skip",
+      "on_a": [
+        {"type": "log", "message": "gem box PRESENT — tapping", "level": "ok"},
+        {"type": "play_preset", "preset": "gem box tap", "description": "Tap the gem box."}
+      ],
+      "on_b": [
+        {"type": "log", "message": "gem box ABSENT — skip", "level": "info"}
+      ]
+    }
+  ]
+}

@@ -83,6 +83,9 @@ def _action_basic(action: Action) -> str:
         direction = raw.get("direction") or "down"
         rows = raw.get("rows") or raw.get("amount") or 1
         return f"Scroll the open upgrade list {direction} by ~{rows} tile row(s) (tab-agnostic)."
+    if kind == "run_event":
+        event_id = raw.get("event") or raw.get("id") or "?"
+        return f"Run atom “{event_id}” inline (shared procedure)."
     return f"Run action “{kind}”."
 
 
@@ -168,6 +171,9 @@ def _action_detailed(action: Action, *, indent: str = "") -> list[str]:
         lines.append(f"{indent}  → direction: {raw.get('direction') or 'down'}")
         lines.append(f"{indent}  → rows: {raw.get('rows') or raw.get('amount') or 1}")
         lines.append(f"{indent}  → playbook drag_fraction≈{raw.get('drag_fraction') or 0.10}")
+    elif kind == "run_event":
+        lines.append(f"{indent}  → event id: {raw.get('event') or raw.get('id')}")
+        lines.append(f"{indent}  → executes that atom’s actions in-process (no new scheduler tick)")
     return lines
 
 

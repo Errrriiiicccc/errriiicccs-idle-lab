@@ -1,6 +1,7 @@
 # The Tower — perception & screen state
 
-**Status:** living knowledge (start 2026-11-05); **perception active again 2026-11-06**  
+**Status:** living knowledge (start 2026-11-05); **perception paused 2026-11-06** (bad-data watch only)  
+**Trust / auto-review watchlist:** [ocr-trust.json](ocr-trust.json)  
 **Resume / ownership handoff:** [HANDOFF-PERCEPTION.md](../HANDOFF-PERCEPTION.md)  
 **Product frame:** [VISION.md](../VISION.md) §§4–5 / §9  
 **Code:** `src/idle_lab/automations/ocr.py`, `hud_mode.py`, `automations/rois/`, `tests/fixtures/ocr/`

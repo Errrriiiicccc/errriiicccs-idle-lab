@@ -5,13 +5,13 @@
   "enabled": true,
   "priority": 40,
   "timing": {"type": "interval", "every_ms": 15000},
-  "description": "Tier-1 endgame tick: read current panel status, check game-over + gem box, then buy Health then Damage with observe→ensure tab→seek list top→click. Upgrade menus stay open (never retap an already-open tab; never close after buys).",
-  "notes": "Enabled for Endgame Phase Loop. Relies on detect_panel / ensure_upgrade_tab / seek_list_top. Never retaps an active tab; never issues a close tap; leaves Attack open. Keep humanize_upgrade_loop disabled.",
+  "description": "Orchestrator atom: panel status → game-over gate → gem_box_check → buy_health → buy_damage → leave Attack open. Child atoms via run_event.",
+  "notes": "Enabled for Endgame Phase Loop. Composes gem_box_check / buy_health / buy_damage. Keep humanize_upgrade_loop disabled.",
   "actions": [
     {
       "type": "detect_panel",
       "prefix": "endgame_status",
-      "description": "Observe the screen first: is the upgrade panel open, and which tab (Attack / Defense / Utility / closed)?"
+      "description": "Observe the screen first: is the upgrade panel open, and which tab?"
     },
     {
       "type": "log",
@@ -31,9 +31,9 @@
       "variable": "game_over",
       "match_a": "GAME_OVER",
       "mode": "equals",
-      "description": "If the run ended, stop. Otherwise gem-check, then Health→Attack buys with status checks — leave the panel open.",
+      "description": "If the run ended, stop. Otherwise gem-check + Health→Damage buys.",
       "explain_a": "run is over — log it and skip buys",
-      "explain_b": "run active — gem check, open Defense (if needed), seek Health to top, buy Health, switch to Attack (if needed), seek Damage to top, buy Damage, leave Attack open",
+      "explain_b": "run active — gem check, Health buy, Damage buy, leave Attack open",
       "on_a": [
         {
           "type": "log",
@@ -50,27 +50,9 @@
       ],
       "on_b": [
         {
-          "type": "ocr",
-          "roi": "gem_box_roi",
-          "variable": "gem_box",
-          "parse_as": "presence",
-          "description": "Opportunistic gem-box check on the status frame (not its own timer)."
-        },
-        {
-          "type": "decide",
-          "variable": "gem_box",
-          "match_a": "PRESENT",
-          "mode": "equals",
-          "description": "Tap the gem box only when the ROI looks occupied.",
-          "explain_a": "gem box present — tap it",
-          "explain_b": "no gem box — skip",
-          "on_a": [
-            {"type": "log", "message": "gem box PRESENT — tapping", "level": "ok"},
-            {"type": "play_preset", "preset": "gem box tap", "description": "Tap the gem box."}
-          ],
-          "on_b": [
-            {"type": "log", "message": "gem box ABSENT — skip", "level": "info"}
-          ]
+          "type": "run_event",
+          "event": "gem_box_check",
+          "description": "Opportunistic gem-box check + tap."
         },
         {
           "type": "log",
@@ -79,48 +61,19 @@
           "description": "Announce the human-style buy order."
         },
         {
-          "type": "ensure_upgrade_tab",
-          "tab": "defense",
-          "prefix": "endgame_defense",
-          "description": "Observe panel; open Defense only if it is not already the active tab (retap would close it)."
+          "type": "run_event",
+          "event": "buy_health",
+          "description": "Defense tab → seek Health → buy."
         },
         {
-          "type": "seek_list_top",
-          "look_for": "Health",
-          "prefix": "endgame_defense_seek",
-          "description": "Look at the Defense list: if Health is not on the first row, controlled-drag up until it is (or the list stops moving)."
-        },
-        {
-          "type": "click",
-          "target": "health",
-          "description": "Buy one Health level on the first Defense card."
-        },
-        {
-          "type": "wait",
-          "ms": 400,
-          "description": "Brief settle after the Health buy."
-        },
-        {
-          "type": "ensure_upgrade_tab",
-          "tab": "attack",
-          "prefix": "endgame_attack",
-          "description": "Observe panel; switch to Attack only if needed. Do not close Defense by retapping it."
-        },
-        {
-          "type": "seek_list_top",
-          "look_for": "Damage",
-          "prefix": "endgame_attack_seek",
-          "description": "Look at the Attack list: if Damage is not on the first row, scroll up until it is (or unchanged)."
-        },
-        {
-          "type": "click",
-          "target": "damage",
-          "description": "Buy one Damage level on the first Attack card."
+          "type": "run_event",
+          "event": "buy_damage",
+          "description": "Attack tab → seek Damage → buy."
         },
         {
           "type": "detect_panel",
           "prefix": "endgame_leave_open",
-          "description": "Final status check — confirm Attack is still open. We intentionally leave it open."
+          "description": "Final status check — confirm Attack is still open."
         },
         {
           "type": "log",

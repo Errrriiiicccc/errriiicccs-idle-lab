@@ -31,6 +31,10 @@ Restart stops runners, saves settings, relaunches `python -m idle_lab`, and exit
 
 Halts Bench playback, Mission runner, Loops scheduler, Observe capture, and Walkthrough without quitting.
 
+## Deck-first quit
+
+Lab **X** / hide only withdraws the Lab window. With Lab hidden, Esc on the flight deck peels menus then asks **Quit Idle Lab?** — **Enter** exits the process, **Esc** cancels.
+
 ## Workspaces
 
 | Tab | Role |

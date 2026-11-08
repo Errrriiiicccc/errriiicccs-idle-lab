@@ -1,0 +1,52 @@
+{
+  "id": "buy_health",
+  "title": "Buy Health",
+  "version": 1,
+  "enabled": false,
+  "priority": 41,
+  "timing": {"type": "interval", "every_ms": 60000},
+  "description": "Atom: ensure Defense tab → seek Health to top → buy one level. Skips when game_over=GAME_OVER.",
+  "notes": "Composed into endgame_status_buy and health_then_damage molecule. Never retaps an open tab; leaves Defense open.",
+  "actions": [
+    {
+      "type": "decide",
+      "variable": "game_over",
+      "match_a": "GAME_OVER",
+      "mode": "equals",
+      "description": "Skip buys after end-of-run.",
+      "explain_a": "game over — skip Health buy",
+      "explain_b": "run active — Defense/Health buy",
+      "on_a": [
+        {
+          "type": "log",
+          "message": "buy_health: skipped (game over)",
+          "level": "warn"
+        }
+      ],
+      "on_b": [
+        {
+          "type": "ensure_upgrade_tab",
+          "tab": "defense",
+          "prefix": "buy_health_defense",
+          "description": "Open Defense only if it is not already the active tab."
+        },
+        {
+          "type": "seek_list_top",
+          "look_for": "Health",
+          "prefix": "buy_health_seek",
+          "description": "Scroll Defense up until Health is on the first row (or list stops moving)."
+        },
+        {
+          "type": "click",
+          "target": "health",
+          "description": "Buy one Health level on the first Defense card."
+        },
+        {
+          "type": "wait",
+          "ms": 400,
+          "description": "Brief settle after the Health buy."
+        }
+      ]
+    }
+  ]
+}

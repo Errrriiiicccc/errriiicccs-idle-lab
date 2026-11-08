@@ -4,9 +4,9 @@ For the next chat working on **Errriiiccc's Idle Lab** (`c:\DEV\Projects\Cursor\
 
 **North star:** [VISION.md](VISION.md) — human-translation workbench (demonstrate + describe → AI authors → Idle Lab runs via pixels + ordinary input; no injection/memory dumps).
 
-**Active focus (2026-11-06):** Flight deck accordion ([`automations/flight_deck.json`](../automations/flight_deck.json)) — letter menus, digit leaves, two keys max. Lab Loops taxonomy stays separate. Next: perception `detect_hud_currency_mode`.
+**Active focus (2026-11-08):** **Live Control Overlay** now loads Tower **object map** (`automations/maps/tower_main_gameplay.objects.json`) — typed tabs/panels/lists/buys. Humanize defaults **Off**. Next: fill visual-state colors from Observe crops; refined observation ROI crops. Molecules/`run_event` shipped. Perception **paused** (watch bad data only).
 
-**Perception (parallel, active):** owned separately → [HANDOFF-PERCEPTION.md](HANDOFF-PERCEPTION.md). Field table → [knowledge/TOWER-PERCEPTION.md](knowledge/TOWER-PERCEPTION.md). Run regressions via Missions → **OCR fixture bench** (offline, auto-seeded from `examples/ai-batches/ocr-fixture-bench/`).
+**Perception (paused):** no new OCR wiring unless bad data shows up. Bad-data watchlist → [knowledge/ocr-trust.json](knowledge/ocr-trust.json). Field table → [knowledge/TOWER-PERCEPTION.md](knowledge/TOWER-PERCEPTION.md). Handoff (history / resume) → [HANDOFF-PERCEPTION.md](HANDOFF-PERCEPTION.md).
 
 Shell: **Refresh / Restart / Stop all**, **Flight deck** + expand remap beside Anchor, workspaces **Bench · Observe · Missions · Loops**. Taxonomy: `automations/taxonomy.json`. Visual critique canvas:
 
@@ -21,10 +21,11 @@ Probes: [PROBE-MISSIONS.md](PROBE-MISSIONS.md). Legacy OCR tweak prompt: [HANDOF
 
 - Fork of tower-autoclicker as package `idle_lab`; original tree untouched.
 - **Chrome:** compact **Anchor** (+ red × clear), **Flight deck** + expand remap, **Refresh**, **Restart**, **Stop all**, Activity pulse, files-changed badge.
-- **Flight deck:** movable topmost HUD; accordion from `flight_deck.json` (O/C/N/A/M → digits); Pause/Stop while running.
+- **Flight deck:** movable topmost HUD; **deck-first boot** (Enter/Esc/A/I); system tray icon (Open Lab / Show Deck / Quit); accordion from `flight_deck.json` (U/O/C/N/A/M → digits); Esc peels menus then quit-confirms when Lab is hidden; Pause/Stop while running.
+- **Live Control Overlay:** object-map hit-targets (`automations/maps/tower_main_gameplay.objects.json`); Esc exits; Stay-in-mode; deck shows LCO-active surface.
 - **Bench:** presets, playback, hotkeys, click logger, per-preset Note comments.
 - **Loops:** Atoms / Molecules browse (taxonomy), Start selected atom = once, molecule interval|once, scroll atoms, queue, console, Note comments.
-- **Observe:** Screen Map capture + catalog; Note on batch or individual shot (also syncs `manifest.json` notes).
+- **Observe:** Observation sessions (pointer timeline + dual-write Screen Map shots) + catalog; Note on batch or shot.
 - **Missions:** AI batches with `steps[]` + optional `genre` (`probe` / `mission` / `bench`); Start/Stop; iterations + QUESTION/ACCEPTANCE for probes; Open linked Observe; screenshot-on-fail; Note on mission/request; seeds from `examples/ai-batches/`.
 - File-driven ROIs, events, collections, `runtime.json` (`run_number`).
 - OCR (Tesseract), A/B decide, priority scheduler, ffmpeg clips, CSV.
@@ -32,12 +33,13 @@ Probes: [PROBE-MISSIONS.md](PROBE-MISSIONS.md). Legacy OCR tweak prompt: [HANDOF
 
 ## Stubbed / incomplete
 
-- Richer molecule branching / nested interval packs — basic once + interval Start works.
+- Richer molecule branching / nested interval packs — basic once + interval Start works; `run_event` composes atoms inside an orchestrator.
 - Tower-tuned ROIs — placeholders; click-logger ROIs are the proven path.
 - Inline JSON editors (files stay source of truth).
 - Richer mission asserts beyond `ensure_*` + fail screenshots.
 - In-app auto-classification of Observe shots.
 - Collection runner / endgame loop automation.
+- Perception: `detect_hud_currency_mode` still PoC-only (paused).
 
 ## Where things live
 
@@ -47,6 +49,8 @@ Probes: [PROBE-MISSIONS.md](PROBE-MISSIONS.md). Legacy OCR tweak prompt: [HANDOF
 | AI / Missions usage | `docs/AI-BATCH-USAGE.md` |
 | Probe ownership | `docs/PROBE-MISSIONS.md` |
 | Tower nav playbook | `docs/screen-maps/TOWER-NAV-PLAYBOOK.md` |
+| Live Control Overlay | `docs/LIVE-CONTROL-OVERLAY.md` |
+| Object map (templates) | `docs/OBJECT-MAP.md` |
 | Comments store | `lab-comments.json` (gitignored) + `src/idle_lab/comments.py` |
 | App shell | `src/idle_lab/app.py` |
 | Vision (do not edit unless asked) | workspace `idle-lab/docs/` |
@@ -64,12 +68,18 @@ Repo: https://github.com/Errrriiiicccc/errriiicccs-idle-lab
 
 ## Smoke — after Restart
 
-**Flight deck accordion:** Expand → **O** (Observe opens) → **2** shot; **C** switches menus; **A** → **1** stat collect once; **N** → **2** scroll down.
+**Deck-first:** Lab starts hidden → boot prompt on deck → Enter re-anchors (if last title live) or **A** click-anchor → **I** opens Lab. Esc peel: section → collapse → quit confirm when Lab hidden.
 
-**Loops (Lab):** Atoms → Stat collect → Start once; Molecules → Stat collecting → interval pool.
+**Flight deck accordion:** Expand → **U→1** Live Control Overlay (Q/W/E tabs, 1–6 buys, R/F one-row scroll, V stat, B refresh; Esc exits Live Control). **O→1** observation; **C** currency/gem; **A** → **1** stat collect, **2** status+buy, **3/4** buy Health/Damage; **N** → **2** scroll down; **M** → **4** Health then Damage once.
+
+**Loops (Lab):** Atoms → Buy Health / Buy Damage / Status + buy; Molecules → Health then Damage (once) or Stat collecting / Endgame phase (interval).
+
+## Bad-data / OCR trust (automatic)
+
+On any CSV, observation digest, OCR bench, or `run_report.json` that touches HUD reads: open [knowledge/ocr-trust.json](knowledge/ocr-trust.json) and review **watching** fields only. Promote to `trusted` (and stop auto-reviewing) when fixtures stay green **and** a live `stat_collect` row matches. Demote trusted → watching on a miss. Do **not** resume perception feature work unless Eric asks or watching fields keep failing.
 
 ## Suggested next tasks
 
-1. Perception (parallel): Missions → OCR fixture bench; then wire `detect_hud_currency_mode` — [HANDOFF-PERCEPTION.md](HANDOFF-PERCEPTION.md).
-2. Split large atoms (e.g. status+buy) into smaller composed molecules.
-3. Optional: taxonomy / flight-deck leaf to Start a named mission by slug.
+1. Smoke Live Control: Restart → anchor → **U→1** → clicks show keys, non-clicks show icons; bold deck line **D = SWITCH ICONS TO HOTKEYS**; D flips marks; Esc exit.
+2. Optional: taxonomy / flight-deck leaf to Start a named mission by slug.
+3. Perception resume (only if bad data): Missions → OCR fixture bench; wire `detect_hud_currency_mode` — [HANDOFF-PERCEPTION.md](HANDOFF-PERCEPTION.md).

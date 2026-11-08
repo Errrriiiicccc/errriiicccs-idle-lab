@@ -29,6 +29,7 @@ ACTION_TYPES = frozenset(
         "seek_list_top",
         "scroll_list",
         "match_template",
+        "run_event",
     }
 )
 

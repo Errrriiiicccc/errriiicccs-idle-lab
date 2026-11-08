@@ -11,11 +11,34 @@ ACTION_TYPES = frozenset(
         "start_event",  # interval Loops event by id (forces that event for the session)
         "start_collection",  # collection pack by id
         "start_enabled_loops",  # every file-enabled event
-        "observe_start",  # start Observe batch (optional title)
-        "observe_shot",  # capture shot with auto title (batch must be active)
-        "observe_end",  # end active Observe batch
+        "observation_start",  # start Observation session (optional title; default auto)
+        "observation_mark",  # bookmark frame while Observation is active
+        "observation_end",  # stop Observation (+ optional rename prompt in UI)
+        "live_control_enter",  # Live Control Overlay (playbook hit-targets)
+        "live_control_enter_troubleshoot",  # Live Control + Observation evidence session
+        "live_control_exit",
+        "live_control_toggle",
+        # Legacy aliases → Observation
+        "observe_start",
+        "observe_shot",
+        "observe_end",
+        # Legacy aliases → Live Control Overlay (formerly Manual)
+        "manual_enter",
+        "manual_enter_troubleshoot",
+        "manual_exit",
+        "manual_toggle",
     }
 )
+
+_ACTION_ALIASES = {
+    "observe_start": "observation_start",
+    "observe_shot": "observation_mark",
+    "observe_end": "observation_end",
+    "manual_enter": "live_control_enter",
+    "manual_enter_troubleshoot": "live_control_enter_troubleshoot",
+    "manual_exit": "live_control_exit",
+    "manual_toggle": "live_control_toggle",
+}
 
 
 class ActionError(ValueError):
@@ -28,6 +51,7 @@ def normalize_action(raw: dict[str, Any] | None) -> dict[str, Any]:
     kind = str(raw.get("type") or "").strip()
     if kind not in ACTION_TYPES:
         raise ActionError(f"unsupported action type: {kind!r} (allowed: {sorted(ACTION_TYPES)})")
+    kind = _ACTION_ALIASES.get(kind, kind)
     out: dict[str, Any] = {"type": kind}
     if kind == "play_preset":
         preset = str(raw.get("preset") or "").strip()
@@ -44,7 +68,7 @@ def normalize_action(raw: dict[str, Any] | None) -> dict[str, Any]:
         if not collection:
             raise ActionError("start_collection requires collection id")
         out["collection"] = collection
-    elif kind == "observe_start":
+    elif kind == "observation_start":
         title = str(raw.get("title") or "").strip()
         if title:
             out["title"] = title
