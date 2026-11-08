@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "id": "tower_main_gameplay",
+  "title": "The Tower — main gameplay",
+  "surface": "main_gameplay",
+  "notes": "Shim — Live Control Overlay loads the typed object map. Edit geometry/effects there.",
+  "objects_map": "../maps/tower_main_gameplay.objects.json"
+}

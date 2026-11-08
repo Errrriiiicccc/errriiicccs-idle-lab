@@ -121,9 +121,9 @@ class SettingsTests(unittest.TestCase):
             loaded, error = load_settings(path)
             self.assertIsNotNone(error)
             self.assertEqual(loaded.click_method, "foreground")
-            self.assertEqual(loaded.humanize_level, "medium")
+            self.assertEqual(loaded.humanize_level, "off")
 
-    def test_missing_humanize_defaults_to_medium(self) -> None:
+    def test_missing_humanize_defaults_to_off(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "settings.json"
             path.write_text(
@@ -133,7 +133,7 @@ class SettingsTests(unittest.TestCase):
             )
             loaded, error = load_settings(path)
             self.assertIsNone(error)
-            self.assertEqual(loaded.humanize_level, "medium")
+            self.assertEqual(loaded.humanize_level, "off")
 
 
 if __name__ == "__main__":

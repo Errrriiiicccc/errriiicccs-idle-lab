@@ -1,0 +1,78 @@
+{
+  "name": "Probe: Live Control page scroll",
+  "slug": "probe-live-control-page-scroll",
+  "status": "pending",
+  "genre": "probe",
+  "goal": "Evidence that three drag_fraction≈0.10 downs from Attack top advance one visible upgrade page (next 2×3 grid), for Live Control R/F page_rows=3.",
+  "created_by": "ai",
+  "auto_rerun": true,
+  "requests": [
+    {
+      "id": "req-top",
+      "kind": "screen_map_shot",
+      "label": "Attack at list top",
+      "detail": "Seek top; screenshot shows Damage… Dmg/Meter page.",
+      "status": "pending",
+      "steps": [
+        {"action": "ensure_upgrade_tab", "tab": "attack", "nx": 0.20, "ny": 0.955, "title_prefix": "attack-ensure"},
+        {"action": "wait", "ms": 400},
+        {
+          "action": "scroll_map",
+          "nx": 0.45,
+          "ny": 0.72,
+          "direction": "down",
+          "method": "drag",
+          "amount": 1,
+          "drag_fraction": 0.10,
+          "hold_end_ms": 280,
+          "settle_ms": 500,
+          "settle_confirm_ms": 300,
+          "max_steps": 0,
+          "max_seek_steps": 10,
+          "seek_top_first": true,
+          "unchanged_threshold": 0.015,
+          "title_prefix": "attack-seek-top",
+          "include_before": true,
+          "roi": {"nx": 0.04, "ny": 0.55, "nw": 0.92, "nh": 0.36}
+        },
+        {"action": "screenshot", "title": "attack-page0-top"}
+      ]
+    },
+    {
+      "id": "req-page-down",
+      "kind": "screen_map_shot",
+      "label": "One Live Control page down (3 row-drags)",
+      "detail": "amount=3 matches playbook scroll.page_rows.",
+      "status": "pending",
+      "steps": [
+        {
+          "action": "scroll_map",
+          "nx": 0.45,
+          "ny": 0.72,
+          "direction": "down",
+          "method": "drag",
+          "amount": 3,
+          "drag_fraction": 0.10,
+          "hold_end_ms": 280,
+          "settle_ms": 500,
+          "settle_confirm_ms": 300,
+          "max_steps": 3,
+          "max_seek_steps": 0,
+          "seek_top_first": false,
+          "unchanged_threshold": 0.015,
+          "title_prefix": "attack-page-down",
+          "include_before": true,
+          "roi": {"nx": 0.04, "ny": 0.55, "nw": 0.92, "nh": 0.36}
+        },
+        {"action": "screenshot", "title": "attack-page1-after"}
+      ]
+    },
+    {
+      "id": "req-note",
+      "kind": "note",
+      "label": "After run",
+      "detail": "Tell the chat probe-live-control-page-scroll ran. Page0 should be Damage…; page1 should be the next Attack upgrades (not one-row peek). Chat fills reflection.md.",
+      "status": "pending"
+    }
+  ]
+}

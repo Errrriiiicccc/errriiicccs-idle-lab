@@ -34,13 +34,13 @@ _LEVEL_PARAMS: dict[str, tuple] = {
 
 
 def normalize_level(value: str | None) -> str:
-    key = str(value or "medium").strip().lower()
-    return key if key in _LEVEL_PARAMS else "medium"
+    key = str(value or "off").strip().lower()
+    return key if key in _LEVEL_PARAMS else "off"
 
 
 @dataclass(frozen=True)
 class HumanizeProfile:
-    level: str = "medium"
+    level: str = "off"
 
     @classmethod
     def from_level(cls, level: str | None) -> HumanizeProfile:

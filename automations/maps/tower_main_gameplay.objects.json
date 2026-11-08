@@ -1,0 +1,554 @@
+{
+  "version": 1,
+  "id": "tower_main_gameplay",
+  "title": "The Tower — main gameplay",
+  "surface": "main_gameplay",
+  "notes": "Tower-first object map for Live Control Overlay. Templates declare kind + actuations + effects; instances fill geometry from observation/calibration (593×1028). Legacy flat playbook fields are projected from this graph.",
+  "hotkeys": {
+    "tab_attack": "Q",
+    "tab_defense": "W",
+    "tab_utility": "E",
+    "buy_1": "1",
+    "buy_2": "2",
+    "buy_3": "3",
+    "buy_4": "4",
+    "buy_5": "5",
+    "buy_6": "6",
+    "scroll_up": "R",
+    "scroll_down": "F",
+    "fling_up": "T",
+    "fling_down": "G",
+    "stat_collect": "V",
+    "refresh": "B",
+    "toggle_legend": "D"
+  },
+  "kind_templates": {
+    "button": {
+      "description": "Generic clickable control. Optional keyboard activation. Declares world and/or UI effects.",
+      "actuations": ["click", "key"]
+    },
+    "tab_button": {
+      "description": "Footer tab that opens or replaces a named panel. Never retap when already active (closes the panel).",
+      "actuations": ["click"],
+      "rules": ["no_retap_if_active"]
+    },
+    "panel": {
+      "description": "UI region hosting children. Opened by a tab_button; minimized/switched by other tabs.",
+      "actuations": []
+    },
+    "scroll_list": {
+      "description": "Continuous list scrolled by click-drag. Contains buy_button slots with a calibrated row geometry.",
+      "actuations": ["drag"]
+    },
+    "buy_button": {
+      "description": "Upgrade purchase tile. Spends cash and raises the associated stat. Visual state tracks max / affordable / unaffordable.",
+      "actuations": ["click"]
+    }
+  },
+  "shared": {
+    "buy_grid": {
+      "cols": 2,
+      "rows": 3,
+      "origin_nx": 0.32,
+      "origin_ny": 0.735,
+      "col_dx": 0.40,
+      "row_dy": 0.088,
+      "card_nw": 0.30,
+      "card_nh": 0.08
+    },
+    "upgrade_list_scroll": {
+      "nx": 0.45,
+      "ny": 0.72,
+      "drag_fraction": 0.15,
+      "rows_per_key": 1,
+      "hold_end_ms": 350,
+      "settle_ms": 450,
+      "drag_steps": 10,
+      "step_ms": 20,
+      "fling_fraction": 0.42,
+      "fling_steps": 8,
+      "fling_step_ms": 8,
+      "fling_settle_ms": 700,
+      "up_badge_nx": 0.94,
+      "up_badge_ny": 0.655,
+      "down_badge_nx": 0.94,
+      "down_badge_ny": 0.830,
+      "fling_up_badge_nx": 0.94,
+      "fling_up_badge_ny": 0.615,
+      "fling_down_badge_nx": 0.94,
+      "fling_down_badge_ny": 0.870,
+      "notes": "Scrollbar lane on list viewport (panel ~0.60–0.92). Fling+step pairs clustered: T/R at top, F/G at bottom."
+    },
+    "buy_visual_states": {
+      "maxxed": {
+        "description": "Stat at max — buy inert. Color TBD from observation crops."
+      },
+      "affordable": {
+        "description": "Enough cash — buy fires. Color TBD from observation crops."
+      },
+      "unaffordable": {
+        "description": "Not enough cash — buy inert or no-ops. Color TBD from observation crops."
+      }
+    }
+  },
+  "objects": [
+    {
+      "id": "tab.attack",
+      "kind": "tab_button",
+      "label": "Attack",
+      "hit": { "nx": 0.20, "ny": 0.955 },
+      "hotkey_action": "tab_attack",
+      "effects": {
+        "ui": [{ "type": "open_panel", "panel": "panel.attack" }]
+      }
+    },
+    {
+      "id": "tab.defense",
+      "kind": "tab_button",
+      "label": "Defense",
+      "hit": { "nx": 0.40, "ny": 0.955 },
+      "hotkey_action": "tab_defense",
+      "effects": {
+        "ui": [{ "type": "open_panel", "panel": "panel.defense" }]
+      }
+    },
+    {
+      "id": "tab.utility",
+      "kind": "tab_button",
+      "label": "Utility",
+      "hit": { "nx": 0.60, "ny": 0.955 },
+      "hotkey_action": "tab_utility",
+      "effects": {
+        "ui": [{ "type": "open_panel", "panel": "panel.utility" }]
+      }
+    },
+    {
+      "id": "panel.attack",
+      "kind": "panel",
+      "label": "Attack upgrades",
+      "opened_by": "tab.attack",
+      "roi": { "nx": 0.05, "ny": 0.60, "nw": 0.90, "nh": 0.32 },
+      "children": ["list.attack"]
+    },
+    {
+      "id": "panel.defense",
+      "kind": "panel",
+      "label": "Defense upgrades",
+      "opened_by": "tab.defense",
+      "roi": { "nx": 0.05, "ny": 0.60, "nw": 0.90, "nh": 0.32 },
+      "children": ["list.defense"]
+    },
+    {
+      "id": "panel.utility",
+      "kind": "panel",
+      "label": "Utility upgrades",
+      "opened_by": "tab.utility",
+      "roi": { "nx": 0.05, "ny": 0.60, "nw": 0.90, "nh": 0.32 },
+      "children": ["list.utility"]
+    },
+    {
+      "id": "list.attack",
+      "kind": "scroll_list",
+      "label": "Attack upgrade list",
+      "parent": "panel.attack",
+      "tab": "attack",
+      "scroll_ref": "upgrade_list_scroll",
+      "grid_ref": "buy_grid",
+      "seek_top": "Damage",
+      "page_labels": [
+        "Damage",
+        "Atk Speed",
+        "Crit Chance",
+        "Crit Factor",
+        "Range",
+        "Dmg/Meter"
+      ],
+      "children": [
+        "buy.attack.1",
+        "buy.attack.2",
+        "buy.attack.3",
+        "buy.attack.4",
+        "buy.attack.5",
+        "buy.attack.6"
+      ]
+    },
+    {
+      "id": "list.defense",
+      "kind": "scroll_list",
+      "label": "Defense upgrade list",
+      "parent": "panel.defense",
+      "tab": "defense",
+      "scroll_ref": "upgrade_list_scroll",
+      "grid_ref": "buy_grid",
+      "seek_top": "Health",
+      "page_labels": [
+        "Health",
+        "Health Regen",
+        "Defense %",
+        "Def Absolute",
+        "Thorn",
+        "Lifesteal"
+      ],
+      "children": [
+        "buy.defense.1",
+        "buy.defense.2",
+        "buy.defense.3",
+        "buy.defense.4",
+        "buy.defense.5",
+        "buy.defense.6"
+      ]
+    },
+    {
+      "id": "list.utility",
+      "kind": "scroll_list",
+      "label": "Utility upgrade list",
+      "parent": "panel.utility",
+      "tab": "utility",
+      "scroll_ref": "upgrade_list_scroll",
+      "grid_ref": "buy_grid",
+      "seek_top": "Cash",
+      "page_labels": [
+        "Cash Bonus",
+        "Cash/Wave",
+        "Coins/Kill",
+        "Coins/Wave",
+        "Free Atk Up",
+        "Free Def Up"
+      ],
+      "children": [
+        "buy.utility.1",
+        "buy.utility.2",
+        "buy.utility.3",
+        "buy.utility.4",
+        "buy.utility.5",
+        "buy.utility.6"
+      ]
+    },
+    {
+      "id": "buy.attack.1",
+      "kind": "buy_button",
+      "label": "Damage",
+      "parent": "list.attack",
+      "tab": "attack",
+      "slot_index": 1,
+      "stat": "Damage",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Damage" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.attack.2",
+      "kind": "buy_button",
+      "label": "Atk Speed",
+      "parent": "list.attack",
+      "tab": "attack",
+      "slot_index": 2,
+      "stat": "Atk Speed",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Atk Speed" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.attack.3",
+      "kind": "buy_button",
+      "label": "Crit Chance",
+      "parent": "list.attack",
+      "tab": "attack",
+      "slot_index": 3,
+      "stat": "Crit Chance",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Crit Chance" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.attack.4",
+      "kind": "buy_button",
+      "label": "Crit Factor",
+      "parent": "list.attack",
+      "tab": "attack",
+      "slot_index": 4,
+      "stat": "Crit Factor",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Crit Factor" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.attack.5",
+      "kind": "buy_button",
+      "label": "Range",
+      "parent": "list.attack",
+      "tab": "attack",
+      "slot_index": 5,
+      "stat": "Range",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Range" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.attack.6",
+      "kind": "buy_button",
+      "label": "Dmg/Meter",
+      "parent": "list.attack",
+      "tab": "attack",
+      "slot_index": 6,
+      "stat": "Dmg/Meter",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Dmg/Meter" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.defense.1",
+      "kind": "buy_button",
+      "label": "Health",
+      "parent": "list.defense",
+      "tab": "defense",
+      "slot_index": 1,
+      "stat": "Health",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Health" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.defense.2",
+      "kind": "buy_button",
+      "label": "Health Regen",
+      "parent": "list.defense",
+      "tab": "defense",
+      "slot_index": 2,
+      "stat": "Health Regen",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Health Regen" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.defense.3",
+      "kind": "buy_button",
+      "label": "Defense %",
+      "parent": "list.defense",
+      "tab": "defense",
+      "slot_index": 3,
+      "stat": "Defense %",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Defense %" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.defense.4",
+      "kind": "buy_button",
+      "label": "Def Absolute",
+      "parent": "list.defense",
+      "tab": "defense",
+      "slot_index": 4,
+      "stat": "Def Absolute",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Def Absolute" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.defense.5",
+      "kind": "buy_button",
+      "label": "Thorn",
+      "parent": "list.defense",
+      "tab": "defense",
+      "slot_index": 5,
+      "stat": "Thorn",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Thorn" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.defense.6",
+      "kind": "buy_button",
+      "label": "Lifesteal",
+      "parent": "list.defense",
+      "tab": "defense",
+      "slot_index": 6,
+      "stat": "Lifesteal",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Lifesteal" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.utility.1",
+      "kind": "buy_button",
+      "label": "Cash Bonus",
+      "parent": "list.utility",
+      "tab": "utility",
+      "slot_index": 1,
+      "stat": "Cash Bonus",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Cash Bonus" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.utility.2",
+      "kind": "buy_button",
+      "label": "Cash/Wave",
+      "parent": "list.utility",
+      "tab": "utility",
+      "slot_index": 2,
+      "stat": "Cash/Wave",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Cash/Wave" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.utility.3",
+      "kind": "buy_button",
+      "label": "Coins/Kill",
+      "parent": "list.utility",
+      "tab": "utility",
+      "slot_index": 3,
+      "stat": "Coins/Kill",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Coins/Kill" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.utility.4",
+      "kind": "buy_button",
+      "label": "Coins/Wave",
+      "parent": "list.utility",
+      "tab": "utility",
+      "slot_index": 4,
+      "stat": "Coins/Wave",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Coins/Wave" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.utility.5",
+      "kind": "buy_button",
+      "label": "Free Atk Up",
+      "parent": "list.utility",
+      "tab": "utility",
+      "slot_index": 5,
+      "stat": "Free Atk Up",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Free Atk Up" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "buy.utility.6",
+      "kind": "buy_button",
+      "label": "Free Def Up",
+      "parent": "list.utility",
+      "tab": "utility",
+      "slot_index": 6,
+      "stat": "Free Def Up",
+      "visual_states_ref": "buy_visual_states",
+      "effects": {
+        "world": [
+          { "type": "spend", "currency": "cash" },
+          { "type": "upgrade_stat", "stat": "Free Def Up" }
+        ],
+        "ui": [{ "type": "update_value_cost" }]
+      }
+    },
+    {
+      "id": "button.stat_collect",
+      "kind": "button",
+      "label": "Stat collect",
+      "hit": { "nx": 0.15, "ny": 0.09 },
+      "hotkey_action": "stat_collect",
+      "effects": {
+        "world": [{ "type": "run_event", "event": "stat_collect" }]
+      }
+    },
+    {
+      "id": "button.refresh",
+      "kind": "button",
+      "label": "Refresh state (redetect)",
+      "hit": { "nx": 0.92, "ny": 0.50 },
+      "hotkey_action": "refresh",
+      "effects": {
+        "ui": [{ "type": "redetect_layout" }]
+      }
+    }
+  ]
+}

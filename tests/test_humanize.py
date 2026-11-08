@@ -13,9 +13,9 @@ from idle_lab.models import Rect
 
 
 class HumanizeTests(unittest.TestCase):
-    def test_normalize_falls_back_to_medium(self) -> None:
-        self.assertEqual(normalize_level("nope"), "medium")
-        self.assertEqual(normalize_level(None), "medium")
+    def test_normalize_falls_back_to_off(self) -> None:
+        self.assertEqual(normalize_level("nope"), "off")
+        self.assertEqual(normalize_level(None), "off")
         self.assertEqual(normalize_level("Heavy"), "heavy")
 
     def test_off_is_exact(self) -> None:
@@ -53,9 +53,9 @@ class HumanizeTests(unittest.TestCase):
             self.assertGreaterEqual(y, rect.top)
             self.assertLess(y, rect.bottom)
 
-    def test_default_profile_is_medium(self) -> None:
-        self.assertEqual(HumanizeProfile().level, "medium")
-        self.assertTrue(HumanizeProfile().enabled)
+    def test_default_profile_is_off(self) -> None:
+        self.assertEqual(HumanizeProfile().level, "off")
+        self.assertFalse(HumanizeProfile().enabled)
 
 
 if __name__ == "__main__":

@@ -133,7 +133,8 @@ def drag_list(
     if focus and hwnd:
         win32_api.focus_window(hwnd)
         time.sleep(0.05)
-    fraction = max(0.03, min(0.35, abs(float(drag_fraction))))
+    # Allow up to ~half the list height for single-gesture page scrolls.
+    fraction = max(0.03, min(0.50, abs(float(drag_fraction))))
     # Finger opposite list direction: up-list → drag down.
     delta = fraction if direction.lower() in ("up", "left") else -fraction
     start_ny = max(0.05, min(0.95, float(ny)))
@@ -148,7 +149,39 @@ def drag_list(
         restore_cursor=restore_cursor,
         steps=max(2, abs(int(drag_steps))),
         step_ms=max(1, abs(int(step_ms))),
-        hold_end_ms=max(50, abs(int(hold_end_ms))),
+        hold_end_ms=max(0, abs(int(hold_end_ms))),
+        stop=stop,
+    )
+
+
+def fling_list(
+    *,
+    hwnd: int,
+    rect: Rect,
+    direction: str = "up",
+    nx: float = LIST_DRAG["nx"],
+    ny: float = LIST_DRAG["ny"],
+    drag_fraction: float = 0.42,
+    drag_steps: int = 5,
+    step_ms: int = 4,
+    restore_cursor: bool = True,
+    focus: bool = True,
+    stop: threading.Event | None = None,
+) -> None:
+    """Fast swipe with immediate release so list momentum carries to the end."""
+
+    drag_list(
+        hwnd=hwnd,
+        rect=rect,
+        direction=direction,
+        nx=nx,
+        ny=ny,
+        drag_fraction=max(0.25, min(0.50, abs(float(drag_fraction)))),
+        hold_end_ms=0,
+        drag_steps=max(3, abs(int(drag_steps))),
+        step_ms=max(1, abs(int(step_ms))),
+        restore_cursor=restore_cursor,
+        focus=focus,
         stop=stop,
     )
 

@@ -48,9 +48,9 @@ def load_settings(path: Path) -> tuple[Settings, str | None]:
     countdown = data.get("countdown_seconds", 0)
     if countdown not in (0, 1, 3):
         countdown = 0
-    humanize = normalize_level(data.get("humanize_level", "medium"))
+    humanize = normalize_level(data.get("humanize_level", "off"))
     if humanize not in HUMANIZE_LEVELS:
-        humanize = "medium"
+        humanize = "off"
     lab_mode = normalize_lab_mode(data.get("lab_mode", "auto"))
     trace_level = str(data.get("trace_level", "failure") or "failure").strip().lower()
     if trace_level not in {"off", "failure", "all"}:
@@ -75,6 +75,9 @@ def load_settings(path: Path) -> tuple[Settings, str | None]:
             ),
             flight_deck_geometry=geometry,
             flight_deck_user_hidden=bool(data.get("flight_deck_user_hidden", False)),
+            last_anchor_title=(
+                str(data.get("last_anchor_title") or "").strip() or None
+            ),
         ),
         None,
     )
@@ -95,5 +98,6 @@ def save_settings(path: Path, settings: Settings) -> None:
         },
         "flight_deck_geometry": settings.flight_deck_geometry,
         "flight_deck_user_hidden": bool(settings.flight_deck_user_hidden),
+        "last_anchor_title": settings.last_anchor_title,
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

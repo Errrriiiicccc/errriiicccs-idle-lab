@@ -86,7 +86,7 @@ class Settings:
     focus_before_run: bool = True
     restore_cursor: bool = True
     countdown_seconds: int = 0
-    humanize_level: str = "medium"
+    humanize_level: str = "off"
     lab_mode: str = "auto"  # auto | supervised
     trace_level: str = "failure"  # off | failure | all
     # Flight deck: expand VK (default backtick), optional per-anchor title overrides, geometry.
@@ -94,6 +94,8 @@ class Settings:
     flight_deck_expand_by_anchor: dict[str, int] = field(default_factory=dict)
     flight_deck_geometry: str | None = None
     flight_deck_user_hidden: bool = False
+    # Last successful anchor title (HWND does not survive restart).
+    last_anchor_title: str | None = None
 
 
 class ClickError(RuntimeError):
