@@ -15,8 +15,12 @@ class ShellPhase(str, Enum):
 
 class EscAction(str, Enum):
     EXIT_LIVE_CONTROL = "exit_live_control"
+    CANCEL_LCO_REBIND = "cancel_lco_rebind"
     CANCEL_REMAP = "cancel_remap"
     CANCEL_CLOSE = "cancel_close"
+    CANCEL_MOLECULE_LAB_CLOSE = "cancel_molecule_lab_close"
+    ENTER_MOLECULE_LAB_CLOSE = "enter_molecule_lab_close"
+    CLOSE_MOLECULE_LAB = "close_molecule_lab"
     CLOSE_SECTION = "close_section"
     COLLAPSE_MENU = "collapse_menu"
     ENTER_CLOSE_CONFIRM = "enter_close_confirm"
@@ -27,6 +31,9 @@ def resolve_escape(
     *,
     phase: ShellPhase | str,
     live_control_active: bool = False,
+    live_control_rebinding: bool = False,
+    molecule_lab_active: bool = False,
+    molecule_lab_close_confirm: bool = False,
     remap_active: bool = False,
     deck_active: bool = False,
     deck_expanded: bool = False,
@@ -39,6 +46,12 @@ def resolve_escape(
     Close confirm: Esc cancels.
     """
 
+    if live_control_active and live_control_rebinding:
+        return EscAction.CANCEL_LCO_REBIND
+    if molecule_lab_close_confirm:
+        return EscAction.CANCEL_MOLECULE_LAB_CLOSE
+    if molecule_lab_active:
+        return EscAction.ENTER_MOLECULE_LAB_CLOSE
     if live_control_active:
         return EscAction.EXIT_LIVE_CONTROL
     if remap_active:
@@ -88,8 +101,27 @@ def live_control_active_prompt(*, paused: bool = False) -> str:
     return (
         "LCO is active\n"
         "Clicks show hotkeys · scroll / stat / refresh show icons\n"
-        "Hold D to describe · ` pauses · Esc exits LCO"
+        "Hold D to describe · drag Lab molecules · click mark to rebind\n"
+        "` pauses · Esc exits LCO"
     )
+
+
+def molecule_lab_active_prompt(*, close_confirm: bool = False) -> str:
+    """Flight-deck body while Molecule Lab owns Esc/Enter."""
+
+    if close_confirm:
+        return "Close Molecule Lab?\nEnter = yes · Esc = stay"
+    return (
+        "Molecule Lab is open\n"
+        "Compose / toggle LCO placement / edit conditions\n"
+        "Esc = close · Enter confirms close"
+    )
+
+
+def molecule_lab_legend_hint(*, close_confirm: bool = False) -> str:
+    if close_confirm:
+        return "ENTER = CLOSE LAB"
+    return "ESC = CLOSE LAB"
 
 
 def active_unanchored_prompt(

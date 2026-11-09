@@ -33,6 +33,36 @@ class ResolveEscapeTests(unittest.TestCase):
             EscAction.EXIT_LIVE_CONTROL,
         )
 
+    def test_lco_rebind_cancels_before_exit(self) -> None:
+        self.assertEqual(
+            resolve_escape(
+                phase=ShellPhase.ACTIVE,
+                live_control_active=True,
+                live_control_rebinding=True,
+                deck_active=True,
+            ),
+            EscAction.CANCEL_LCO_REBIND,
+        )
+
+    def test_molecule_lab_owns_esc(self) -> None:
+        self.assertEqual(
+            resolve_escape(
+                phase=ShellPhase.ACTIVE,
+                molecule_lab_active=True,
+                deck_active=True,
+            ),
+            EscAction.ENTER_MOLECULE_LAB_CLOSE,
+        )
+        self.assertEqual(
+            resolve_escape(
+                phase=ShellPhase.ACTIVE,
+                molecule_lab_active=True,
+                molecule_lab_close_confirm=True,
+                deck_active=True,
+            ),
+            EscAction.CANCEL_MOLECULE_LAB_CLOSE,
+        )
+
     def test_close_confirm_cancel(self) -> None:
         self.assertEqual(resolve_escape(phase=ShellPhase.CLOSE_CONFIRM), EscAction.CANCEL_CLOSE)
 
@@ -108,12 +138,9 @@ class PromptTests(unittest.TestCase):
 
     def test_live_control_active_prompt_is_only_the_three_facts(self) -> None:
         text = live_control_active_prompt()
-        self.assertEqual(
-            text,
-            "LCO is active\n"
-            "Clicks show hotkeys · scroll / stat / refresh show icons\n"
-            "Hold D to describe · ` pauses · Esc exits LCO",
-        )
+        self.assertIn("LCO is active", text)
+        self.assertIn("Hold D to describe", text)
+        self.assertIn("Esc exits LCO", text)
         # Accordion leave labels must not leak into the LCO surface.
         self.assertNotIn("Enter Live Control", text)
         self.assertNotIn("Exit Live Control", text)

@@ -94,6 +94,8 @@ class HookFlags:
         # Always True so Activate works before any window is anchored.
         self.flight_deck_expand_armed = True
         self.quit_confirm = False
+        self.molecule_lab_active = False
+        self.molecule_lab_close_confirm = False
         self.lab_visible = True
         self.our_pid = os.getpid()
 
@@ -315,6 +317,7 @@ class InputHooks:
                     or self.state.observation_active
                     or self.state.walkthrough_active
                     or self.state.live_control_active
+                    or self.state.molecule_lab_active
                     or self.state.stoppable
                     or self.state.flight_deck_remap
                     or self.state.quit_confirm
@@ -341,6 +344,13 @@ class InputHooks:
                 self._expand_down = True
                 self.events.put(("flight_deck_activate",))
         elif self.state.quit_confirm and vk == VK_RETURN:
+            swallow = True
+            if is_up:
+                self._enter_down = False
+            elif not self._enter_down:
+                self._enter_down = True
+                self.events.put(("shell_enter",))
+        elif self.state.molecule_lab_close_confirm and vk == VK_RETURN:
             swallow = True
             if is_up:
                 self._enter_down = False
@@ -425,6 +435,7 @@ class InputHooks:
             self.state.flight_deck_active
             and self.state.flight_deck_anchored
             and self.state.flight_deck_expanded
+            and not self.state.molecule_lab_active
             and not (self.state.live_control_active and self.state.live_control_paused)
             and (
                 (VK_A <= vk <= VK_Z)
@@ -440,6 +451,13 @@ class InputHooks:
                 token = menu_token_from_vk(vk)
                 if token is not None:
                     self.events.put(("flight_deck_menu_key", token))
+        elif self.state.molecule_lab_active and (
+            (VK_A <= vk <= VK_Z)
+            or (VK_0 <= vk <= VK_9)
+            or menu_token_from_vk(vk) is not None
+        ):
+            # Lab owns the deck — swallow accordion letters so they don't fire deck leaves.
+            swallow = True
         elif self.state.walkthrough_active and VK_A <= vk <= VK_Z:
             swallow = True
             if is_up:

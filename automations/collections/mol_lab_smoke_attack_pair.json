@@ -1,0 +1,17 @@
+{
+  "id": "mol_lab_smoke_attack_pair",
+  "title": "Lab Smoke Attack Pair",
+  "version": 1,
+  "description": "Molecule Lab \u00b7 buy \u00b7 beginning (requires attack tab).",
+  "children": [
+    "composer_lab_smoke_attack_pair_tab_attack",
+    "composer_lab_smoke_attack_pair_damage",
+    "composer_lab_smoke_attack_pair_rapid_fire_chance"
+  ],
+  "branch_variable": "phase",
+  "branches": {},
+  "loop": false,
+  "stop_when": null,
+  "run": "once",
+  "notes": "Authored via Molecule Lab. Files are source of truth.\nstep 3: Condition: after prev \u00b7 wave \u2265 1"
+}

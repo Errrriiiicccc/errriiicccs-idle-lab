@@ -9,6 +9,44 @@
       "children": [
         "composer_untitled_molecule_tab_attack"
       ]
+    },
+    {
+      "id": "mol_test_buy",
+      "title": "Test Buy",
+      "requires_tab": "attack",
+      "description": "Molecule Lab \u00b7 phase \u00b7 unfiled (requires attack tab).",
+      "children": [
+        "composer_test_buy_tab_attack",
+        "composer_test_buy_damage",
+        "composer_test_buy_atk_speed",
+        "composer_test_buy_crit_chance",
+        "composer_test_buy_crit_factor",
+        "composer_test_buy_tab_defense",
+        "composer_test_buy_health",
+        "composer_test_buy_health_regen",
+        "composer_test_buy_defense",
+        "composer_test_buy_tab_utility",
+        "composer_test_buy_cash_bonus",
+        "composer_test_buy_cash_wave",
+        "composer_test_buy_free_atk_up"
+      ],
+      "phase": "unfiled",
+      "kind": "phase",
+      "source": "lab"
+    },
+    {
+      "id": "mol_lab_smoke_attack_pair",
+      "title": "Lab Smoke Attack Pair",
+      "requires_tab": "attack",
+      "description": "Molecule Lab \u00b7 buy \u00b7 beginning (requires attack tab).",
+      "children": [
+        "composer_lab_smoke_attack_pair_tab_attack",
+        "composer_lab_smoke_attack_pair_damage",
+        "composer_lab_smoke_attack_pair_rapid_fire_chance"
+      ],
+      "phase": "beginning",
+      "kind": "buy",
+      "source": "lab"
     }
   ]
 }

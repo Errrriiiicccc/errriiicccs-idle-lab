@@ -213,6 +213,16 @@ class App(ctk.CTk):
         self._lco_console_window = None
         self._lco_console_dirty = False
         self.live_control.console.on_change = self._lco_console_session_changed
+        from idle_lab.live_control.molecule_lco import MoleculeLcoBridge
+
+        self._molecule_lco = MoleculeLcoBridge(
+            self,
+            automations_root=root / "automations",
+            on_run_molecule=self._lco_run_molecule,
+            log=self._live_control_log,
+        )
+        self.live_control.attach_molecule_bridge(self._molecule_lco)
+        self._molecule_lab_close_confirm = False
         self.flight_deck = FlightDeckWindow(
             self,
             on_close=self._flight_deck_user_close,
@@ -974,6 +984,11 @@ class App(ctk.CTk):
         active = self._shell_phase is ShellPhase.ACTIVE
         deck_visible = self._flight_deck_is_visible()
         self.hooks.state.quit_confirm = self._shell_phase is ShellPhase.CLOSE_CONFIRM
+        lab_open = self._molecule_lab_is_open()
+        self.hooks.state.molecule_lab_active = bool(lab_open)
+        self.hooks.state.molecule_lab_close_confirm = bool(
+            lab_open and getattr(self, "_molecule_lab_close_confirm", False)
+        )
         self.hooks.state.lab_visible = bool(self._lab_visible)
         # Keep Activate armed even when the deck window is withdrawn after Close.
         self.hooks.state.flight_deck_open = bool(deck_visible)
@@ -1287,6 +1302,9 @@ class App(ctk.CTk):
         if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             self._confirm_close_flight_deck()
             return
+        if getattr(self, "_molecule_lab_close_confirm", False) and self._molecule_lab_is_open():
+            self._confirm_close_molecule_lab()
+            return
         if self._shell_phase is not ShellPhase.ACTIVE or self._is_anchored():
             return
         self._refresh_boot_candidate()
@@ -1314,16 +1332,31 @@ class App(ctk.CTk):
         self._restart_lab()
 
     def _handle_shell_escape(self) -> None:
+        rebinding = bool(
+            getattr(self.live_control, "molecule_bridge", None) is not None
+            and getattr(self.live_control.molecule_bridge, "rebinding", False)
+        )
         action = resolve_escape(
             phase=self._shell_phase,
             live_control_active=bool(self.live_control.active),
+            live_control_rebinding=rebinding,
+            molecule_lab_active=self._molecule_lab_is_open(),
+            molecule_lab_close_confirm=bool(getattr(self, "_molecule_lab_close_confirm", False)),
             remap_active=bool(self.hooks.state.flight_deck_remap),
             deck_active=self._shell_phase is ShellPhase.ACTIVE,
             deck_expanded=bool(self.flight_deck.expanded),
             open_menu=bool(self.flight_deck.open_menu_key),
         )
-        if action is EscAction.EXIT_LIVE_CONTROL:
+        if action is EscAction.CANCEL_LCO_REBIND:
+            self.live_control.cancel_molecule_rebind()
+        elif action is EscAction.EXIT_LIVE_CONTROL:
             self._exit_live_control(reason="escape")
+        elif action is EscAction.ENTER_MOLECULE_LAB_CLOSE:
+            self._enter_molecule_lab_close_confirm()
+        elif action is EscAction.CANCEL_MOLECULE_LAB_CLOSE:
+            self._cancel_molecule_lab_close_confirm()
+        elif action is EscAction.CLOSE_MOLECULE_LAB:
+            self._confirm_close_molecule_lab()
         elif action is EscAction.CANCEL_REMAP:
             self.hooks.state.flight_deck_remap = False
             self._status("Activate remap cancelled.", "info")
@@ -1747,8 +1780,56 @@ class App(ctk.CTk):
         if self.auto_runtime.collection_running or self.auto_runtime.is_running:
             self._status(f"Flight deck · {path}", "run")
 
+    def _molecule_lab_is_open(self) -> bool:
+        win = getattr(self, "_molecule_composer", None)
+        if win is None:
+            return False
+        try:
+            return bool(win.winfo_exists())
+        except Exception:
+            return False
+
+    def _set_molecule_lab_deck_mode(self, *, active: bool, close_confirm: bool = False) -> None:
+        self._molecule_lab_close_confirm = bool(active and close_confirm)
+        try:
+            self.flight_deck.set_molecule_lab_active(active, close_confirm=close_confirm)
+        except Exception:
+            pass
+        self._sync_shell_hook_flags()
+
+    def _enter_molecule_lab_close_confirm(self) -> None:
+        if not self._molecule_lab_is_open():
+            return
+        self._set_molecule_lab_deck_mode(active=True, close_confirm=True)
+        self._status("Close Molecule Lab? Enter = yes · Esc = stay", "warn")
+
+    def _cancel_molecule_lab_close_confirm(self) -> None:
+        if not self._molecule_lab_is_open():
+            self._set_molecule_lab_deck_mode(active=False)
+            return
+        self._set_molecule_lab_deck_mode(active=True, close_confirm=False)
+        self._status("Molecule Lab stays open.", "info")
+
+    def _confirm_close_molecule_lab(self) -> None:
+        win = getattr(self, "_molecule_composer", None)
+        self._molecule_composer = None
+        self._set_molecule_lab_deck_mode(active=False)
+        if win is not None:
+            try:
+                win.destroy()
+            except Exception:
+                pass
+        self._status("Molecule Lab closed.", "info")
+
+    def _lco_run_molecule(self, collection_id: str) -> None:
+        collection = self.auto_store.collections.get(collection_id)
+        if collection is None:
+            self._status(f"LCO molecule not found: {collection_id}", "error")
+            return
+        self._start_molecule(collection)
+
     def _open_molecule_composer(self) -> None:
-        """Flight deck → Molecules → Composer: author molecules without LCO troubleshoot."""
+        """Flight deck → Molecules → Molecule Lab: browse/edit/compose molecules."""
 
         existing = getattr(self, "_molecule_composer", None)
         if existing is not None:
@@ -1756,25 +1837,39 @@ class App(ctk.CTk):
                 if existing.winfo_exists():
                     existing.lift()
                     existing.focus_force()
-                    self._status("Molecule Composer already open.", "info")
+                    self._set_molecule_lab_deck_mode(active=True)
+                    self._status("Molecule Lab already open.", "info")
                     return
             except Exception:
                 self._molecule_composer = None
 
-        from idle_lab.composer.window import MoleculeComposerWindow
+        from idle_lab.composer.window import MoleculeLabWindow
 
         def _on_exported(collection_id: str) -> None:
             self._reload_automations()
-            self._status(f"Composer saved molecule “{collection_id}”.", "ok")
+            if self.live_control.active:
+                self.live_control.refresh_molecule_marks()
+            self._status(f"Molecule Lab saved “{collection_id}”.", "ok")
 
-        self._molecule_composer = MoleculeComposerWindow(
+        def _on_lco_toggle() -> None:
+            if self.live_control.active:
+                self.live_control.refresh_molecule_marks()
+
+        def _on_close() -> None:
+            self._molecule_composer = None
+            self._set_molecule_lab_deck_mode(active=False)
+
+        self._molecule_composer = MoleculeLabWindow(
             self,
             automations_root=project_root() / "automations",
             project_root_path=project_root(),
             on_exported=_on_exported,
             on_status=lambda msg, level="info": self._status(msg, level),
+            on_lco_changed=_on_lco_toggle,
+            on_close=_on_close,
         )
-        self._status("Molecule Composer open — M → 6 from the deck anytime.", "ok")
+        self._set_molecule_lab_deck_mode(active=True)
+        self._status("Molecule Lab open — Esc closes (Enter confirms).", "ok")
 
     def _start_observation(self, title: str | None = None) -> None:
         if self.observation.active or self.screen_map.active:

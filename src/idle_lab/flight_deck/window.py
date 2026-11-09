@@ -22,6 +22,8 @@ from idle_lab.flight_deck.shell import (
     inactive_prompt,
     live_control_active_prompt,
     live_control_legend_hint,
+    molecule_lab_active_prompt,
+    molecule_lab_legend_hint,
 )
 from idle_lab.models import Rect
 from idle_lab import win32_api
@@ -135,6 +137,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._live_control_active = False
         self._lco_show_descriptors = False
         self._lco_paused = False
+        self._molecule_lab_active = False
+        self._molecule_lab_close_confirm = False
         self._expand_vk = DEFAULT_EXPAND_VK
         self._keymap: FlightDeckKeymap | None = None
         # Accordion: which top-level menu letter is open (None = all collapsed).
@@ -288,7 +292,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
 
     def _sync_activate_button_label(self) -> None:
         key = vk_label(self._expand_vk)
-        if self._live_control_active:
+        if self._live_control_active or self._molecule_lab_active:
             self.activate_button.configure(
                 text=f"Deactivate [{key}]",
                 state="disabled",
@@ -305,7 +309,11 @@ class FlightDeckWindow(ctk.CTkToplevel):
             )
 
     def _sync_close_button_label(self) -> None:
-        if self._live_control_active:
+        if self._molecule_lab_close_confirm:
+            self.close_button.configure(text="Stay [Esc]")
+        elif self._molecule_lab_active:
+            self.close_button.configure(text="Close Lab [Esc]")
+        elif self._live_control_active:
             self.close_button.configure(text="Exit LCO [Esc]")
         elif self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             self.close_button.configure(text="Stay [Esc]")
@@ -315,6 +323,17 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self.close_button.configure(text="Close [Esc]")
         else:
             self.close_button.configure(text="Close [Esc]")
+
+    def set_molecule_lab_active(self, active: bool, *, close_confirm: bool = False) -> None:
+        """Swap accordion for Molecule Lab Esc/Enter chrome."""
+
+        self._molecule_lab_active = bool(active)
+        self._molecule_lab_close_confirm = bool(active and close_confirm)
+        if self._molecule_lab_active:
+            self._open_menu_key = None
+        else:
+            self._molecule_lab_close_confirm = False
+        self._render_chrome()
 
     def set_live_control_active(self, active: bool) -> None:
         """Swap accordion for the LCO status surface while overlay owns keys."""
@@ -420,6 +439,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
         Returns a leaf action dict when a command is chosen. Menu stays expanded.
         """
 
+        if self._molecule_lab_active:
+            return None
         if self._live_control_active:
             return None
         if not self._expanded or self._keymap is None:
@@ -577,7 +598,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
             pass
 
     def _fit_expanded_size(self) -> None:
-        if self._live_control_active:
+        if self._live_control_active or self._molecule_lab_active:
             self._fit_live_control_size()
             return
         x, y = self._xy()
@@ -685,7 +706,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self.stop_button.pack_forget()
 
         if self._anchored and self._expanded:
-            if self._live_control_active:
+            if self._live_control_active or self._molecule_lab_active:
                 self.run_label.configure(text="", text_color=_MUTED)
                 if self.run_label.winfo_ismapped():
                     self.run_label.pack_forget()
@@ -719,6 +740,18 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._fit_collapsed_size()
 
     def _render_menu(self) -> None:
+        if self._molecule_lab_active:
+            hint_color = _WARN if self._molecule_lab_close_confirm else _ACCENT
+            self.menu_path.configure(
+                text=molecule_lab_legend_hint(close_confirm=self._molecule_lab_close_confirm),
+                text_color=hint_color,
+                font=ctk.CTkFont(size=13, weight="bold"),
+            )
+            self.menu_list.configure(
+                text=molecule_lab_active_prompt(close_confirm=self._molecule_lab_close_confirm)
+            )
+            self._sync_close_button_label()
+            return
         if self._live_control_active:
             hint_color = _MUTED if self._lco_paused else _WARN
             self.menu_path.configure(
@@ -732,7 +765,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self.menu_list.configure(text=live_control_active_prompt(paused=self._lco_paused))
             self._sync_close_button_label()
             return
-        # Restore path styling when leaving the LCO surface.
+        # Restore path styling when leaving the LCO / Lab surface.
         self.menu_path.configure(text_color=_ACCENT, font=ctk.CTkFont(size=12, weight="bold"))
         if self._keymap is None:
             self.menu_path.configure(text="No flight catalog loaded")

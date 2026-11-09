@@ -175,8 +175,8 @@
         },
         {
           "key": "6",
-          "label": "Molecule Composer",
-          "description": "Build molecules from legal atoms — tab context gates the palette; saves JSON under automations/.",
+          "label": "Molecule Lab",
+          "description": "Browse/edit molecules by phase — compose buys, nest composites, reorder, add wave/cash gates; saves JSON under automations/.",
           "action": { "type": "molecule_composer_open" }
         }
       ]

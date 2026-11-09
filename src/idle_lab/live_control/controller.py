@@ -143,6 +143,12 @@ class LiveControlController:
         self._routine_remaining: list[str] = []
         self._ui_thread = threading.current_thread()
         self._worker: threading.Thread | None = None
+        self.molecule_bridge = None  # optional MoleculeLcoBridge
+
+    def attach_molecule_bridge(self, bridge) -> None:
+        """Optional Lab→LCO molecule marks / hotkeys."""
+
+        self.molecule_bridge = bridge
 
     def summary(self) -> LiveControlSummary:
         return LiveControlSummary(
@@ -218,6 +224,7 @@ class LiveControlController:
             f"reason={panel.reason}"
         )
         self._repaint(f"Live Control · {panel.reason}")
+        self._sync_molecule_marks(rect)
         if self.evidence:
             self._emit_evidence(
                 "enter",
@@ -243,6 +250,11 @@ class LiveControlController:
         self._current_action = None
         self._routine_remaining.clear()
         self.overlay.hide()
+        if self.molecule_bridge is not None:
+            try:
+                self.molecule_bridge.clear()
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"Molecule LCO clear failed: {exc}", "warn")
         self._log(f"Live Control OFF ({reason})", "warn")
         self.playbook = None
         self.panel_open = False
@@ -271,6 +283,13 @@ class LiveControlController:
     def handle_key(self, token: str, *, phase: str = "down") -> bool:
         if not self.active or self.playbook is None:
             return False
+        # Molecule rebind / fire owns the token before playbook actions (except describe hold).
+        if self.molecule_bridge is not None:
+            if self.molecule_bridge.rebinding:
+                return bool(self.molecule_bridge.handle_key(token, phase=phase))
+            action_peek = self.playbook.action_for_token(token)
+            if action_peek != "describe" and self.molecule_bridge.handle_key(token, phase=phase):
+                return True
         action = self.playbook.action_for_token(token)
         if action is None:
             return False
@@ -290,6 +309,35 @@ class LiveControlController:
             self._hold_action(action)
             return self._request_action(action, repeat="hold")
         return self._request_action(action)
+
+    def cancel_molecule_rebind(self) -> bool:
+        """Esc while rebinding a molecule hotkey — does not exit LCO."""
+
+        if self.molecule_bridge is None or not self.molecule_bridge.rebinding:
+            return False
+        self.molecule_bridge.cancel_rebind()
+        return True
+
+    def refresh_molecule_marks(self) -> None:
+        if not self.active:
+            return
+        _title, _hwnd, rect = self.get_anchor()
+        self._sync_molecule_marks(rect)
+
+    def _sync_molecule_marks(self, rect: Rect | None) -> None:
+        if self.molecule_bridge is None:
+            return
+        try:
+            remaps = self.molecule_bridge.refresh(anchor=rect, playbook=self.playbook)
+            for mol_id, old, new in remaps:
+                self._log(
+                    f"Molecule “{mol_id}” hotkey remapped {old or '—'} → {new} (conflict).",
+                    "warn",
+                )
+            self.molecule_bridge.set_show_titles(bool(self.show_descriptors))
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"Molecule LCO sync failed: {exc}", "warn")
+
 
     def run_action(self, action: str) -> None:
         """Headless entry for automation atoms: one action; failures raise instead of logging."""
@@ -655,6 +703,11 @@ class LiveControlController:
         if self.show_descriptors == want:
             return True
         self.show_descriptors = want
+        if self.molecule_bridge is not None:
+            try:
+                self.molecule_bridge.set_show_titles(want)
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"Molecule title toggle failed: {exc}", "warn")
         self._notify_legend()
         self._repaint("Describe" if want else "Describe off")
         return True
@@ -1462,3 +1515,4 @@ class LiveControlController:
             identity_known=self.identity.known,
         )
         self.overlay.show(self.playbook, rect, state)
+        self._sync_molecule_marks(rect)
