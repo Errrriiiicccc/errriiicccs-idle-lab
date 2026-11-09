@@ -8,7 +8,7 @@ from typing import Any
 
 from idle_lab.automations.schema import Collection, Event, resolve_branch
 from idle_lab.automations.store import AutomationStore
-from idle_lab.live_control.playbook import ACTUATION_ACTIONS
+from idle_lab.live_control.playbook import is_actuation_action
 
 
 @dataclass
@@ -87,7 +87,7 @@ def _validate_actions(
             lco_action = str(raw.get("action") or "").strip().lower()
             if not lco_action and not str(raw.get("key") or "").strip():
                 report.add("error", path, "lco needs action or key")
-            elif lco_action and lco_action not in ACTUATION_ACTIONS:
+            elif lco_action and not is_actuation_action(lco_action):
                 report.add("error", path, f"unknown lco action: {lco_action}")
         if action_type == "decide":
             for key in ("on_a", "on_b"):

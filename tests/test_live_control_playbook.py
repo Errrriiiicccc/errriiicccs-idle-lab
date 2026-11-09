@@ -30,6 +30,11 @@ class LiveControlPlaybookTests(unittest.TestCase):
         self.assertEqual(pb.action_for_token("G"), "fling_down")
         self.assertEqual(pb.action_for_token("D"), "describe")
         self.assertEqual(pb.action_for_token("C"), "claim_gem")
+        self.assertEqual(pb.action_for_token("A"), "routine_health_damage_claim")
+        self.assertEqual(len(pb.routines), 1)
+        self.assertEqual(pb.routines[0].action, "routine_health_damage_claim")
+        self.assertEqual(pb.routines[0].steps[0], "tab_defense")
+        self.assertAlmostEqual(pb.routines[0].nx, 0.08, places=2)
         self.assertAlmostEqual(float(pb.chrome.get("claim_badge_nx") or 0), 0.20, places=2)
         self.assertAlmostEqual(float(pb.chrome.get("claim_badge_ny") or 0), 0.50, places=2)
         self.assertEqual(len(pb.buy_slots("attack")), 6)
@@ -146,6 +151,29 @@ class LiveControlScrollModelTests(unittest.TestCase):
         relayout.assert_called_once()
         self.assertFalse(ctrl.aligned)
         self.assertEqual(len(ctrl.live_slots), 2)
+
+    def test_routine_runs_sequence_inline(self) -> None:
+        ctrl = self._controller()
+        fired: list[str] = []
+        with (
+            patch.object(ctrl, "_dispatch", side_effect=lambda action: fired.append(action)),
+            patch.object(ctrl, "_repaint"),
+            patch.object(ctrl, "_emit_evidence"),
+        ):
+            ctrl._do_routine("routine_health_damage_claim")
+        self.assertEqual(
+            fired,
+            ["tab_defense", "buy_1", "tab_attack", "buy_1", "tab_defense", "claim_gem"],
+        )
+
+    def test_a_key_fires_routine(self) -> None:
+        ctrl = self._controller()
+        with (
+            patch.object(ctrl, "_do_routine") as routine,
+            patch.object(ctrl, "_repaint"),
+        ):
+            self.assertTrue(ctrl.handle_key("A", phase="down"))
+        routine.assert_called_once_with("routine_health_damage_claim")
 
     def test_tab_switch_homes_with_fling(self) -> None:
         ctrl = self._controller()

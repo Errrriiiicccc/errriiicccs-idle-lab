@@ -117,6 +117,12 @@
           "label": "Buy Damage",
           "description": "Attack → Damage buy once.",
           "action": { "type": "start_event", "event": "buy_damage" }
+        },
+        {
+          "key": "5",
+          "label": "Health → Damage → Claim",
+          "description": "Defense/Health → Attack/Damage → park Defense → claim (LCO A pack).",
+          "action": { "type": "start_event", "event": "health_damage_claim" }
         }
       ]
     },

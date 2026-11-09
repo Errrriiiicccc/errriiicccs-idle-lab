@@ -13,6 +13,7 @@ from PIL import Image
 
 from idle_lab.automations.runtime import AutomationRuntime
 from idle_lab.automations.schema import ACTION_TYPES, Action, Event
+from idle_lab.automations.store import AutomationStore
 from idle_lab.automations.validate import validate_store
 from idle_lab.live_control.buy_detect import BuyGridDetection, DetectedBuySlot
 from idle_lab.live_control.controller import LiveControlError
@@ -134,7 +135,21 @@ class LcoValidateTests(unittest.TestCase):
 
     def test_known_action_and_key_ok(self) -> None:
         self.assertTrue(self._report({"type": "lco", "action": "fling_down"}).ok)
+        self.assertTrue(self._report({"type": "lco", "action": "routine_health_damage_claim"}).ok)
         self.assertTrue(self._report({"type": "lco", "key": "W"}).ok)
+
+    def test_shipped_health_damage_claim_atom(self) -> None:
+        root = Path(__file__).resolve().parents[1] / "automations"
+        store = AutomationStore(root)
+        store.load_all()
+        self.assertIn("health_damage_claim", store.events)
+        report = validate_store(store, preset_names={"gem box tap", "currency toggle"})
+        errors = [
+            f"{issue.path}: {issue.message}"
+            for issue in report.issues
+            if issue.level == "error" and "health_damage_claim" in (issue.path or "")
+        ]
+        self.assertEqual(errors, [], msg=errors)
 
 
 if __name__ == "__main__":

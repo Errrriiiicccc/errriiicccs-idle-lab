@@ -15,7 +15,8 @@ class PlaybookError(ValueError):
     """Playbook file is missing or invalid."""
 
 
-# Actions that touch the game. ``describe`` is overlay-only and not listed.
+# Primitive actions that touch the game. ``describe`` is overlay-only and not listed.
+# Routine packs use ``routine_*`` ids and are accepted by ``is_actuation_action``.
 ACTUATION_ACTIONS = frozenset(
     {
         "tab_attack",
@@ -31,6 +32,21 @@ ACTUATION_ACTIONS = frozenset(
         "refresh",
     }
 )
+
+
+def is_actuation_action(action: str) -> bool:
+    name = (action or "").strip().lower()
+    return name in ACTUATION_ACTIONS or name.startswith("routine_")
+
+
+@dataclass(frozen=True)
+class RoutineMark:
+    action: str
+    label: str
+    nx: float
+    ny: float
+    icon: str = "▸▸"
+    steps: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -65,6 +81,7 @@ class LiveControlPlaybook:
     scroll: dict[str, Any]
     stat_collect: dict[str, Any]
     chrome: dict[str, Any]
+    routines: list[RoutineMark] = field(default_factory=list)
     path: Path | None = None
     raw: dict[str, Any] = field(default_factory=dict)
     object_map: ObjectMap | None = None
@@ -209,6 +226,7 @@ def _load_legacy_flat(path: Path, data: dict[str, Any]) -> LiveControlPlaybook:
         scroll=dict(scroll),
         stat_collect=dict(stat),
         chrome=dict(chrome),
+        routines=[],
         path=path,
         raw=data,
         object_map=None,

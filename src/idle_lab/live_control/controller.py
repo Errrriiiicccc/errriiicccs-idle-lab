@@ -17,10 +17,10 @@ from idle_lab.humanize import HumanizeProfile
 from idle_lab.live_control.buy_detect import BuyGridDetection, DetectedBuySlot, detect_buy_grid
 from idle_lab.live_control.overlay import LiveControlOverlay, LiveControlOverlayState
 from idle_lab.live_control.playbook import (
-    ACTUATION_ACTIONS,
     LiveControlPlaybook,
     PlaybookError,
     default_playbook_path,
+    is_actuation_action,
     load_playbook,
 )
 from idle_lab.models import Rect
@@ -242,7 +242,7 @@ class LiveControlController:
 
         if not self.active or self.playbook is None:
             raise LiveControlError("Live Control is not active.")
-        if action not in ACTUATION_ACTIONS:
+        if not is_actuation_action(action):
             raise LiveControlError(f"unknown Live Control action: {action}")
         if self._busy:
             raise LiveControlError("Live Control busy — wait for current action.")
@@ -383,6 +383,8 @@ class LiveControlController:
             self._do_claim_gem()
         elif action == "refresh":
             self._do_refresh()
+        elif action.startswith("routine_"):
+            self._do_routine(action)
         elif action == "describe":
             # Hold is handled in handle_key; never fire as a one-shot dispatch.
             return
@@ -791,6 +793,57 @@ class LiveControlController:
             meta=after_meta,
         )
         self._repaint(f"{label} {direction}")
+
+    def _routine_steps(self, action: str) -> list[str]:
+        assert self.playbook is not None
+        for routine in self.playbook.routines:
+            if routine.action == action:
+                return list(routine.steps)
+        object_map = self._object_map()
+        button = object_map.button_for_action(action) if object_map is not None else None
+        if button is not None:
+            for effect in button.effects.get("ui") or []:
+                if not isinstance(effect, dict) or effect.get("type") != "run_sequence":
+                    continue
+                raw_steps = effect.get("actions") or []
+                if isinstance(raw_steps, list):
+                    return [str(step).strip() for step in raw_steps if str(step).strip()]
+        raise LiveControlError(f"no sequence for routine {action}")
+
+    def _do_routine(self, action: str) -> None:
+        """Run a named left-rail pack inline on this session (Esc / ` abort between steps)."""
+
+        steps = self._routine_steps(action)
+        if not steps:
+            raise LiveControlError(f"routine {action} has no steps")
+        object_map = self._object_map()
+        button = object_map.button_for_action(action) if object_map is not None else None
+        label = button.label if button is not None else action
+        self._log(f"Routine → {label} ({len(steps)} steps)", "run")
+        self._emit_evidence(
+            action,
+            "before",
+            detail=label,
+            meta={"object_id": button.id if button else None, "steps": steps},
+            capture=False,
+        )
+        for index, step in enumerate(steps, start=1):
+            if self.cancel_event.is_set():
+                self._log(f"Routine {label} interrupted at step {index}/{len(steps)}", "warn")
+                self._repaint("Routine interrupted")
+                return
+            if not is_actuation_action(step) or step.startswith("routine_"):
+                raise LiveControlError(f"routine {action} has invalid step {step!r}")
+            self._log(f"Routine {label}: {index}/{len(steps)} → {step}", "run")
+            self._dispatch(step)
+        self._emit_evidence(
+            action,
+            "after",
+            detail=label,
+            meta=self._grid_meta(extra={"object_id": button.id if button else None, "steps": steps}),
+        )
+        self._log(f"Routine ✔ {label}", "ok")
+        self._repaint(f"Routine {label}")
 
     def _do_stat_collect(self) -> None:
         assert self.playbook is not None

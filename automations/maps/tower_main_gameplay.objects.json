@@ -21,7 +21,8 @@
     "stat_collect": "V",
     "claim_gem": "C",
     "refresh": "B",
-    "describe": "D"
+    "describe": "D",
+    "routine_health_damage_claim": "A"
   },
   "kind_templates": {
     "button": {
@@ -560,6 +561,31 @@
       "hotkey_action": "refresh",
       "effects": {
         "ui": [{ "type": "redetect_layout" }]
+      }
+    },
+    {
+      "id": "routine.health_damage_claim",
+      "kind": "button",
+      "label": "Health → Damage → Claim",
+      "hit": { "nx": 0.08, "ny": 0.40 },
+      "icon": "▸▸",
+      "hotkey_action": "routine_health_damage_claim",
+      "notes": "Left-rail routine mark (empty battlefield margin). Keep sequence in sync with automations/events/health_damage_claim.json.",
+      "effects": {
+        "ui": [
+          {
+            "type": "run_sequence",
+            "actions": [
+              "tab_defense",
+              "buy_1",
+              "tab_attack",
+              "buy_1",
+              "tab_defense",
+              "claim_gem"
+            ]
+          }
+        ],
+        "world": [{ "type": "run_event", "event": "health_damage_claim" }]
       }
     }
   ]

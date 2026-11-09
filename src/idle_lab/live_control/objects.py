@@ -7,7 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from idle_lab.live_control.playbook import BuySlot, LiveControlPlaybook, PlaybookError, TabTarget
+from idle_lab.live_control.playbook import (
+    BuySlot,
+    LiveControlPlaybook,
+    PlaybookError,
+    RoutineMark,
+    TabTarget,
+)
 
 
 class ObjectMapError(PlaybookError):
@@ -255,6 +261,31 @@ class ObjectMap:
             chrome["claim_badge_nx"], chrome["claim_badge_ny"] = claim_obj.hit
             chrome["claim_label"] = claim_obj.label
 
+        routines: list[RoutineMark] = []
+        for obj in self.of_kind("button"):
+            action = (obj.hotkey_action or "").strip()
+            if not action.startswith("routine_") or obj.hit is None:
+                continue
+            steps: list[str] = []
+            for effect in obj.effects.get("ui") or []:
+                if not isinstance(effect, dict) or effect.get("type") != "run_sequence":
+                    continue
+                raw_steps = effect.get("actions") or []
+                if isinstance(raw_steps, list):
+                    steps = [str(step).strip() for step in raw_steps if str(step).strip()]
+                break
+            icon = str(obj.raw.get("icon") or "▸▸").strip() or "▸▸"
+            routines.append(
+                RoutineMark(
+                    action=action,
+                    label=obj.label,
+                    nx=obj.hit[0],
+                    ny=obj.hit[1],
+                    icon=icon,
+                    steps=tuple(steps),
+                )
+            )
+
         return LiveControlPlaybook(
             id=self.id,
             title=self.title,
@@ -266,6 +297,7 @@ class ObjectMap:
             scroll=scroll,
             stat_collect=stat_collect,
             chrome=chrome,
+            routines=routines,
             path=self.path,
             raw=self.raw,
             object_map=self,

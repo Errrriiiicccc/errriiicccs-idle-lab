@@ -1,0 +1,42 @@
+{
+  "id": "health_damage_claim",
+  "title": "Health → Damage → Claim",
+  "version": 1,
+  "enabled": false,
+  "priority": 42,
+  "timing": {"type": "interval", "every_ms": 60000},
+  "description": "Once: Defense/Health → Attack/Damage → park Defense → claim diamonds. Same pack as LCO hotkey A.",
+  "notes": "Authored from live-control-troubleshoot-20261108-193348. Keep sequence in sync with routine.health_damage_claim on the object map.",
+  "actions": [
+    {
+      "type": "lco",
+      "action": "tab_defense",
+      "description": "Open Defense and fling-home the list."
+    },
+    {
+      "type": "lco",
+      "action": "buy_1",
+      "description": "Buy one Health (slot 1)."
+    },
+    {
+      "type": "lco",
+      "action": "tab_attack",
+      "description": "Open Attack and fling-home the list."
+    },
+    {
+      "type": "lco",
+      "action": "buy_1",
+      "description": "Buy one Damage (slot 1)."
+    },
+    {
+      "type": "lco",
+      "action": "tab_defense",
+      "description": "Park back on Defense."
+    },
+    {
+      "type": "lco",
+      "action": "claim_gem",
+      "description": "Opportunistic diamond claim tap."
+    }
+  ]
+}

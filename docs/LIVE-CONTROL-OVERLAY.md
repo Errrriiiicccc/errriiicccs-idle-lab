@@ -21,6 +21,7 @@ Overlay marks: **clicks show hotkeys**; **non-clicks show icons**. **Hold D** to
 | V | Stat collect atom once | clipboard (V while holding D) |
 | C | Claim diamonds (timed tile; fine if absent) | ◆ (C while holding D) |
 | B | Redetect panel + buy grid (no scroll) | ↻ (B while holding D) |
+| A | Routine pack: Health → Damage → Claim (left rail) | ▸▸ (A while holding D) |
 | D | Hold: icons → hotkeys + HV descriptors | — |
 | ` | Pause / resume LCO (gray inert marks; session stays) | — |
 | Esc | Exit Live Control (and stop Observation if Troubleshoot owns it) |
@@ -48,7 +49,7 @@ Upgrade lists are short **continuous** lists, not discrete pages. **R/F** move o
 
 After enter / tab / **R/F** / **B**, Live Control **detects card rows** from the screenshot (edge energy). Playbook coords are fallback when detection finds nothing.
 
-**Q/W/E** fling toward list top after the tab tap (game remembers per-tab scroll; same physics as **T**). **T** also flings toward list top. **B** only re-reads the current frame (panel + buy slots) — hit it when markers look misaligned without changing scroll. **Hold D** describes related marks with HV connector lines and label rectangles (and flips icons to their keys). **`** pauses (gray / inert, typing passes through) without exiting; **`** again resumes; **Esc** exits.
+**Q/W/E** fling toward list top after the tab tap (game remembers per-tab scroll; same physics as **T**). **T** also flings toward list top. **B** only re-reads the current frame (panel + buy slots) — hit it when markers look misaligned without changing scroll. **A** runs the left-rail routine pack (Health → Damage → Claim; same atom as flight deck **A → 5**). **Hold D** describes related marks with HV connector lines and label rectangles (and flips icons to their keys). **`** pauses (gray / inert, typing passes through) without exiting; **`** again resumes; **Esc** exits.
 
 Amber circles = geometry unsure (mid-scroll / odd gap). Buys still fire — amber is advisory only.
 

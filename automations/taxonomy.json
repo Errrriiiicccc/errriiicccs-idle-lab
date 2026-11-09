@@ -170,6 +170,13 @@
                       "ref": { "kind": "event", "id": "buy_damage" }
                     },
                     {
+                      "id": "loops.events.real.gameplay.health_damage_claim",
+                      "key": "5",
+                      "label": "Health → Damage → Claim",
+                      "description": "LCO pack A: Defense/Health → Attack/Damage → park Defense → claim.",
+                      "ref": { "kind": "event", "id": "health_damage_claim" }
+                    },
+                    {
                       "id": "loops.events.real.gameplay.stat_collect",
                       "key": "5",
                       "label": "Stat collect",
