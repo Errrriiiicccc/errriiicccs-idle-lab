@@ -77,6 +77,11 @@ Each action may include optional `description` (plain sentence for Basic UI).
 - `ensure_upgrade_tab` — `{ "tab": "attack"|"defense"|"utility" }` observe first; click only if needed (retap closes)
 - `seek_list_top` — `{ "look_for": "Health"|"Damage" }` OCR first card; controlled drag up until match or unchanged
 - `scroll_list` — `{ "direction": "up"|"down", "rows": N }` tab-agnostic playbook drag (~0.10 per row). Prefer shared scroll atoms over duplicating coords per tab.
+- `lco` — one Live Control action, same object map + live buy-grid detection as the overlay. `{ "action": "buy_3" }` or `{ "key": "3" }` (resolved through the object map hotkeys); optional `"times": N`.
+  - Actions: `tab_attack` / `tab_defense` / `tab_utility`, `buy_1`–`buy_6`, `scroll_up` / `scroll_down`, `fling_up` / `fling_down`, `stat_collect`, `claim_gem`, `refresh`. `describe` is overlay-only.
+  - The first `lco` step in an atom starts a headless session (screenshot → panel + buy grid); later `lco` steps reuse its tab/slot state. The session ends when the top-level atom finishes, so mix in `wait` / `ocr` freely between steps.
+  - Sets `lco_tab`, `lco_slots`, `lco_aligned` (`yes` / `no`) for `decide`.
+  - Clicks force humanize **off** and never restore the cursor (LCO precision path).
 
 ### Event overdue_policy (optional)
 

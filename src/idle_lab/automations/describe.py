@@ -86,6 +86,11 @@ def _action_basic(action: Action) -> str:
     if kind == "run_event":
         event_id = raw.get("event") or raw.get("id") or "?"
         return f"Run atom “{event_id}” inline (shared procedure)."
+    if kind == "lco":
+        target = raw.get("action") or f"key {raw.get('key') or '?'}"
+        times = raw.get("times") or 1
+        suffix = f" ×{times}" if times != 1 else ""
+        return f"Live Control {target}{suffix} (object map + live buy-grid detection)."
     return f"Run action “{kind}”."
 
 
@@ -174,6 +179,14 @@ def _action_detailed(action: Action, *, indent: str = "") -> list[str]:
     elif kind == "run_event":
         lines.append(f"{indent}  → event id: {raw.get('event') or raw.get('id')}")
         lines.append(f"{indent}  → executes that atom’s actions in-process (no new scheduler tick)")
+    elif kind == "lco":
+        if raw.get("action"):
+            lines.append(f"{indent}  → action: {raw.get('action')}")
+        else:
+            lines.append(f"{indent}  → key: {raw.get('key')} (resolved through the object map hotkeys)")
+        lines.append(f"{indent}  → times: {raw.get('times') or 1}")
+        lines.append(f"{indent}  → headless LCO session: detects panel + buy grid on first lco step of the atom")
+        lines.append(f"{indent}  → sets lco_tab, lco_slots, lco_aligned")
     return lines
 
 

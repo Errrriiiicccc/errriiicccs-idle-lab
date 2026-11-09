@@ -53,6 +53,7 @@ Allowed `type` values on event actions:
 | ensure_upgrade_tab | Open tab only if needed |
 | seek_list_top | Scroll list until OCR/`unchanged` |
 | scroll_list | Tab-agnostic list scroll (`direction` + `rows`) |
+| lco | Live Control action by `action` (e.g. `buy_3`) or hotkey `key`; optional `times` |
 
 Events need `timing: { "type": "interval", "every_ms": N }` and `priority` (higher wins).
 Optional `overdue_policy`: `run_when_free` | `skip` | `run_once_catchup`.

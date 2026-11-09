@@ -30,6 +30,7 @@ ACTION_TYPES = frozenset(
         "scroll_list",
         "match_template",
         "run_event",
+        "lco",
     }
 )
 

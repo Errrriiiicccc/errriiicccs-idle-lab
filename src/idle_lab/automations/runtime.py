@@ -37,6 +37,7 @@ from idle_lab.automations.video import VideoError, clip_name, record_clip
 from idle_lab.evidence import write_failure_pack
 from idle_lab.humanize import HumanizeProfile, interruptible_sleep
 from idle_lab.lab_mode import SuperviseGate
+from idle_lab.live_control.controller import LiveControlController, LiveControlError, NullOverlay
 from idle_lab.models import Rect
 from idle_lab.trace_log import TraceLog
 
@@ -92,6 +93,7 @@ class AutomationRuntime:
         self._run_event_stack: list[str] = []
         self._collection_thread: threading.Thread | None = None
         self._session_events: list[Event] | None = None
+        self._lco: LiveControlController | None = None
 
     def emit(self, kind: str, **payload: Any) -> None:
         self.events_out.put({"kind": kind, **payload})
@@ -156,6 +158,8 @@ class AutomationRuntime:
     def stop(self) -> None:
         self._enabled = False
         self._stop.set()
+        if self._lco is not None:
+            self._lco.interrupt()
         thread = self._thread
         if thread and thread.is_alive():
             thread.join(timeout=2.0)
@@ -397,6 +401,8 @@ class AutomationRuntime:
             self._run_event_stack.pop()
             self._current_event_id = prev_id
             self._action_index = prev_index
+            if not self._run_event_stack and self._lco is not None and self._lco.active:
+                self._lco.exit(reason="atom finished")
 
     def _action_run_event(self, raw: dict[str, Any]) -> None:
         event_id = str(raw.get("event") or raw.get("id") or "").strip()
@@ -434,6 +440,7 @@ class AutomationRuntime:
             "seek_list_top": self._action_seek_list_top,
             "match_template": self._action_match_template,
             "run_event": self._action_run_event,
+            "lco": self._action_lco,
         }
         handler = handlers.get(str(action_type))
         if handler is None:
@@ -996,3 +1003,44 @@ class AutomationRuntime:
             self.log(f"scroll_list: row {index}/{rows} done", "ok")
         self.state.variables["scroll_list_direction"] = direction
         self.state.variables["scroll_list_rows"] = str(rows)
+
+    def _lco_session(self) -> LiveControlController:
+        """Headless LCO for this top-level atom: entered on first use, exited when the atom ends."""
+
+        if self._lco is None:
+            self._lco = LiveControlController(
+                overlay=NullOverlay(),
+                project_root=self.runs_dir.parent,
+                get_anchor=lambda: (None, *self._anchor()),
+                run_event_once=lambda event_id: self._action_run_event({"event": event_id}),
+                log=self.log,
+            )
+        if not self._lco.active:
+            self._lco.enter()
+        return self._lco
+
+    def _action_lco(self, raw: dict[str, Any]) -> None:
+        """One Live Control action by ``action`` id or hotkey ``key``; optional ``times`` repeats it."""
+
+        session = self._lco_session()
+        assert session.playbook is not None
+        action = str(raw.get("action") or "").strip().lower()
+        key = str(raw.get("key") or "").strip()
+        if not action and key:
+            action = session.playbook.action_for_token(key) or ""
+            if not action:
+                raise LiveControlError(f"lco: no Live Control action bound to key {key!r}")
+        if not action:
+            raise LiveControlError("lco needs action or key")
+        times = max(1, abs(int(raw.get("times") or 1)))
+        label = action if times == 1 else f"{action} ×{times}"
+        if not self._supervise(f"LCO {label}"):
+            return
+        for _ in range(times):
+            if self._stop.is_set():
+                raise CaptureError("Stopped by user.")
+            session.run_action(action)
+        self.state.last_image = None
+        self.state.variables["lco_tab"] = session.tab or "none"
+        self.state.variables["lco_slots"] = str(len(session.live_slots))
+        self.state.variables["lco_aligned"] = "yes" if session.aligned else "no"

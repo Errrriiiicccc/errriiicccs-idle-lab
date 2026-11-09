@@ -52,8 +52,13 @@ After enter / tab / **R/F** / **B**, Live Control **detects card rows** from the
 
 Amber circles = geometry unsure (mid-scroll / odd gap). Buys still fire — amber is advisory only.
 
+## From automations
+
+Atoms can fire the same actions headlessly with the `lco` action type — `{ "type": "lco", "key": "W" }`, `{ "type": "lco", "action": "buy_3", "times": 5 }`. No overlay is drawn; detection, object map and scroll physics are shared with U → 1. See [automation-schema.md](automation-schema.md).
+
 ## Code
 
-- `src/idle_lab/live_control/` — object map + playbook projection, overlay, controller  
+- `src/idle_lab/live_control/` — object map + playbook projection, overlay, controller (`run_action` + `NullOverlay` for headless use)  
+- `AutomationRuntime._action_lco` — `lco` atom step → headless controller  
 - `ObservationController.note_live_control` — Troubleshoot evidence bridge  
 - Flight-deck actions: `live_control_enter` / `live_control_enter_troubleshoot` / `live_control_exit` / `live_control_toggle`

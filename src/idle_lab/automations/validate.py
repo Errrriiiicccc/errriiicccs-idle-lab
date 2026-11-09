@@ -8,6 +8,7 @@ from typing import Any
 
 from idle_lab.automations.schema import Collection, Event, resolve_branch
 from idle_lab.automations.store import AutomationStore
+from idle_lab.live_control.playbook import ACTUATION_ACTIONS
 
 
 @dataclass
@@ -82,6 +83,12 @@ def _validate_actions(
                 report.add("error", path, "run_event needs event id")
             elif event_id not in store.events:
                 report.add("error", path, f"unknown event: {event_id}")
+        if action_type == "lco":
+            lco_action = str(raw.get("action") or "").strip().lower()
+            if not lco_action and not str(raw.get("key") or "").strip():
+                report.add("error", path, "lco needs action or key")
+            elif lco_action and lco_action not in ACTUATION_ACTIONS:
+                report.add("error", path, f"unknown lco action: {lco_action}")
         if action_type == "decide":
             for key in ("on_a", "on_b"):
                 nested = raw.get(key) or []
@@ -198,6 +205,9 @@ def _plan_action(
                         )
     elif action_type == "set_variable":
         lines.append(f"{pad}  {raw.get('name')}={raw.get('value')!r}")
+    elif action_type == "lco":
+        target = raw.get("action") or f"key {raw.get('key')!r}"
+        lines.append(f"{pad}  {target} ×{raw.get('times') or 1}")
     return lines
 
 

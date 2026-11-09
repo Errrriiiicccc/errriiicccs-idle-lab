@@ -16,7 +16,13 @@ from idle_lab.automations.tower_nav import click_normalized, drag_list, fling_li
 from idle_lab.humanize import HumanizeProfile
 from idle_lab.live_control.buy_detect import BuyGridDetection, DetectedBuySlot, detect_buy_grid
 from idle_lab.live_control.overlay import LiveControlOverlay, LiveControlOverlayState
-from idle_lab.live_control.playbook import LiveControlPlaybook, PlaybookError, default_playbook_path, load_playbook
+from idle_lab.live_control.playbook import (
+    ACTUATION_ACTIONS,
+    LiveControlPlaybook,
+    PlaybookError,
+    default_playbook_path,
+    load_playbook,
+)
 from idle_lab.models import Rect
 
 
@@ -46,6 +52,16 @@ class LiveControlError(RuntimeError):
     """Live Control Overlay refused to start or act."""
 
 
+class NullOverlay:
+    """Draws nothing — for headless sessions driven by automation atoms."""
+
+    def show(self, playbook: LiveControlPlaybook, anchor: Rect, state: LiveControlOverlayState) -> None:
+        _ = playbook, anchor, state
+
+    def hide(self) -> None:
+        return None
+
+
 @dataclass
 class LiveControlSummary:
     active: bool
@@ -60,7 +76,7 @@ class LiveControlController:
     def __init__(
         self,
         *,
-        overlay: LiveControlOverlay,
+        overlay: LiveControlOverlay | NullOverlay,
         project_root: Path,
         get_anchor: AnchorFn,
         get_humanize: HumanizeFn | None = None,
@@ -220,6 +236,21 @@ class LiveControlController:
             return self._kick_held()
         self.cancel_event.clear()
         return self._run_action(action)
+
+    def run_action(self, action: str) -> None:
+        """Headless entry for automation atoms: one action; failures raise instead of logging."""
+
+        if not self.active or self.playbook is None:
+            raise LiveControlError("Live Control is not active.")
+        if action not in ACTUATION_ACTIONS:
+            raise LiveControlError(f"unknown Live Control action: {action}")
+        if self._busy:
+            raise LiveControlError("Live Control busy — wait for current action.")
+        try:
+            self._busy = True
+            self._dispatch(action)
+        finally:
+            self._busy = False
 
     def continue_repeat(self, action: str) -> None:
         """UI-queue continuation after a hold-to-repeat fire finishes."""

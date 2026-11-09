@@ -15,6 +15,24 @@ class PlaybookError(ValueError):
     """Playbook file is missing or invalid."""
 
 
+# Actions that touch the game. ``describe`` is overlay-only and not listed.
+ACTUATION_ACTIONS = frozenset(
+    {
+        "tab_attack",
+        "tab_defense",
+        "tab_utility",
+        *(f"buy_{i}" for i in range(1, 7)),
+        "scroll_up",
+        "scroll_down",
+        "fling_up",
+        "fling_down",
+        "stat_collect",
+        "claim_gem",
+        "refresh",
+    }
+)
+
+
 @dataclass(frozen=True)
 class TabTarget:
     id: str
