@@ -1,0 +1,10 @@
+{
+  "id": "molecule-dry-run",
+  "title": "Molecule dry-run (health then damage)",
+  "tier": "T2",
+  "kind": "molecule_dry_run",
+  "description": "Plan health_then_damage against the real automations store without mouse actuation.",
+  "params": {
+    "collection_id": "health_then_damage"
+  }
+}

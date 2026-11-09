@@ -53,6 +53,8 @@ Next chat: [docs/CONTINUATION.md](docs/CONTINUATION.md).
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
+Tiered verification without Computer Use: `python -m idle_lab.harness …` — see [docs/HARNESS.md](docs/HARNESS.md).
+
 ## Repo
 
 https://github.com/Errrriiiicccc/errriiicccs-idle-lab

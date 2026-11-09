@@ -14,6 +14,8 @@ Shell: **Refresh / Restart / Stop all**, **Flight deck** + expand remap beside A
 
 **Chat contract:** [REFRESH-RESTART.md](REFRESH-RESTART.md) — data edits → Eric hits **Refresh** (F5); code edits → **Restart**.
 
+**Test without Computer Use:** [HARNESS.md](HARNESS.md) — tiered `python -m idle_lab.harness …` (story/fixture/unit first; `doctor` + `live` only when Tower pixels are required). Context: [`lab-context.json`](../lab-context.json) (active target = Tower / BlueStacks).
+
 Secondary: [HANDOFF-AI-BATCH-RUN.md](HANDOFF-AI-BATCH-RUN.md) — Missions Start → analyze `run_report.json` + Observe shots + comments.  
 Probes: [PROBE-MISSIONS.md](PROBE-MISSIONS.md). Legacy OCR tweak prompt: [HANDOFF-OCR.md](HANDOFF-OCR.md) (history only).
 
@@ -27,6 +29,7 @@ Probes: [PROBE-MISSIONS.md](PROBE-MISSIONS.md). Legacy OCR tweak prompt: [HANDOF
 - **Loops:** Atoms / Molecules browse (taxonomy), Start selected atom = once, molecule interval|once, scroll atoms, queue, console, Note comments.
 - **Observe:** Observation sessions (pointer timeline + dual-write Screen Map shots) + catalog; Note on batch or shot.
 - **Missions:** AI batches with `steps[]` + optional `genre` (`probe` / `mission` / `bench`); Start/Stop; iterations + QUESTION/ACCEPTANCE for probes; Open linked Observe; screenshot-on-fail; Note on mission/request; seeds from `examples/ai-batches/`.
+- **Harness:** `python -m idle_lab.harness` — classify / unit / story / fixture / doctor / live; reports under `runs/harness/`.
 - File-driven ROIs, events, collections, `runtime.json` (`run_number`).
 - OCR (Tesseract), A/B decide, priority scheduler, ffmpeg clips, CSV.
 - Scroll memory; unit tests including comments + AI batch runner.

@@ -1,0 +1,8 @@
+{
+  "id": "schema-validate-all",
+  "title": "Validate all automations + preset refs",
+  "tier": "T0",
+  "kind": "schema_validate_all",
+  "description": "File-only validation of automations/ and preset references.",
+  "params": {}
+}

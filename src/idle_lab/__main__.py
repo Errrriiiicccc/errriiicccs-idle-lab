@@ -1,4 +1,4 @@
-"""python -m idle_lab  |  python -m idle_lab validate"""
+"""python -m idle_lab  |  python -m idle_lab validate  |  python -m idle_lab harness …"""
 
 from __future__ import annotations
 
@@ -18,6 +18,11 @@ def main(argv: list[str] | None = None) -> None:
         report = validate_project(root, preset_names=preset_names)
         print(format_report(report))
         raise SystemExit(0 if report.ok else 1)
+
+    if args and args[0] in {"harness", "--harness"}:
+        from idle_lab.harness.cli import main as harness_main
+
+        raise SystemExit(harness_main(args[1:]))
 
     from idle_lab.app import main as app_main
 

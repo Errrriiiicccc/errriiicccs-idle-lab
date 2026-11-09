@@ -1,0 +1,12 @@
+{
+  "id": "composer-save-roundtrip",
+  "title": "Composer save roundtrip",
+  "tier": "T2",
+  "kind": "composer_save_roundtrip",
+  "description": "Compose a small Attack molecule in-process, expand to disk, reload library, validate, dry-run. No Tower / LCO.",
+  "params": {
+    "tab": "attack",
+    "title": "Harness Damage then Multishot",
+    "buy_labels": ["Damage", "Multishot Chance"]
+  }
+}
