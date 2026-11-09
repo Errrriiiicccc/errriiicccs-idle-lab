@@ -48,7 +48,7 @@ Upgrade lists are short **continuous** lists, not discrete pages. **R/F** move o
 
 After enter / tab / **R/F** / **B**, Live Control **detects card rows** from the screenshot (edge energy). Playbook coords are fallback when detection finds nothing.
 
-**Q/W/E** seek list top after the tab tap (game remembers per-tab scroll). **T** flings toward list top. **B** only re-reads the current frame (panel + buy slots) — hit it when markers look misaligned without changing scroll. **Hold D** describes related marks with HV connector lines and label rectangles (and flips icons to their keys). **`** pauses (gray / inert, typing passes through) without exiting; **`** again resumes; **Esc** exits.
+**Q/W/E** fling toward list top after the tab tap (game remembers per-tab scroll; same physics as **T**). **T** also flings toward list top. **B** only re-reads the current frame (panel + buy slots) — hit it when markers look misaligned without changing scroll. **Hold D** describes related marks with HV connector lines and label rectangles (and flips icons to their keys). **`** pauses (gray / inert, typing passes through) without exiting; **`** again resumes; **Esc** exits.
 
 Amber circles = geometry unsure (mid-scroll / odd gap). Buys still fire — amber is advisory only.
 

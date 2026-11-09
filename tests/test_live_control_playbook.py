@@ -147,6 +147,29 @@ class LiveControlScrollModelTests(unittest.TestCase):
         self.assertFalse(ctrl.aligned)
         self.assertEqual(len(ctrl.live_slots), 2)
 
+    def test_tab_switch_homes_with_fling(self) -> None:
+        ctrl = self._controller()
+        ctrl.tab = "defense"
+        detection = BuyGridDetection(
+            snapped=True,
+            slots=[DetectedBuySlot(1, 0.32, 0.74)],
+            reason="snapped",
+            row_nys=(0.74,),
+            header_ny=0.66,
+        )
+        with (
+            patch("idle_lab.live_control.controller.fling_list") as fling,
+            patch("idle_lab.live_control.controller.click_normalized"),
+            patch.object(ctrl, "_relayout_from_screen", return_value=detection),
+            patch.object(ctrl, "_sleep_ms", return_value=False),
+            patch.object(ctrl, "_repaint"),
+            patch.object(ctrl, "_emit_evidence"),
+        ):
+            ctrl._do_tab("attack")
+        self.assertEqual(fling.call_count, 1)
+        self.assertEqual(fling.call_args.kwargs["direction"], "up")
+        self.assertGreaterEqual(fling.call_args.kwargs["drag_fraction"], 0.25)
+
     def test_fling_uses_momentum_swipe(self) -> None:
         ctrl = self._controller()
         detection = BuyGridDetection(

@@ -59,11 +59,12 @@ class LcoActionTests(unittest.TestCase):
             patch(f"{CONTROLLER}.grab_anchor", return_value=Image.new("RGB", (593, 1028))),
             patch(f"{CONTROLLER}.detect_upgrade_panel", return_value=panel),
             patch(f"{CONTROLLER}.detect_buy_grid", return_value=_grid()),
-            patch(f"{CONTROLLER}.seek_list_top"),
+            patch(f"{CONTROLLER}.fling_list"),
         ]
         self.grab = self.patches[0].start()
-        for extra in self.patches[1:]:
+        for extra in self.patches[1:-1]:
             extra.start()
+        self.fling = self.patches[-1].start()
         self.click = patch(f"{CONTROLLER}.click_normalized").start()
         self.patches.append(self.click)
 
@@ -94,6 +95,8 @@ class LcoActionTests(unittest.TestCase):
     def test_tab_action_clicks_and_homes(self) -> None:
         self.runtime._run_event(_event({"type": "lco", "action": "tab_attack"}))  # noqa: SLF001
         self.assertEqual(self.click.call_count, 1)
+        self.assertEqual(self.fling.call_count, 1)
+        self.assertEqual(self.fling.call_args.kwargs["direction"], "up")
         self.assertEqual(self.runtime.state.variables["lco_tab"], "attack")
 
     def test_unbound_key_raises_and_session_ends(self) -> None:

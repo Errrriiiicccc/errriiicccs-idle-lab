@@ -12,7 +12,7 @@ from PIL import Image
 
 from idle_lab.ai_batch.panel_detect import detect_upgrade_panel
 from idle_lab.automations.capture import CaptureError, grab_anchor
-from idle_lab.automations.tower_nav import click_normalized, drag_list, fling_list, seek_list_top
+from idle_lab.automations.tower_nav import click_normalized, drag_list, fling_list
 from idle_lab.humanize import HumanizeProfile
 from idle_lab.live_control.buy_detect import BuyGridDetection, DetectedBuySlot, detect_buy_grid
 from idle_lab.live_control.overlay import LiveControlOverlay, LiveControlOverlayState
@@ -518,24 +518,32 @@ class LiveControlController:
         return self.playbook.seek_top.get(tab) or ""
 
     def _seek_tab_top(self, *, hwnd: int, rect: Rect, tab: str) -> None:
-        """Re-home list to first page so buy 1–6 match playbook labels."""
+        """Re-home list to first page with one fling toward top (same physics as T)."""
 
         assert self.playbook is not None
-        look_for = self._seek_look_for(tab)
         scroll = self._scroll_params(tab)
-        self._log(f"Tab home → seek top ({look_for or 'edge'})", "run")
-        seek_list_top(
+        nx = float(scroll.get("nx") or 0.45)
+        ny = float(scroll.get("ny") or 0.72)
+        drag_fraction = float(scroll.get("fling_fraction") or 0.42)
+        drag_steps = max(3, int(scroll.get("fling_steps") or 5))
+        step_ms = max(1, int(scroll.get("fling_step_ms") or 4))
+        settle_ms = max(200, int(scroll.get("fling_settle_ms") or scroll.get("settle_ms") or 700))
+        look_for = self._seek_look_for(tab)
+        self._log(f"Tab home → fling top ({look_for or 'edge'})", "run")
+        fling_list(
             hwnd=hwnd,
             rect=rect,
-            look_for=look_for,
-            drag_fraction=float(scroll.get("drag_fraction") or 0.10),
-            hold_end_ms=int(scroll.get("hold_end_ms") or 350),
-            settle_ms=max(200, int(scroll.get("settle_ms") or 450)),
-            settle_confirm_ms=200,
+            direction="up",
+            nx=nx,
+            ny=ny,
+            drag_fraction=drag_fraction,
+            drag_steps=drag_steps,
+            step_ms=step_ms,
             restore_cursor=False,
             stop=self.cancel_event,
-            log=self._log,
         )
+        if settle_ms:
+            self._sleep_ms(settle_ms)
 
     def _do_tab(self, tab: str) -> None:
         assert self.playbook is not None
