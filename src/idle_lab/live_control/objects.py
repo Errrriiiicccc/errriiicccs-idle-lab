@@ -250,6 +250,10 @@ class ObjectMap:
         chrome: dict[str, Any] = {}
         if refresh_obj is not None and refresh_obj.hit is not None:
             chrome["refresh_badge_nx"], chrome["refresh_badge_ny"] = refresh_obj.hit
+        claim_obj = self.button_for_action("claim_gem")
+        if claim_obj is not None and claim_obj.hit is not None:
+            chrome["claim_badge_nx"], chrome["claim_badge_ny"] = claim_obj.hit
+            chrome["claim_label"] = claim_obj.label
 
         return LiveControlPlaybook(
             id=self.id,

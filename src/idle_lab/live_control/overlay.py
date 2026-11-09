@@ -34,6 +34,8 @@ _FLING_OUTLINE = "#C8E0FF"
 _FLING_FILL = "#182028"
 _STAT_OUTLINE = "#70E0A0"
 _STAT_FILL = "#102018"
+_CLAIM_OUTLINE = "#E090D0"
+_CLAIM_FILL = "#201018"
 _REFRESH_OUTLINE = "#E0B85E"
 _REFRESH_FILL = "#201808"
 _GLYPH = "#F2F6FA"
@@ -361,6 +363,15 @@ class LiveControlOverlay:
             glyph=glyph,
         )
         chrome = pb.chrome
+        self._claim_badge(
+            float(chrome.get("claim_badge_nx") or 0.20),
+            float(chrome.get("claim_badge_ny") or 0.50),
+            key=pb.hotkey_for("claim_gem") or "C",
+            outline=_PAUSED_OUTLINE if paused else _CLAIM_OUTLINE,
+            fill=_PAUSED_FILL if paused else _CLAIM_FILL,
+            show_hotkeys=show_keys,
+            glyph=glyph,
+        )
         self._action_badge(
             float(chrome.get("refresh_badge_nx") or 0.92),
             float(chrome.get("refresh_badge_ny") or 0.50),
@@ -432,6 +443,11 @@ class LiveControlOverlay:
         stat_pt = self._to_canvas(float(stat.get("nx") or 0.15), float(stat.get("ny") or 0.09))
         layout.add_circle(*stat_pt, _MARKER_R)
         chrome = pb.chrome
+        claim_pt = self._to_canvas(
+            float(chrome.get("claim_badge_nx") or 0.20),
+            float(chrome.get("claim_badge_ny") or 0.50),
+        )
+        layout.add_circle(*claim_pt, _MARKER_R)
         refresh_pt = self._to_canvas(
             float(chrome.get("refresh_badge_nx") or 0.92),
             float(chrome.get("refresh_badge_ny") or 0.50),
@@ -447,6 +463,7 @@ class LiveControlOverlay:
         if len(tabs) >= 2:
             self._descriptor_tabs(layout, [self._to_canvas(t.nx, t.ny) for t in tabs], "Switch Upgrade Tabs")
         self._descriptor_singleton(layout, stat_pt, "Stat Collect", prefer="left")
+        self._descriptor_singleton(layout, claim_pt, "Claim Diamonds", prefer="left")
         self._descriptor_singleton(layout, refresh_pt, "Refresh", prefer="right")
 
     def _descriptor_tabs(
@@ -650,6 +667,39 @@ class LiveControlOverlay:
         self.canvas.create_line(x - 4, y - 1, x + 4, y - 1, fill=glyph, width=1)
         self.canvas.create_line(x - 4, y + 2, x + 4, y + 2, fill=glyph, width=1)
         self.canvas.create_line(x - 4, y + 5, x + 2, y + 5, fill=glyph, width=1)
+
+    def _claim_badge(
+        self,
+        nx: float,
+        ny: float,
+        *,
+        key: str,
+        outline: str,
+        fill: str,
+        show_hotkeys: bool,
+        glyph: str = _GLYPH,
+    ) -> None:
+        """Timed gem CLAIM: diamond glyph (or hotkey while holding D)."""
+
+        x, y = self._to_canvas(nx, ny)
+        r = _MARKER_R
+        self.canvas.create_oval(x - r, y - r, x + r, y + r, outline=outline, fill=fill, width=2)
+        if show_hotkeys:
+            self.canvas.create_text(x, y, text=str(key), fill=glyph, font=("Segoe UI", 11, "bold"))
+            return
+        self.canvas.create_polygon(
+            x,
+            y - 8,
+            x + 7,
+            y,
+            x,
+            y + 8,
+            x - 7,
+            y,
+            outline=glyph,
+            fill="",
+            width=1.5,
+        )
 
     def _scroll_fling_badge(
         self,

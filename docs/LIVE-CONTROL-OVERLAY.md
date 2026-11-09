@@ -19,12 +19,15 @@ Overlay marks: **clicks show hotkeys**; **non-clicks show icons**. **Hold D** to
 | R / F | One card-row drag | ▲ / ▼ (R / F while holding D) |
 | T / G | Momentum fling toward list top / bottom | stacked ▲▲▲ / ▼▼▼ (T / G while holding D) |
 | V | Stat collect atom once | clipboard (V while holding D) |
+| C | Claim diamonds (timed tile; fine if absent) | ◆ (C while holding D) |
 | B | Redetect panel + buy grid (no scroll) | ↻ (B while holding D) |
 | D | Hold: icons → hotkeys + HV descriptors | — |
 | ` | Pause / resume LCO (gray inert marks; session stays) | — |
 | Esc | Exit Live Control (and stop Observation if Troubleshoot owns it) |
 
 Stay in mode after each fire. Pointer passes through. Cursor **stays** on the last click (no restore). Clicks use humanize **off** for precision.
+
+**Hold-to-repeat:** buys (1–6), scroll/fling (R/F/T/G), and claim (C) re-fire while held. **One-shot only:** tabs (Q/W/E), stat collect (V), refresh (B), describe (D). **`** / **Esc** abort in-flight work immediately (mid-drag / queued repeats) — pause or exit still follows.
 
 ## U → 1 vs U → 2
 

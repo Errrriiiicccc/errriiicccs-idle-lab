@@ -78,6 +78,8 @@ class HookFlags:
         self.live_control_active = False
         # LCO session on but grayed out — keys pass through for typing; ` resumes, Esc exits.
         self.live_control_paused = False
+        # Set immediately on Esc / ` so in-flight scrolls can abort before the UI drains the queue.
+        self.live_control_cancel = threading.Event()
         # True while Loops / Missions / collection / playback / etc. can be Esc-stopped.
         self.stoppable = False
         # Flight deck activate model: inactive = only activate VK; active = shell + hotkeys.
@@ -248,6 +250,7 @@ class InputHooks:
                 was = self._expand_down
                 self._expand_down = False
                 if was:
+                    self.state.live_control_cancel.set()
                     self.events.put(("live_control_pause_toggle",))
             elif not self._expand_down:
                 self._expand_down = True
@@ -319,6 +322,8 @@ class InputHooks:
                     self._esc_down = False
                 elif armed and not self._esc_down:
                     self._esc_down = True
+                    if self.state.live_control_active:
+                        self.state.live_control_cancel.set()
                     swallow = True
                     self.events.put(("escape",))
                 elif armed:

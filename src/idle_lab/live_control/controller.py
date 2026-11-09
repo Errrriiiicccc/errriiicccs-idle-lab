@@ -29,6 +29,18 @@ PostEventFn = Callable[[tuple], None]
 LegendFn = Callable[[bool], None]
 PauseFn = Callable[[bool], None]
 
+# Hold-to-repeat: light taps/drags. Heavy OCR / seek / redetect stay one-shot.
+_REPEATABLE_ACTIONS = frozenset(
+    {
+        "scroll_up",
+        "scroll_down",
+        "fling_up",
+        "fling_down",
+        "claim_gem",
+        *(f"buy_{i}" for i in range(1, 7)),
+    }
+)
+
 
 class LiveControlError(RuntimeError):
     """Live Control Overlay refused to start or act."""
@@ -57,6 +69,7 @@ class LiveControlController:
         post_event: PostEventFn | None = None,
         on_legend_change: LegendFn | None = None,
         on_pause_change: PauseFn | None = None,
+        cancel_event: threading.Event | None = None,
         log: LogFn | None = None,
         restore_cursor: bool = True,
     ) -> None:
@@ -84,6 +97,9 @@ class LiveControlController:
         self._busy = False
         self._lock = threading.Lock()
         self._last_detection: BuyGridDetection | None = None
+        # Shared with the keyboard hook so Esc / ` abort mid-drag without waiting on the UI queue.
+        self.cancel_event = cancel_event if cancel_event is not None else threading.Event()
+        self._held_actions: list[str] = []
 
     def summary(self) -> LiveControlSummary:
         return LiveControlSummary(
@@ -123,6 +139,8 @@ class LiveControlController:
         self.evidence = bool(evidence)
         self.paused = False
         self.show_descriptors = False
+        self._held_actions.clear()
+        self.cancel_event.clear()
         self.active = True
         self._notify_legend()
         self._notify_pause()
@@ -155,6 +173,7 @@ class LiveControlController:
             return
         if self.evidence:
             self._emit_evidence("exit", "after", detail=reason, meta={"reason": reason}, capture=False)
+        self.interrupt()
         self.active = False
         self.evidence = False
         self.paused = False
@@ -170,6 +189,12 @@ class LiveControlController:
         self._notify_legend()
         self._notify_pause()
 
+    def interrupt(self) -> None:
+        """Abort in-flight work and drop hold-to-repeat queue (Esc / `)."""
+
+        self.cancel_event.set()
+        self._held_actions.clear()
+
     def handle_token(self, token: str) -> bool:
         """Compatibility: treat as a key-down (fire immediately)."""
 
@@ -183,12 +208,27 @@ class LiveControlController:
             return False
         if action == "describe":
             return self._set_describe(held=phase == "down")
-        if phase != "down":
+        if phase == "up":
+            self._release_action(action)
             return True
         if self.paused:
             self._log("Live Control paused — press ` to resume.", "warn")
             return True
+        if self._is_repeatable(action):
+            self._hold_action(action)
+            self.cancel_event.clear()
+            return self._kick_held()
+        self.cancel_event.clear()
         return self._run_action(action)
+
+    def continue_repeat(self, action: str) -> None:
+        """UI-queue continuation after a hold-to-repeat fire finishes."""
+
+        if not self.active or self.paused or self.cancel_event.is_set():
+            return
+        if action not in self._held_actions:
+            return
+        self._kick_held(preferred=action)
 
     def toggle_pause(self) -> bool:
         """Backtick: gray out / re-arm LCO without exiting the session."""
@@ -197,23 +237,49 @@ class LiveControlController:
             return False
         self.paused = not self.paused
         if self.paused:
+            self.interrupt()
             if self.show_descriptors:
                 self.show_descriptors = False
                 self._notify_legend()
             self._log("Live Control paused — marks inert. ` resumes · Esc exits.", "warn")
             self._repaint("Paused")
         else:
+            self.cancel_event.clear()
             self._log("Live Control resumed.", "ok")
             self._repaint("Resumed")
         self._notify_pause()
         return True
 
-    def _run_action(self, action: str) -> bool:
+    @staticmethod
+    def _is_repeatable(action: str) -> bool:
+        return action in _REPEATABLE_ACTIONS
+
+    def _hold_action(self, action: str) -> None:
+        if action in self._held_actions:
+            self._held_actions.remove(action)
+        self._held_actions.append(action)
+
+    def _release_action(self, action: str) -> None:
+        if action in self._held_actions:
+            self._held_actions.remove(action)
+
+    def _kick_held(self, preferred: str | None = None) -> bool:
+        if self.paused or self.cancel_event.is_set() or not self._held_actions:
+            return True
+        if self._busy:
+            return True
+        action = preferred if preferred in self._held_actions else self._held_actions[-1]
+        return self._run_action(action, from_hold=True)
+
+    def _run_action(self, action: str, *, from_hold: bool = False) -> bool:
         if self.paused:
             self._log("Live Control paused — press ` to resume.", "warn")
             return True
+        if self.cancel_event.is_set() and from_hold:
+            return True
         if self._busy:
-            self._log("Live Control busy — wait for current action.", "warn")
+            if not from_hold:
+                self._log("Live Control busy — wait for current action.", "warn")
             return True
         try:
             self._busy = True
@@ -224,7 +290,28 @@ class LiveControlController:
             self._log(f"Live Control action failed: {exc}", "error")
         finally:
             self._busy = False
+        if (
+            from_hold
+            and action in self._held_actions
+            and self.active
+            and not self.paused
+            and not self.cancel_event.is_set()
+            and self.post_event is not None
+        ):
+            try:
+                self.post_event(("live_control_repeat", action))
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"Live Control repeat queue failed: {exc}", "warn")
         return True
+
+    def _sleep_ms(self, ms: int) -> bool:
+        """Interruptible pause. True if cancelled."""
+
+        if self.cancel_event.is_set():
+            return True
+        if ms <= 0:
+            return False
+        return self.cancel_event.wait(max(0.0, ms) / 1000.0)
 
     def run_scroll(self, direction: str, *, mode: str = "step", _retries: int = 0) -> None:
         """UI-thread entry for scroll step/fling."""
@@ -261,6 +348,8 @@ class LiveControlController:
             self._do_scroll("down", mode="fling")
         elif action == "stat_collect":
             self._do_stat_collect()
+        elif action == "claim_gem":
+            self._do_claim_gem()
         elif action == "refresh":
             self._do_refresh()
         elif action == "describe":
@@ -413,6 +502,7 @@ class LiveControlController:
             settle_ms=max(200, int(scroll.get("settle_ms") or 450)),
             settle_confirm_ms=200,
             restore_cursor=False,
+            stop=self.cancel_event,
             log=self._log,
         )
 
@@ -461,11 +551,18 @@ class LiveControlController:
             self._repaint(f"Already on {label}")
             return
         self._click(hwnd=hwnd, rect=rect, nx=nx, ny=ny)
-        time.sleep(0.20)
+        if self._sleep_ms(200):
+            self._log(f"Tab → {label} interrupted", "warn")
+            self._repaint("Interrupted")
+            return
         self.panel_open = True
         self.tab = tab
         # Game remembers per-tab scroll; re-home so 1–6 match page-1 labels.
         self._seek_tab_top(hwnd=hwnd, rect=rect, tab=tab)
+        if self.cancel_event.is_set():
+            self._log(f"Tab → {label} interrupted during seek", "warn")
+            self._repaint("Interrupted")
+            return
         self._relayout_from_screen(rect, context="tab")
         self._log(f"Tab → {label} (homed)", "ok")
         self._emit_evidence(
@@ -581,6 +678,7 @@ class LiveControlController:
                 drag_steps=drag_steps,
                 step_ms=step_ms,
                 restore_cursor=False,
+                stop=self.cancel_event,
             )
         else:
             rows = max(1, int(scroll.get("rows_per_key") or 1))
@@ -609,6 +707,8 @@ class LiveControlController:
                 meta=self._grid_meta(extra=scroll_meta),
             )
             for index in range(rows):
+                if self.cancel_event.is_set():
+                    break
                 drag_list(
                     hwnd=hwnd,
                     rect=rect,
@@ -620,12 +720,20 @@ class LiveControlController:
                     drag_steps=drag_steps,
                     step_ms=step_ms,
                     restore_cursor=False,
+                    stop=self.cancel_event,
                 )
-                if settle_ms and index + 1 < rows:
-                    time.sleep(settle_ms / 1000.0)
+                if settle_ms and index + 1 < rows and self._sleep_ms(settle_ms):
+                    break
 
-        if settle_ms:
-            time.sleep(settle_ms / 1000.0)
+        if self.cancel_event.is_set():
+            self._log(f"{'Fling' if mode_norm == 'fling' else 'Scroll'} {direction} interrupted", "warn")
+            self._repaint("Interrupted")
+            return
+
+        if settle_ms and self._sleep_ms(settle_ms):
+            self._log(f"{'Fling' if mode_norm == 'fling' else 'Scroll'} {direction} interrupted", "warn")
+            self._repaint("Interrupted")
+            return
 
         detection = self._relayout_from_screen(rect, context=f"scroll-{direction}-{mode_norm}")
         after_meta = self._grid_meta(extra=scroll_meta)
@@ -683,6 +791,35 @@ class LiveControlController:
             meta={"object_id": button.id if button else None},
         )
         self._repaint("Currency HUD tapped")
+
+    def _do_claim_gem(self) -> None:
+        """Tap the timed diamond CLAIM tile (opportunistic — fine if absent)."""
+
+        assert self.playbook is not None
+        hwnd, rect = self._anchor_ready()
+        object_map = self._object_map()
+        button = object_map.button_for_action("claim_gem") if object_map is not None else None
+        if button is not None and button.hit is not None:
+            nx, ny = button.hit
+        else:
+            chrome = self.playbook.chrome
+            nx = float(chrome.get("claim_badge_nx") or 0.20)
+            ny = float(chrome.get("claim_badge_ny") or 0.50)
+        self._emit_evidence(
+            "claim_gem",
+            "before",
+            detail="tap",
+            meta={"object_id": button.id if button else None, "nx": nx, "ny": ny},
+        )
+        self._click(hwnd=hwnd, rect=rect, nx=nx, ny=ny)
+        self._log(f"Claim diamonds → ({nx:.3f}, {ny:.3f})", "ok")
+        self._emit_evidence(
+            "claim_gem",
+            "after",
+            detail="tap",
+            meta={"object_id": button.id if button else None, "nx": nx, "ny": ny},
+        )
+        self._repaint("Claim diamonds")
 
     def _do_refresh(self) -> None:
         """Re-read panel + buy grid from the current frame — no scroll / seek."""

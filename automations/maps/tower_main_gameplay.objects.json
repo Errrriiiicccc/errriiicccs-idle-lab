@@ -19,6 +19,7 @@
     "fling_up": "T",
     "fling_down": "G",
     "stat_collect": "V",
+    "claim_gem": "C",
     "refresh": "B",
     "describe": "D"
   },
@@ -538,6 +539,17 @@
       "hotkey_action": "stat_collect",
       "effects": {
         "world": [{ "type": "run_event", "event": "stat_collect" }]
+      }
+    },
+    {
+      "id": "button.claim_gem",
+      "kind": "button",
+      "label": "Claim diamonds",
+      "hit": { "nx": 0.20, "ny": 0.50 },
+      "hotkey_action": "claim_gem",
+      "notes": "Guess — left of HUD, just above the player-stats strip (panel top ~ny 0.60). Retune from a claim-up shot.",
+      "effects": {
+        "world": [{ "type": "claim", "resource": "gems" }]
       }
     },
     {

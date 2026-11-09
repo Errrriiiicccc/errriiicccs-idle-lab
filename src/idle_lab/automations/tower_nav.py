@@ -37,6 +37,17 @@ LIST_COMPARE_ROI = {"nx": 0.04, "ny": 0.55, "nw": 0.92, "nh": 0.36}
 # First upgrade card title/value band (Damage / Health when at top).
 FIRST_CARD_ROI = {"nx": 0.08, "ny": 0.67, "nw": 0.55, "nh": 0.08}
 
+def _sleep_ms(duration_ms: int, stop: threading.Event | None) -> bool:
+    """Sleep; return True if ``stop`` fired."""
+
+    if duration_ms <= 0:
+        return bool(stop is not None and stop.is_set())
+    if stop is None:
+        time.sleep(duration_ms / 1000.0)
+        return False
+    return stop.wait(duration_ms / 1000.0)
+
+
 # Drag start inside the list.
 LIST_DRAG = {"nx": 0.45, "ny": 0.70}
 
@@ -255,15 +266,21 @@ def seek_list_top(
             stop=stop,
         )
         applied += 1
-        if settle_ms:
-            time.sleep(settle_ms / 1000.0)
+        if settle_ms and _sleep_ms(settle_ms, stop):
+            stop_reason = "aborted"
+            break
         after_image, after_roi = grab_list_roi(rect)
         if settle_confirm_ms:
-            time.sleep(settle_confirm_ms / 1000.0)
+            if _sleep_ms(settle_confirm_ms, stop):
+                stop_reason = "aborted"
+                break
             confirm_image, confirm_roi = grab_list_roi(rect)
             residual = mean_abs_diff(after_roi, confirm_roi)
             if residual >= unchanged_threshold:
-                time.sleep(settle_ms / 1000.0 if settle_ms else settle_confirm_ms / 1000.0)
+                extra = settle_ms if settle_ms else settle_confirm_ms
+                if _sleep_ms(extra, stop):
+                    stop_reason = "aborted"
+                    break
                 after_image, after_roi = grab_list_roi(rect)
             else:
                 after_image = confirm_image

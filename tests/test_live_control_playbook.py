@@ -29,6 +29,9 @@ class LiveControlPlaybookTests(unittest.TestCase):
         self.assertEqual(pb.action_for_token("T"), "fling_up")
         self.assertEqual(pb.action_for_token("G"), "fling_down")
         self.assertEqual(pb.action_for_token("D"), "describe")
+        self.assertEqual(pb.action_for_token("C"), "claim_gem")
+        self.assertAlmostEqual(float(pb.chrome.get("claim_badge_nx") or 0), 0.20, places=2)
+        self.assertAlmostEqual(float(pb.chrome.get("claim_badge_ny") or 0), 0.50, places=2)
         self.assertEqual(len(pb.buy_slots("attack")), 6)
         self.assertEqual(pb.buy_slots("attack")[0].label, "Damage")
         self.assertIn("defense", pb.tabs)
@@ -223,6 +226,64 @@ class LiveControlScrollModelTests(unittest.TestCase):
             self.assertTrue(ctrl.handle_key("D", phase="down"))
         self.assertTrue(ctrl.show_descriptors)
         repaint_again.assert_called_once()
+
+    def test_hold_scroll_queues_repeat_until_release(self) -> None:
+        posted: list[tuple] = []
+        ctrl = self._controller()
+        ctrl.post_event = posted.append
+        with patch.object(ctrl, "_do_scroll") as scroll, patch.object(ctrl, "_repaint"):
+            self.assertTrue(ctrl.handle_key("F", phase="down"))
+            scroll.assert_called_once_with("down", mode="step")
+            self.assertEqual(posted, [("live_control_repeat", "scroll_down")])
+            posted.clear()
+            ctrl.continue_repeat("scroll_down")
+            self.assertEqual(scroll.call_count, 2)
+            self.assertEqual(posted, [("live_control_repeat", "scroll_down")])
+            ctrl.handle_key("F", phase="up")
+            posted.clear()
+            ctrl.continue_repeat("scroll_down")
+            self.assertEqual(scroll.call_count, 2)
+            self.assertEqual(posted, [])
+
+    def test_stat_collect_is_not_hold_repeatable(self) -> None:
+        posted: list[tuple] = []
+        ctrl = self._controller()
+        ctrl.post_event = posted.append
+        with patch.object(ctrl, "_do_stat_collect") as stat, patch.object(ctrl, "_repaint"):
+            self.assertTrue(ctrl.handle_key("V", phase="down"))
+            stat.assert_called_once()
+        self.assertEqual(posted, [])
+        self.assertEqual(ctrl._held_actions, [])
+
+    def test_pause_and_exit_interrupt_held_work(self) -> None:
+        ctrl = self._controller()
+        ctrl._held_actions.append("scroll_down")
+        with patch.object(ctrl, "_repaint"):
+            ctrl.toggle_pause()
+        self.assertTrue(ctrl.cancel_event.is_set())
+        self.assertEqual(ctrl._held_actions, [])
+        ctrl.cancel_event.clear()
+        ctrl.paused = False
+        ctrl._held_actions.append("buy_1")
+        with patch.object(ctrl.overlay, "hide"):
+            ctrl.exit(reason="test")
+        self.assertTrue(ctrl.cancel_event.is_set())
+        self.assertEqual(ctrl._held_actions, [])
+
+    def test_scroll_passes_cancel_event_to_drag(self) -> None:
+        ctrl = self._controller()
+        with (
+            patch("idle_lab.live_control.controller.drag_list") as drag,
+            patch.object(
+                ctrl,
+                "_relayout_from_screen",
+                return_value=BuyGridDetection(True, [], "ok", (), None),
+            ),
+            patch.object(ctrl, "_repaint"),
+            patch.object(ctrl, "_emit_evidence"),
+        ):
+            ctrl._do_scroll("down", mode="step")
+        self.assertIs(drag.call_args.kwargs.get("stop"), ctrl.cancel_event)
 
     def test_pause_grays_out_and_blocks_actions(self) -> None:
         pauses: list[bool] = []

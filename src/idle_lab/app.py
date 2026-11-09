@@ -202,6 +202,7 @@ class App(ctk.CTk):
             post_event=self.hooks.events.put,
             on_legend_change=self._live_control_legend_changed,
             on_pause_change=self._live_control_pause_changed,
+            cancel_event=self.hooks.state.live_control_cancel,
             log=self._live_control_log,
             restore_cursor=bool(self.settings.restore_cursor),
         )
@@ -1521,6 +1522,7 @@ class App(ctk.CTk):
     def _exit_live_control(self, *, reason: str = "operator") -> None:
         if not self.live_control.active:
             return
+        self.live_control.interrupt()
         self.live_control.exit(reason=reason)
         self.hooks.state.live_control_active = False
         self.hooks.state.live_control_paused = False
@@ -2391,6 +2393,9 @@ class App(ctk.CTk):
                     if self.live_control.active:
                         phase = str(event[2]) if len(event) > 2 else "down"
                         self.live_control.handle_key(str(event[1]), phase=phase)
+                elif kind == "live_control_repeat":
+                    if self.live_control.active:
+                        self.live_control.continue_repeat(str(event[1]))
                 elif kind == "live_control_pause_toggle":
                     if self.live_control.active:
                         self.live_control.toggle_pause()
