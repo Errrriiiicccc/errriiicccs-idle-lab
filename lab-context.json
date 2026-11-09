@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "active_target": "tower",
+  "targets": {
+    "tower": {
+      "label": "The Tower",
+      "anchor_title_substrings": ["BlueStacks", "The Tower"],
+      "prefer_last_anchor": true,
+      "object_map": "automations/maps/tower_main_gameplay.objects.json",
+      "playbook": "automations/playbooks/tower_main_gameplay.json"
+    }
+  }
+}
