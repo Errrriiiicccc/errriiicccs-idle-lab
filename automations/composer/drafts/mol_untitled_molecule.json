@@ -1,0 +1,18 @@
+{
+  "draft_id": "881eb07637",
+  "title": "Untitled molecule",
+  "requires_tab": "attack",
+  "notes": "",
+  "steps": [
+    {
+      "kind": "ensure_tab",
+      "label": "Attack [Q]",
+      "tab": "attack",
+      "catalog_id": null,
+      "catalog_index": null,
+      "molecule_id": null,
+      "detail": "Enter this upgrade tab before buys on its list are available."
+    }
+  ],
+  "collection_id": "mol_untitled_molecule"
+}

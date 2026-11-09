@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -11,10 +12,23 @@ from typing import Any, Callable
 from PIL import Image
 
 from idle_lab.ai_batch.panel_detect import detect_upgrade_panel
+from idle_lab.ai_batch.scroll_metrics import crop_normalized
 from idle_lab.automations.capture import CaptureError, grab_anchor
+from idle_lab.automations.ocr import OcrError, run_ocr
 from idle_lab.automations.tower_nav import click_normalized, drag_list, fling_list
 from idle_lab.humanize import HumanizeProfile
 from idle_lab.live_control.buy_detect import BuyGridDetection, DetectedBuySlot, detect_buy_grid
+from idle_lab.live_control.buy_identity import (
+    BoundBuy,
+    ViewportIdentity,
+    best_catalog_score,
+    bind_by_offset,
+    bind_from_slot_texts,
+    nameplate_roi,
+    slot_column,
+    unknown_identity,
+)
+from idle_lab.live_control.console import ConsoleSession, DEFAULT_VERBOSITY, normalize_verbosity
 from idle_lab.live_control.overlay import LiveControlOverlay, LiveControlOverlayState
 from idle_lab.live_control.playbook import (
     FIRE_MODE_SPAM,
@@ -81,6 +95,8 @@ class LiveControlController:
         on_legend_change: LegendFn | None = None,
         on_pause_change: PauseFn | None = None,
         on_toggle_token: ToggleTokenFn | None = None,
+        console_enabled: bool = False,
+        console_verbosity: str = DEFAULT_VERBOSITY,
         cancel_event: threading.Event | None = None,
         log: LogFn | None = None,
         restore_cursor: bool = True,
@@ -109,6 +125,12 @@ class LiveControlController:
         self.tab: str | None = None
         self.aligned = True
         self.live_slots: tuple[DetectedBuySlot, ...] = ()
+        self.identity: ViewportIdentity = unknown_identity(reason="inactive")
+        self.console = ConsoleSession(project_root=self.project_root)
+        self.console.configure(
+            enabled=bool(console_enabled),
+            verbosity=normalize_verbosity(console_verbosity),
+        )
         self._busy = False
         self._lock = threading.Lock()
         self._last_detection: BuyGridDetection | None = None
@@ -172,17 +194,28 @@ class LiveControlController:
         self._notify_pause()
         if self.panel_open:
             self._apply_detection(detect_buy_grid(image), context="enter")
+            # Mid-list is fine — OCR nameplates; never assume page-1 from geometry alone.
+            self._bind_identity_from_image(image, context="enter", fallback_home=False)
         else:
             self.live_slots = ()
             self.aligned = True
             self._last_detection = None
+            self._forget_identity("enter-closed")
         mode = "troubleshoot" if self.evidence else "play"
         map_note = " · object map" if playbook.object_map is not None else ""
+        console_folder = self.console.start_run()
+        console_note = ""
+        if console_folder is not None:
+            console_note = f" · console→{console_folder.name}"
         self._log(
-            f"Live Control ON ({mode}) · {playbook.title}{map_note} · "
+            f"Live Control ON ({mode}) · {playbook.title}{map_note}{console_note} · "
             f"panel={'open:' + (self.tab or '?') if self.panel_open else 'closed'} "
             f"({panel.reason})",
             "run",
+        )
+        self.console.event(
+            f"enter mode={mode} panel={'open:' + (self.tab or '?') if self.panel_open else 'closed'} "
+            f"reason={panel.reason}"
         )
         self._repaint(f"Live Control · {panel.reason}")
         if self.evidence:
@@ -200,6 +233,7 @@ class LiveControlController:
         if self.evidence:
             self._emit_evidence("exit", "after", detail=reason, meta={"reason": reason}, capture=False)
         self.interrupt()
+        self.console.stop_run(reason=reason)
         self.active = False
         self.evidence = False
         self.paused = False
@@ -216,6 +250,7 @@ class LiveControlController:
         self.aligned = True
         self.live_slots = ()
         self._last_detection = None
+        self._forget_identity("exit")
         self._notify_legend()
         self._notify_pause()
 
@@ -316,10 +351,13 @@ class LiveControlController:
             if self.show_descriptors:
                 self.show_descriptors = False
                 self._notify_legend()
+            self.console.event("paused")
+            self.console.flush(reason="pause")
             self._log("Live Control paused — marks inert. ` resumes · Esc exits.", "warn")
             self._repaint("Paused")
         else:
             self.cancel_event.clear()
+            self.console.event("resumed")
             self._log("Live Control resumed.", "ok")
             self._repaint("Resumed")
         self._notify_pause()
@@ -563,6 +601,7 @@ class LiveControlController:
             self._busy = False
 
     def _dispatch(self, action: str) -> None:
+        self.console.event(f"action {action}")
         if action.startswith("tab_"):
             self._do_tab(action.removeprefix("tab_"))
         elif action.startswith("buy_"):
@@ -655,10 +694,200 @@ class LiveControlController:
             "detection_reason": detection.reason if detection else "",
             "row_nys": list(detection.row_nys) if detection else [s.ny for s in self.live_slots],
             "tab": self.tab,
+            "identity_known": self.identity.known,
+            "identity_confidence": round(float(self.identity.confidence), 3),
+            "catalog_offset": self.identity.offset if self.identity.known else None,
+            "identity_reason": self.identity.reason,
+            "offset_scores": list(self.identity.offset_scores),
+            "slot_labels": {str(b.slot_index): b.display_label for b in self.identity.bindings},
+            "slot_confidence": {
+                str(b.slot_index): round(float(b.confidence), 3) for b in self.identity.bindings
+            },
+            "slot_source": {str(b.slot_index): b.source for b in self.identity.bindings},
         }
         if extra:
             meta.update(extra)
         return meta
+
+    def _catalog(self) -> list:
+        object_map = self._object_map()
+        if object_map is None or not self.tab:
+            return []
+        return object_map.catalog_for_tab(self.tab)
+
+    def _forget_identity(self, reason: str) -> None:
+        slots = max(6, len(self.live_slots) or 6)
+        self.identity = unknown_identity(slots, reason=reason)
+
+    def _home_identity(self, *, reason: str = "homed") -> None:
+        """Fallback when OCR misses after an explicit seek-top / fling-up."""
+
+        catalog = self._catalog()
+        if not catalog or not self.aligned:
+            self._forget_identity(f"{reason}-unaligned" if not self.aligned else f"{reason}-empty")
+            return
+        slot_count = max(6, len(self.live_slots) or 6)
+        self.identity = bind_by_offset(catalog, offset=0, slot_count=slot_count, source="page")
+        self.identity = ViewportIdentity(
+            known=self.identity.known,
+            offset=0,
+            bindings=self.identity.bindings,
+            reason=reason,
+        )
+        self._log(
+            f"Buy identity [{reason}]: "
+            + ", ".join(f"{b.slot_index}={b.label}" for b in self.identity.bindings if b.known),
+            "ok" if self.identity.known else "warn",
+        )
+
+    def _ocr_one_nameplate(
+        self,
+        crop: Image.Image,
+        *,
+        catalog: list,
+        column: str,
+        slot_index: int,
+    ) -> str:
+        """OCR one title crop: early-exit on a strong catalog match; keep fallbacks."""
+
+        # Invert-first: white titles on dark cards. Early-exit preserves accuracy when strong.
+        variants = (
+            {"config": "--psm 6", "invert": True, "scale": 2},
+            {"config": "--psm 6", "invert": True, "threshold": 170, "scale": 2},
+            {"config": "--psm 7", "invert": True, "scale": 2},
+            {"config": "--psm 6", "scale": 2},
+        )
+        best_text = ""
+        best_rank = (-1.0, -1)
+        for kwargs in variants:
+            try:
+                text = (run_ocr(crop, **kwargs) or "").strip()
+            except OcrError:
+                raise
+            except Exception:  # noqa: BLE001
+                continue
+            if not text:
+                continue
+            score = best_catalog_score(text, catalog, column=column) if catalog else 0.0
+            rank = (score, sum(ch.isalpha() for ch in text))
+            if rank > best_rank:
+                best_rank = rank
+                best_text = text
+            self.console.process(
+                f"ocr slot {slot_index} prep={kwargs.get('config')} "
+                f"inv={bool(kwargs.get('invert'))} score={score:.2f} text={text!r}"
+            )
+            if score >= 0.75:
+                break
+        return best_text
+
+    def _ocr_nameplates(self, image: Image.Image) -> dict[int, str]:
+        """Read each live slot's title band in parallel; early-exit per slot when strong."""
+
+        object_map = self._object_map()
+        grid = object_map.buy_grid(self.tab) if object_map is not None and self.tab else {}
+        catalog = self._catalog()
+        card_nw = float(grid.get("card_nw") or 0.30)
+        card_nh = float(grid.get("card_nh") or 0.08)
+        jobs: list[tuple[int, Image.Image, str]] = []
+        for slot in self.live_slots:
+            roi = nameplate_roi(slot.nx, slot.ny, card_nw=card_nw, card_nh=card_nh)
+            crop = crop_normalized(image, **roi)
+            jobs.append((int(slot.index), crop, slot_column(int(slot.index))))
+
+        out: dict[int, str] = {}
+        if not jobs:
+            return out
+        self.console.process(f"ocr begin slots={len(jobs)}")
+        started = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=min(6, len(jobs))) as pool:
+            futures = {
+                pool.submit(
+                    self._ocr_one_nameplate,
+                    crop,
+                    catalog=catalog,
+                    column=column,
+                    slot_index=index,
+                ): index
+                for index, crop, column in jobs
+            }
+            for future in as_completed(futures):
+                index = futures[future]
+                try:
+                    out[index] = future.result()
+                except OcrError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    self.console.process(f"ocr slot {index} failed: {exc}")
+                    out[index] = ""
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        self.console.process(f"ocr done {elapsed_ms}ms → {out}")
+        return out
+
+    def _bind_identity_from_image(self, image: Image.Image, *, context: str, fallback_home: bool = False) -> None:
+        """OCR nameplates for live slots; never invent labels from scroll math alone."""
+
+        catalog = self._catalog()
+        if not catalog or not self.live_slots:
+            self._forget_identity(f"{context}-empty")
+            return
+        slot_count = max(len(self.live_slots), 6)
+        try:
+            observations = self._ocr_nameplates(image)
+            identity = bind_from_slot_texts(catalog, observations, slot_count=slot_count)
+        except OcrError as exc:
+            self._log(f"Buy identity OCR failed ({context}): {exc}", "warn")
+            self.console.result(f"identity OCR failed ({context}): {exc}")
+            if fallback_home and self.aligned:
+                self._home_identity(reason=f"{context}-ocr-error-page")
+            else:
+                self._forget_identity(f"{context}-ocr-error")
+            return
+
+        if identity.known:
+            self.identity = identity
+            summary = ", ".join(
+                f"{b.slot_index}={b.display_label}({b.source[0]}{b.confidence:.2f})"
+                for b in identity.bindings
+                if b.entry is not None
+            )
+            self._log(f"Buy identity [{context}/{identity.reason}]: {summary}", "ok")
+            self.console.result(f"identity [{context}] {identity.reason} · {summary}")
+            return
+
+        # Surface partial OCR hits in Hold-D even when offset is not trusted.
+        if any(b.known for b in identity.bindings):
+            self.identity = identity
+            summary = ", ".join(
+                f"{b.slot_index}={b.display_label}({b.confidence:.2f})"
+                for b in identity.bindings
+                if b.known
+            )
+            self._log(f"Buy identity weak [{context}/{identity.reason}]: {summary}", "warn")
+            self.console.result(f"identity weak [{context}] {identity.reason} · {summary}")
+            if fallback_home and self.aligned:
+                # Keep partial OCR labels visible; only fill unknowns from page-1 if homed.
+                page = bind_by_offset(catalog, offset=0, slot_count=slot_count, source="page")
+                merged = []
+                for bound in page.bindings:
+                    hit = identity.binding_for(bound.slot_index)
+                    merged.append(hit if hit is not None and hit.known else bound)
+                self.identity = ViewportIdentity(
+                    known=True,
+                    offset=0,
+                    bindings=tuple(merged),
+                    reason=f"{context}-ocr-weak-page",
+                )
+            return
+
+        if fallback_home and self.aligned:
+            self._home_identity(reason=f"{context}-ocr-miss-page")
+            return
+        self._forget_identity(identity.reason or f"{context}-ocr-unknown")
+        self.console.result(f"identity unknown [{context}] {identity.reason}")
+
+    def _binding_for_slot(self, index: int) -> BoundBuy | None:
+        return self.identity.binding_for(index)
 
     def _emit_evidence(
         self,
@@ -691,10 +920,28 @@ class LiveControlController:
             "ok" if self.aligned else "warn",
         )
 
-    def _relayout_from_screen(self, rect: Rect, *, context: str) -> BuyGridDetection:
+    def _relayout_from_screen(
+        self,
+        rect: Rect,
+        *,
+        context: str,
+        identity: str = "ocr",
+    ) -> BuyGridDetection:
+        """Detect buy geometry, then optionally OCR-bind catalog identity.
+
+        identity:
+          - ``ocr``: nameplate OCR only (scroll / refresh / enter)
+          - ``home``: OCR first, fall back to page-1 catalog after seek-top
+          - ``none``: geometry only (caller manages identity)
+        """
+
         image = self._grab(rect)
         detection = detect_buy_grid(image)
         self._apply_detection(detection, context=context)
+        if identity == "home":
+            self._bind_identity_from_image(image, context=context, fallback_home=True)
+        elif identity == "ocr":
+            self._bind_identity_from_image(image, context=context, fallback_home=False)
         return detection
 
     def _object_map(self):
@@ -779,7 +1026,15 @@ class LiveControlController:
         )
         if already and no_retap:
             self._log(f"Already on {label} — skip retap.", "info")
-            self._relayout_from_screen(rect, context="retab")
+            self._relayout_from_screen(rect, context="retab", identity="ocr")
+            if not self.identity.known:
+                # Establish binding without retapping the tab button.
+                self._seek_tab_top(hwnd=hwnd, rect=rect, tab=tab)
+                if self.cancel_event.is_set():
+                    self._log(f"Tab → {label} interrupted during identity home", "warn")
+                    self._repaint("Interrupted")
+                    return
+                self._relayout_from_screen(rect, context="retab-home", identity="home")
             self._emit_evidence(
                 f"tab_{tab}",
                 "after",
@@ -795,13 +1050,13 @@ class LiveControlController:
             return
         self.panel_open = True
         self.tab = tab
-        # Game remembers per-tab scroll; re-home so 1–6 match page-1 labels.
+        # Game remembers per-tab scroll; re-home, then OCR (page-1 fallback if OCR misses).
         self._seek_tab_top(hwnd=hwnd, rect=rect, tab=tab)
         if self.cancel_event.is_set():
             self._log(f"Tab → {label} interrupted during seek", "warn")
             self._repaint("Interrupted")
             return
-        self._relayout_from_screen(rect, context="tab")
+        self._relayout_from_screen(rect, context="tab", identity="home")
         self._log(f"Tab → {label} (homed)", "ok")
         self._emit_evidence(
             f"tab_{tab}",
@@ -815,18 +1070,14 @@ class LiveControlController:
 
     def _slot_for_index(self, index: int) -> tuple[float, float, str, str | None]:
         assert self.playbook is not None
-        label = f"Buy {index}"
-        object_id: str | None = None
-        object_map = self._object_map()
-        if self.tab and object_map is not None:
-            buy = object_map.buy_button(self.tab, index)
-            if buy is not None:
-                label = buy.label
-                object_id = buy.id
-        if self.tab and object_id is None:
-            match = next((s for s in self.playbook.buy_slots(self.tab) if s.index == index), None)
-            if match is not None:
-                label = match.label
+        # Viewport coords from live detection; semantic label only when identity is known.
+        binding = self._binding_for_slot(index)
+        if self.identity.known and binding is not None and binding.known:
+            label = binding.label
+            object_id = binding.object_id
+        else:
+            label = "?"
+            object_id = None
         if self.live_slots:
             for slot in self.live_slots:
                 if slot.index == index:
@@ -836,7 +1087,7 @@ class LiveControlController:
         slot = next((s for s in slots if s.index == index), None)
         if slot is None:
             raise LiveControlError(f"no buy slot {index}")
-        return slot.nx, slot.ny, slot.label, object_id
+        return slot.nx, slot.ny, label, object_id
 
     def _do_buy(self, index: int) -> None:
         assert self.playbook is not None
@@ -844,13 +1095,16 @@ class LiveControlController:
             raise LiveControlError("Open an upgrade tab first (Q/W/E).")
         if not self.aligned:
             self._log("Buy with unsure geometry (amber) — still clicking.", "warn")
+        if not self.identity.known:
+            self._log("Buy identity unknown — clicking slot only (no catalog label).", "warn")
         nx, ny, label, object_id = self._slot_for_index(index)
         object_map = self._object_map()
-        buy_obj = object_map.buy_button(self.tab, index) if object_map is not None else None
+        buy_obj = object_map.buy_by_id(object_id) if object_map is not None and object_id else None
         effects = buy_obj.effects if buy_obj is not None else {}
         hwnd, rect = self._anchor_ready()
         self._click(hwnd=hwnd, rect=rect, nx=nx, ny=ny)
         self._log(f"Buy {index} {label}", "ok")
+        self.console.result(f"buy_{index} → {label} @ ({nx:.3f},{ny:.3f})")
         self._emit_evidence(
             f"buy_{index}",
             "after",
@@ -860,8 +1114,9 @@ class LiveControlController:
                     "nx": nx,
                     "ny": ny,
                     "label": label,
-                    "object_id": object_id or (buy_obj.id if buy_obj else None),
+                    "object_id": object_id,
                     "effects": effects,
+                    "identity_source": binding.source if (binding := self._binding_for_slot(index)) else "unknown",
                 }
             ),
         )
@@ -922,7 +1177,7 @@ class LiveControlController:
         else:
             rows = max(1, int(scroll.get("rows_per_key") or 1))
             row_fraction = float(scroll.get("drag_fraction") or scroll.get("row_fraction") or 0.15)
-            hold_end_ms = int(scroll.get("hold_end_ms") or 60)
+            hold_end_ms = int(scroll.get("hold_end_ms") or 450)
             settle_ms = max(30, int(scroll.get("settle_ms") or 80))
             drag_steps = max(2, int(scroll.get("drag_steps") or 6))
             step_ms = max(1, int(scroll.get("step_ms") or 8))
@@ -975,7 +1230,13 @@ class LiveControlController:
             self._repaint("Interrupted")
             return
 
-        detection = self._relayout_from_screen(rect, context=f"scroll-{direction}-{mode_norm}")
+        # Geometry + OCR identity. Fling-up may fall back to page-1 if OCR misses.
+        identity_mode = "home" if (mode_norm == "fling" and direction == "up") else "ocr"
+        detection = self._relayout_from_screen(
+            rect,
+            context=f"scroll-{direction}-{mode_norm}",
+            identity=identity_mode,
+        )
         after_meta = self._grid_meta(extra=scroll_meta)
         level = "ok" if detection.slots else "warn"
         label = "Fling" if mode_norm == "fling" else "Scroll"
@@ -1137,10 +1398,12 @@ class LiveControlController:
         self.tab = panel.tab if panel.panel_open else None
         if self.panel_open:
             self._apply_detection(detect_buy_grid(image), context="refresh-redetect")
+            self._bind_identity_from_image(image, context="refresh", fallback_home=False)
         else:
             self.live_slots = ()
             self.aligned = True
             self._last_detection = None
+            self._forget_identity("refresh-closed")
         detail = panel.reason
         if self.panel_open and self._last_detection is not None:
             detail = f"{panel.reason}; {self._last_detection.reason}"
@@ -1195,5 +1458,7 @@ class LiveControlController:
             toggled_action=self._toggled_action,
             current_action=self._current_action,
             queued_actions=self._visible_queue(),
+            slot_labels={b.slot_index: b.display_label for b in self.identity.bindings},
+            identity_known=self.identity.known,
         )
         self.overlay.show(self.playbook, rect, state)

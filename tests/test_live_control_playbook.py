@@ -48,6 +48,8 @@ class LiveControlPlaybookTests(unittest.TestCase):
         self.assertEqual(pb.action_for_token("D"), "describe")
         self.assertEqual(pb.action_for_token("C"), "claim_gem")
         self.assertEqual(pb.action_for_token("A"), "routine_health_damage_claim")
+        self.assertIsNone(pb.action_for_token("Y"))
+        self.assertIsNone(pb.action_for_token("H"))
         self.assertEqual(len(pb.routines), 1)
         self.assertEqual(pb.routines[0].action, "routine_health_damage_claim")
         self.assertEqual(pb.routines[0].steps[0], "tab_defense")
@@ -102,6 +104,10 @@ class LiveControlFlightDeckActionTests(unittest.TestCase):
         )
         self.assertEqual(normalize_action({"type": "live_control_exit"})["type"], "live_control_exit")
         self.assertEqual(normalize_action({"type": "live_control_toggle"})["type"], "live_control_toggle")
+        self.assertEqual(
+            normalize_action({"type": "live_control_console_toggle"})["type"],
+            "live_control_console_toggle",
+        )
         # Legacy Manual action ids still normalize.
         self.assertEqual(normalize_action({"type": "manual_enter"})["type"], "live_control_enter")
         self.assertEqual(normalize_action({"type": "manual_exit"})["type"], "live_control_exit")
@@ -152,7 +158,7 @@ class LiveControlScrollModelTests(unittest.TestCase):
             header_ny=0.68,
         )
 
-        def fake_relayout(_rect, *, context: str):
+        def fake_relayout(_rect, *, context: str, identity: str = "ocr"):
             ctrl._apply_detection(detection, context=context)
             return detection
 
@@ -165,7 +171,7 @@ class LiveControlScrollModelTests(unittest.TestCase):
             ctrl._do_scroll("down", mode="step")
         self.assertEqual(drag.call_count, 1)
         self.assertEqual(drag.call_args.kwargs["direction"], "down")
-        self.assertAlmostEqual(drag.call_args.kwargs["drag_fraction"], 0.15)
+        self.assertAlmostEqual(drag.call_args.kwargs["drag_fraction"], 0.10)
         relayout.assert_called_once()
         self.assertFalse(ctrl.aligned)
         self.assertEqual(len(ctrl.live_slots), 2)
@@ -313,8 +319,10 @@ class LiveControlScrollModelTests(unittest.TestCase):
             header_ny=0.66,
         )
 
-        def fake_relayout(_rect, *, context: str):
+        def fake_relayout(_rect, *, context: str, identity: str = "ocr"):
             ctrl._apply_detection(detection, context=context)
+            if identity == "home":
+                ctrl._home_identity(reason=context)
             return detection
 
         with (
@@ -348,7 +356,7 @@ class LiveControlScrollModelTests(unittest.TestCase):
 
     def test_scroll_step_drag_fraction_from_object_map(self) -> None:
         ctrl = self._controller()
-        self.assertAlmostEqual(float(ctrl._scroll_params("attack").get("drag_fraction")), 0.15)
+        self.assertAlmostEqual(float(ctrl._scroll_params("attack").get("drag_fraction")), 0.10)
         self.assertGreaterEqual(int(ctrl._scroll_params("attack").get("drag_steps") or 0), 8)
 
     def test_buy_still_fires_when_unaligned(self) -> None:
@@ -358,11 +366,134 @@ class LiveControlScrollModelTests(unittest.TestCase):
         with (
             patch.object(ctrl, "_click") as click,
             patch.object(ctrl, "_repaint"),
+            patch.object(ctrl, "_emit_evidence") as evidence,
         ):
             ctrl._do_buy(1)
         click.assert_called_once()
         self.assertAlmostEqual(click.call_args.kwargs["nx"], 0.32)
         self.assertAlmostEqual(click.call_args.kwargs["ny"], 0.74)
+        # Unknown identity must not pretend this is still page-1 Damage.
+        self.assertEqual(evidence.call_args.kwargs["detail"], "?")
+        self.assertIsNone(evidence.call_args.kwargs["meta"].get("object_id"))
+
+    def test_identity_homes_on_tab_via_ocr_or_page_fallback(self) -> None:
+        ctrl = self._controller()
+        ctrl.tab = "defense"
+        detection = BuyGridDetection(
+            snapped=True,
+            slots=[
+                DetectedBuySlot(1, 0.32, 0.74),
+                DetectedBuySlot(2, 0.72, 0.74),
+                DetectedBuySlot(3, 0.32, 0.83),
+                DetectedBuySlot(4, 0.72, 0.83),
+                DetectedBuySlot(5, 0.32, 0.92),
+                DetectedBuySlot(6, 0.72, 0.92),
+            ],
+            reason="snapped",
+            row_nys=(0.74, 0.83, 0.92),
+            header_ny=0.66,
+        )
+
+        def fake_relayout(_rect, *, context: str, identity: str = "ocr"):
+            ctrl._apply_detection(detection, context=context)
+            if identity == "home":
+                ctrl._home_identity(reason=context)
+            else:
+                ctrl._forget_identity(context)
+            return detection
+
+        with (
+            patch("idle_lab.live_control.controller.fling_list"),
+            patch("idle_lab.live_control.controller.click_normalized"),
+            patch.object(ctrl, "_relayout_from_screen", side_effect=fake_relayout),
+            patch.object(ctrl, "_sleep_ms", return_value=False),
+            patch.object(ctrl, "_repaint"),
+            patch.object(ctrl, "_emit_evidence"),
+        ):
+            ctrl._do_tab("attack")
+        self.assertTrue(ctrl.identity.known)
+        self.assertEqual(ctrl.identity.label_for(1), "Damage")
+        self.assertEqual(ctrl.identity.label_for(6), "Dmg/Meter")
+
+    def test_scroll_identity_follows_ocr_not_offset_math(self) -> None:
+        """Overshoot scroll: OCR sees Thorn under key 1, not Defense % from +1 row math."""
+
+        ctrl = self._controller()
+        ctrl.tab = "defense"
+        ctrl.live_slots = (
+            DetectedBuySlot(1, 0.32, 0.74),
+            DetectedBuySlot(2, 0.72, 0.74),
+            DetectedBuySlot(3, 0.32, 0.83),
+            DetectedBuySlot(4, 0.72, 0.83),
+        )
+        ctrl.aligned = True
+        ctrl._home_identity(reason="test-top")
+        self.assertEqual(ctrl.identity.label_for(1), "Health")
+
+        detection = BuyGridDetection(
+            snapped=True,
+            slots=list(ctrl.live_slots),
+            reason="snapped",
+            row_nys=(0.74, 0.83),
+            header_ny=0.66,
+        )
+
+        def fake_relayout(_rect, *, context: str, identity: str = "ocr"):
+            ctrl._apply_detection(detection, context=context)
+            # Pretend OCR read the cards that actually landed (past scroll-math expectation).
+            from idle_lab.live_control.buy_identity import bind_from_slot_texts
+
+            ctrl.identity = bind_from_slot_texts(
+                ctrl._catalog(),
+                {
+                    1: "Thorn Damage",
+                    2: "Lifesteal",
+                    3: "Knockback Chance",
+                    4: "Knockback Force",
+                },
+                slot_count=6,
+            )
+            return detection
+
+        with (
+            patch("idle_lab.live_control.controller.drag_list"),
+            patch.object(ctrl, "_relayout_from_screen", side_effect=fake_relayout),
+            patch.object(ctrl, "_sleep_ms", return_value=False),
+            patch.object(ctrl, "_repaint"),
+            patch.object(ctrl, "_emit_evidence"),
+        ):
+            ctrl._do_scroll("down", mode="step")
+        self.assertTrue(ctrl.identity.known)
+        self.assertEqual(ctrl.identity.label_for(1), "Thorn")
+        self.assertEqual(ctrl.identity.label_for(2), "Lifesteal")
+        self.assertNotEqual(ctrl.identity.label_for(1), "Defense %")
+
+    def test_step_scroll_ocr_miss_stays_unknown(self) -> None:
+        ctrl = self._controller()
+        ctrl._forget_identity("test")
+        detection = BuyGridDetection(
+            snapped=True,
+            slots=[DetectedBuySlot(1, 0.32, 0.74), DetectedBuySlot(2, 0.72, 0.74)],
+            reason="snapped",
+            row_nys=(0.74,),
+            header_ny=0.66,
+        )
+
+        def fake_relayout(_rect, *, context: str, identity: str = "ocr"):
+            ctrl._apply_detection(detection, context=context)
+            ctrl._forget_identity("ocr-no-hits")
+            return detection
+
+        with (
+            patch("idle_lab.live_control.controller.drag_list"),
+            patch.object(ctrl, "_relayout_from_screen", side_effect=fake_relayout),
+            patch.object(ctrl, "_sleep_ms", return_value=False),
+            patch.object(ctrl, "_repaint"),
+            patch.object(ctrl, "_emit_evidence"),
+        ):
+            ctrl._do_scroll("down", mode="step")
+        self.assertFalse(ctrl.identity.known)
+        self.assertEqual(ctrl.identity.label_for(1), "?")
 
     def test_d_hold_shows_descriptors_release_clears(self) -> None:
         noted: list[bool] = []

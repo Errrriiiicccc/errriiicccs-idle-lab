@@ -1,4 +1,14 @@
 {
   "version": 1,
-  "molecules": []
+  "molecules": [
+    {
+      "id": "mol_untitled_molecule",
+      "title": "Untitled molecule",
+      "requires_tab": "attack",
+      "description": "Composer molecule (requires attack tab context).",
+      "children": [
+        "composer_untitled_molecule_tab_attack"
+      ]
+    }
+  ]
 }

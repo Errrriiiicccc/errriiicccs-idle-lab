@@ -1,0 +1,15 @@
+{
+  "id": "mol_untitled_molecule",
+  "title": "Untitled molecule",
+  "version": 1,
+  "description": "Composer molecule (requires attack tab context).",
+  "children": [
+    "composer_untitled_molecule_tab_attack"
+  ],
+  "branch_variable": "phase",
+  "branches": {},
+  "loop": false,
+  "stop_when": null,
+  "run": "once",
+  "notes": "Authored via molecule composer. Files are source of truth \u2014 edit JSON or re-export. Phase/stat branching is stubbed for a later pass."
+}

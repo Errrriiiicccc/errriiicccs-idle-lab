@@ -64,6 +64,8 @@ surface: main_gameplay | …          (planned: route templates / title OCR)
 └── dock_upgrades:
 │     open: yes|no                      (today: detect_panel → panel_open)
 │     tab: attack|defense|utility|none  (today: upgrade_tab)
+│     catalog_offset: number|unknown    (LCO: known after seek-top / T; advances on R/F)
+│     visible_buys[1..6]: label|?       (LCO identity; abstain beats false page-1 names)
 │     scroll_px: number                 (planned: calibrated drag knowledge)
 └── hud_currency_mode: balances|rates   (PoC: hud_mode.detect_hud_currency_mode)
 └── run_phase: in_wave|game_over|…      (partial: game_over OCR)

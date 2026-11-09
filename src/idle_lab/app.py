@@ -203,11 +203,15 @@ class App(ctk.CTk):
             on_legend_change=self._live_control_legend_changed,
             on_pause_change=self._live_control_pause_changed,
             on_toggle_token=self._live_control_toggle_token_changed,
+            console_enabled=bool(self.settings.lco_console_enabled),
+            console_verbosity=str(self.settings.lco_console_verbosity or "results"),
             cancel_event=self.hooks.state.live_control_cancel,
             log=self._live_control_log,
             restore_cursor=bool(self.settings.restore_cursor),
             async_actions=True,
         )
+        self._lco_console_window = None
+        self.live_control.console.on_change = self._lco_console_session_changed
         self.flight_deck = FlightDeckWindow(
             self,
             on_close=self._flight_deck_user_close,
@@ -233,6 +237,10 @@ class App(ctk.CTk):
             self._rebuild_preset_list()
             self._rebuild_points()
         self._reload_taxonomy()
+        self._sync_lco_console_deck_labels()
+        if self.settings.lco_console_enabled:
+            # Defer so the deck-first boot finishes mapping before the console lifts.
+            self.after(200, self._open_lco_console_window)
         self._refresh_screen_map_catalog()
         # Lab X hides the workbench; full quit is Esc peel → confirm on the deck.
         self.protocol("WM_DELETE_WINDOW", self._hide_lab)
@@ -1402,6 +1410,10 @@ class App(ctk.CTk):
                     self._exit_live_control(reason="toggle")
                 else:
                     self._enter_live_control()
+            elif kind == "live_control_console_toggle":
+                self._toggle_lco_console_setting()
+            elif kind == "live_control_console_verbosity":
+                self._cycle_lco_console_verbosity()
             elif kind == "molecule_composer_open":
                 self._open_molecule_composer()
             else:
@@ -1436,6 +1448,132 @@ class App(ctk.CTk):
         if getattr(self, "flight_deck", None) is None:
             return
         self.flight_deck.set_live_control_paused(bool(paused))
+
+    def _lco_console_session_changed(self) -> None:
+        """ConsoleSession may notify from worker threads — bounce to UI."""
+
+        try:
+            self.after(0, self._refresh_lco_console_window)
+        except Exception:
+            pass
+
+    def _refresh_lco_console_window(self) -> None:
+        window = getattr(self, "_lco_console_window", None)
+        if window is None:
+            return
+        try:
+            if window.winfo_exists():
+                window.schedule_refresh()
+        except Exception:
+            self._lco_console_window = None
+
+    def _sync_lco_console_deck_labels(self) -> None:
+        """Keep U→3 / U→4 labels honest about ON/OFF and verbosity."""
+
+        keymap = getattr(self, "_flight_deck_keymap", None)
+        if keymap is None:
+            return
+        from idle_lab.flight_deck.keys import normalize_menu_key
+
+        enabled = bool(self.settings.lco_console_enabled)
+        verbosity = str(self.settings.lco_console_verbosity or "results")
+        for root in keymap.roots:
+            if normalize_menu_key(root.key) != "U":
+                continue
+            for child in root.children:
+                key = normalize_menu_key(child.key)
+                if key == "3":
+                    state = "ON" if enabled else "OFF"
+                    child.label = f"Toggle LCO Console ({state})"
+                elif key == "4":
+                    child.label = f"Console Verbosity ({verbosity})"
+            break
+        if getattr(self, "flight_deck", None) is not None:
+            try:
+                self.flight_deck.set_keymap(keymap)
+            except Exception:
+                pass
+
+    def _persist_lco_console_settings(self) -> None:
+        self.settings.lco_console_enabled = bool(self.live_control.console.enabled)
+        self.settings.lco_console_verbosity = str(self.live_control.console.verbosity or "results")
+        self._save_settings()
+        self._sync_lco_console_deck_labels()
+
+    def _open_lco_console_window(self) -> None:
+        existing = getattr(self, "_lco_console_window", None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.lift()
+                    existing.focus_force()
+                    existing.refresh()
+                    return
+            except Exception:
+                self._lco_console_window = None
+
+        from idle_lab.live_control.console_window import LcoConsoleWindow
+
+        def _on_close() -> None:
+            self._set_lco_console_enabled(False, reason="window-close")
+
+        def _on_geometry(value: str) -> None:
+            self.settings.lco_console_geometry = value
+            self._save_settings()
+
+        self._lco_console_window = LcoConsoleWindow(
+            self,
+            console=self.live_control.console,
+            on_close=_on_close,
+            on_geometry=_on_geometry,
+            geometry=self.settings.lco_console_geometry,
+        )
+
+    def _close_lco_console_window(self) -> None:
+        window = getattr(self, "_lco_console_window", None)
+        self._lco_console_window = None
+        if window is None:
+            return
+        try:
+            if window.winfo_exists():
+                window.destroy_window()
+        except Exception:
+            pass
+
+    def _set_lco_console_enabled(self, enabled: bool, *, reason: str = "toggle") -> None:
+        from idle_lab.live_control.console import normalize_verbosity
+
+        want = bool(enabled)
+        # Verbosity first; set_enabled owns the on/off transition + folder breadcrumb.
+        self.live_control.console.verbosity = normalize_verbosity(self.settings.lco_console_verbosity)
+        self.live_control.console.set_enabled(want)
+        self._persist_lco_console_settings()
+        if want:
+            self._open_lco_console_window()
+        else:
+            self.live_control.console.flush(reason=reason)
+            self._close_lco_console_window()
+        state = "ON" if want else "OFF"
+        msg = f"Toggle LCO Console ({state})"
+        if want:
+            msg = f"{msg} · Console Verbosity ({self.settings.lco_console_verbosity})"
+        self._status(msg, "ok" if want else "warn")
+
+    def _toggle_lco_console_setting(self) -> None:
+        """Flight-deck U→3: flip persisted console and open/close the console window."""
+
+        self._set_lco_console_enabled(not bool(self.settings.lco_console_enabled), reason="toggle")
+
+    def _cycle_lco_console_verbosity(self) -> None:
+        """Flight-deck U→4: cycle events → results → process."""
+
+        if not self.settings.lco_console_enabled:
+            self._status("Toggle LCO Console (OFF) — enable with U→3 before changing verbosity.", "warn")
+            return
+        level = self.live_control.console.cycle_verbosity()
+        self._persist_lco_console_settings()
+        self._refresh_lco_console_window()
+        self._status(f"Toggle LCO Console (ON) · Console Verbosity ({level})", "ok")
 
     def _live_control_run_event_once(self, event_id: str) -> None:
         if self.auto_runtime.is_running or self.auto_runtime.collection_running:

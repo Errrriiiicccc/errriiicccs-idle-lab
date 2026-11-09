@@ -61,9 +61,9 @@
     "upgrade_list_scroll": {
       "nx": 0.45,
       "ny": 0.72,
-      "drag_fraction": 0.15,
+      "drag_fraction": 0.10,
       "rows_per_key": 1,
-      "hold_end_ms": 60,
+      "hold_end_ms": 450,
       "settle_ms": 80,
       "drag_steps": 10,
       "step_ms": 20,
@@ -80,7 +80,7 @@
       "fling_up_badge_ny": 0.615,
       "fling_down_badge_nx": 0.94,
       "fling_down_badge_ny": 0.870,
-      "notes": "Scrollbar lane on list viewport (panel ~0.60–0.92). Fling+step pairs clustered: T/R at top, F/G at bottom."
+      "notes": "Scrollbar lane on list viewport (panel ~0.60–0.92). Fling+step pairs clustered: T/R at top, F/G at bottom. drag_fraction 0.10 + hold_end_ms 450 = calibrated one-row drag (was 0.15/60 and overshot). Buy labels come from nameplate OCR, not scroll math."
     },
     "buy_visual_states": {
       "maxxed": {
@@ -166,6 +166,107 @@
         "Range",
         "Dmg/Meter"
       ],
+      "catalog": [
+        {
+          "id": "buy.attack.1",
+          "label": "Damage",
+          "aliases": ["Damage"],
+          "column": "left",
+          "lines": 1
+        },
+        {
+          "id": "buy.attack.2",
+          "label": "Atk Speed",
+          "aliases": ["Atk Speed", "Attack Speed"],
+          "column": "right",
+          "lines": 1
+        },
+        {
+          "id": "buy.attack.3",
+          "label": "Crit Chance",
+          "aliases": ["Crit Chance", "Critical Chance", "Critical\nChance"],
+          "column": "left",
+          "lines": 2
+        },
+        {
+          "id": "buy.attack.4",
+          "label": "Crit Factor",
+          "aliases": ["Crit Factor", "Critical Factor", "Critical\nFactor"],
+          "column": "right",
+          "lines": 2
+        },
+        {
+          "id": "buy.attack.5",
+          "label": "Range",
+          "aliases": ["Range"],
+          "column": "left",
+          "lines": 1
+        },
+        {
+          "id": "buy.attack.6",
+          "label": "Dmg/Meter",
+          "aliases": ["Dmg/Meter", "Damage / Meter", "Damage/Meter", "Damage\n/ Meter"],
+          "column": "right",
+          "lines": 2,
+          "unique": ["/"]
+        },
+        {
+          "id": "buy.attack.7",
+          "label": "Multishot Chance",
+          "aliases": ["Multishot Chance", "Multishot", "Multi shot Chance"],
+          "column": "left",
+          "lines": 2,
+          "provisional": true
+        },
+        {
+          "id": "buy.attack.8",
+          "label": "Multishot Targets",
+          "aliases": ["Multishot Targets", "Multishot Target", "Multi shot Targets"],
+          "column": "right",
+          "lines": 2,
+          "provisional": true
+        },
+        {
+          "id": "buy.attack.9",
+          "label": "Rapid Fire Chance",
+          "aliases": ["Rapid Fire Chance", "Rapid Fire"],
+          "column": "left",
+          "lines": 2,
+          "provisional": true
+        },
+        {
+          "id": "buy.attack.10",
+          "label": "Rapid Fire Duration",
+          "aliases": ["Rapid Fire Duration"],
+          "column": "right",
+          "lines": 2,
+          "provisional": true
+        },
+        {
+          "id": "buy.attack.11",
+          "label": "Bounce Shot Chance",
+          "aliases": ["Bounce Shot Chance", "Bounce Shot"],
+          "column": "left",
+          "lines": 2,
+          "provisional": true
+        },
+        {
+          "id": "buy.attack.12",
+          "label": "Bounce Shot Targets",
+          "aliases": ["Bounce Shot Targets"],
+          "column": "right",
+          "lines": 2,
+          "provisional": true
+        },
+        {
+          "id": "buy.attack.13",
+          "label": "Bounce Shot Range",
+          "aliases": ["Bounce Shot Range"],
+          "column": "left",
+          "lines": 2,
+          "provisional": true
+        }
+      ],
       "children": [
         "buy.attack.1",
         "buy.attack.2",
@@ -192,6 +293,119 @@
         "Thorn",
         "Lifesteal"
       ],
+      "catalog": [
+        {
+          "id": "buy.defense.1",
+          "label": "Health",
+          "aliases": ["Health"],
+          "column": "left",
+          "lines": 1
+        },
+        {
+          "id": "buy.defense.2",
+          "label": "Health Regen",
+          "aliases": ["Health Regen"],
+          "column": "right",
+          "lines": 1
+        },
+        {
+          "id": "buy.defense.3",
+          "label": "Defense %",
+          "aliases": ["Defense %", "Defense%"],
+          "column": "left",
+          "lines": 1,
+          "unique": ["%"]
+        },
+        {
+          "id": "buy.defense.4",
+          "label": "Def Absolute",
+          "aliases": ["Def Absolute", "Defense Absolute"],
+          "column": "right",
+          "lines": 1
+        },
+        {
+          "id": "buy.defense.5",
+          "label": "Thorn",
+          "aliases": ["Thorn", "Thorn Damage"],
+          "column": "left",
+          "lines": 1
+        },
+        {
+          "id": "buy.defense.6",
+          "label": "Lifesteal",
+          "aliases": ["Lifesteal"],
+          "column": "right",
+          "lines": 1
+        },
+        {
+          "id": "buy.defense.7",
+          "label": "Knockback Chance",
+          "aliases": ["Knockback Chance", "Knockback"],
+          "column": "left",
+          "lines": 2,
+          "provisional": true
+        },
+        {
+          "id": "buy.defense.8",
+          "label": "Knockback Force",
+          "aliases": ["Knockback Force"],
+          "column": "right",
+          "lines": 2,
+          "provisional": true
+        },
+        {
+          "id": "buy.defense.9",
+          "label": "Orb Speed",
+          "aliases": ["Orb Speed"],
+          "column": "left",
+          "lines": 1,
+          "provisional": true
+        },
+        {
+          "id": "buy.defense.10",
+          "label": "Orbs",
+          "aliases": ["Orbs"],
+          "column": "right",
+          "lines": 1,
+          "provisional": true
+        },
+        {
+          "id": "buy.defense.11",
+          "label": "Shockwave Size",
+          "aliases": ["Shockwave Size"],
+          "column": "left",
+          "lines": 2
+        },
+        {
+          "id": "buy.defense.12",
+          "label": "Shockwave Frequency",
+          "aliases": ["Shockwave Frequency"],
+          "column": "right",
+          "lines": 2
+        },
+        {
+          "id": "buy.defense.13",
+          "label": "Land Mine Chance",
+          "aliases": ["Land Mine Chance", "Land Mine"],
+          "column": "left",
+          "lines": 2,
+          "unique": ["%"]
+        },
+        {
+          "id": "buy.defense.14",
+          "label": "Land Mine Damage",
+          "aliases": ["Land Mine Damage"],
+          "column": "right",
+          "lines": 2
+        },
+        {
+          "id": "buy.defense.15",
+          "label": "Land Mine Radius",
+          "aliases": ["Land Mine Radius"],
+          "column": "left",
+          "lines": 2
+        }
+      ],
       "children": [
         "buy.defense.1",
         "buy.defense.2",
@@ -217,6 +431,70 @@
         "Coins/Wave",
         "Free Atk Up",
         "Free Def Up"
+      ],
+      "catalog": [
+        {
+          "id": "buy.utility.1",
+          "label": "Cash Bonus",
+          "aliases": ["Cash Bonus"],
+          "column": "left",
+          "lines": 1
+        },
+        {
+          "id": "buy.utility.2",
+          "label": "Cash/Wave",
+          "aliases": ["Cash/Wave", "Cash / Wave"],
+          "column": "right",
+          "lines": 1,
+          "unique": ["/"]
+        },
+        {
+          "id": "buy.utility.3",
+          "label": "Coins/Kill",
+          "aliases": ["Coins/Kill", "Coins / Kill Bonus", "Coins/Kill Bonus"],
+          "column": "left",
+          "lines": 1,
+          "unique": ["/"]
+        },
+        {
+          "id": "buy.utility.4",
+          "label": "Coins/Wave",
+          "aliases": ["Coins/Wave", "Coins / Wave"],
+          "column": "right",
+          "lines": 1,
+          "unique": ["/"]
+        },
+        {
+          "id": "buy.utility.5",
+          "label": "Free Atk Up",
+          "aliases": ["Free Atk Up", "Free Attack Upgrade"],
+          "column": "left",
+          "lines": 2
+        },
+        {
+          "id": "buy.utility.6",
+          "label": "Free Def Up",
+          "aliases": ["Free Def Up", "Free Defense Upgrade"],
+          "column": "right",
+          "lines": 2
+        },
+        {
+          "id": "buy.utility.7",
+          "label": "Free Utility Up",
+          "aliases": ["Free Utility Up", "Free Utility Upgrade"],
+          "column": "left",
+          "lines": 2,
+          "provisional": true
+        },
+        {
+          "id": "buy.utility.8",
+          "label": "Interest/Wave",
+          "aliases": ["Interest/Wave", "Interest / Wave"],
+          "column": "right",
+          "lines": 1,
+          "unique": ["/"],
+          "provisional": true
+        }
       ],
       "children": [
         "buy.utility.1",

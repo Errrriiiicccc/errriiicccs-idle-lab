@@ -96,6 +96,10 @@ class Settings:
     flight_deck_user_hidden: bool = False
     # Last successful anchor title (HWND does not survive restart).
     last_anchor_title: str | None = None
+    # Live Control Overlay session console (persists across restarts).
+    lco_console_enabled: bool = False
+    lco_console_verbosity: str = "results"  # events | results | process
+    lco_console_geometry: str | None = None
 
 
 class ClickError(RuntimeError):

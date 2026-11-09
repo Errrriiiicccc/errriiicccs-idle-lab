@@ -17,6 +17,18 @@
           "label": "Troubleshoot Live Control",
           "description": "Live Control hotkeys + Observation frames/meta for each action (scroll/buy evidence).",
           "action": { "type": "live_control_enter_troubleshoot" }
+        },
+        {
+          "key": "3",
+          "label": "Toggle LCO Console (OFF)",
+          "description": "Opens a resizable console window and persists on/off in settings. When on, U→4 cycles verbosity; pause/exit flush runs/lco-console-*/console.log.",
+          "action": { "type": "live_control_console_toggle" }
+        },
+        {
+          "key": "4",
+          "label": "Console Verbosity (results)",
+          "description": "Cycle events → results → process. Only logs while console is ON (U→3).",
+          "action": { "type": "live_control_console_verbosity" }
         }
       ]
     },

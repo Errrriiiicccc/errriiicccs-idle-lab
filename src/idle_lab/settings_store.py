@@ -8,6 +8,7 @@ from pathlib import Path
 from idle_lab.flight_deck.keys import DEFAULT_EXPAND_VK
 from idle_lab.humanize import HUMANIZE_LEVELS, normalize_level
 from idle_lab.lab_mode import normalize_lab_mode
+from idle_lab.live_control.console import normalize_verbosity
 from idle_lab.models import Settings
 
 
@@ -78,6 +79,13 @@ def load_settings(path: Path) -> tuple[Settings, str | None]:
             last_anchor_title=(
                 str(data.get("last_anchor_title") or "").strip() or None
             ),
+            lco_console_enabled=bool(data.get("lco_console_enabled", False)),
+            lco_console_verbosity=normalize_verbosity(
+                str(data.get("lco_console_verbosity") or "results")
+            ),
+            lco_console_geometry=(
+                str(data.get("lco_console_geometry") or "").strip() or None
+            ),
         ),
         None,
     )
@@ -99,5 +107,8 @@ def save_settings(path: Path, settings: Settings) -> None:
         "flight_deck_geometry": settings.flight_deck_geometry,
         "flight_deck_user_hidden": bool(settings.flight_deck_user_hidden),
         "last_anchor_title": settings.last_anchor_title,
+        "lco_console_enabled": bool(settings.lco_console_enabled),
+        "lco_console_verbosity": normalize_verbosity(settings.lco_console_verbosity),
+        "lco_console_geometry": settings.lco_console_geometry,
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

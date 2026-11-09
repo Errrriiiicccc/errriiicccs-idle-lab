@@ -7,6 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from idle_lab.live_control.buy_identity import (
+    CatalogEntry,
+    catalog_from_page_labels,
+    parse_catalog,
+)
 from idle_lab.live_control.playbook import (
     BuySlot,
     LiveControlPlaybook,
@@ -112,11 +117,52 @@ class ObjectMap:
         return None
 
     def buy_button(self, tab: str, slot_index: int) -> MapObject | None:
+        """Page-1 / static slot lookup. Prefer catalog binding for live viewport identity."""
+
         tab = tab.strip().lower()
         for obj in self.of_kind("buy_button"):
             if obj.tab == tab and obj.slot_index == slot_index:
                 return obj
         return None
+
+    def buy_by_id(self, object_id: str) -> MapObject | None:
+        obj = self.objects.get(object_id)
+        if obj is None or obj.kind != "buy_button":
+            return None
+        return obj
+
+    def catalog_for_tab(self, tab: str) -> list[CatalogEntry]:
+        """Ordered upgrade catalog for a tab (full list when seeded; else page_labels)."""
+
+        tab = tab.strip().lower()
+        listing = self.scroll_list_for_tab(tab)
+        if listing is None:
+            return []
+        parsed = parse_catalog(listing.raw.get("catalog"))
+        if parsed:
+            return parsed
+        raw_labels = listing.raw.get("page_labels")
+        labels = [str(item) for item in raw_labels] if isinstance(raw_labels, list) else []
+        if labels:
+            return catalog_from_page_labels(labels, tab=tab)
+        # Last resort: buy_button objects ordered by slot_index.
+        buys = sorted(
+            (
+                obj
+                for obj in self.of_kind("buy_button")
+                if obj.tab == tab and obj.slot_index is not None
+            ),
+            key=lambda obj: int(obj.slot_index or 0),
+        )
+        return [
+            CatalogEntry(
+                id=obj.id,
+                label=obj.label,
+                index=i,
+                column="left" if i % 2 == 0 else "right",
+            )
+            for i, obj in enumerate(buys)
+        ]
 
     def button_for_action(self, action: str) -> MapObject | None:
         for obj in self.objects.values():
@@ -260,7 +306,6 @@ class ObjectMap:
         if claim_obj is not None and claim_obj.hit is not None:
             chrome["claim_badge_nx"], chrome["claim_badge_ny"] = claim_obj.hit
             chrome["claim_label"] = claim_obj.label
-
         routines: list[RoutineMark] = []
         for obj in self.of_kind("button"):
             action = (obj.hotkey_action or "").strip()

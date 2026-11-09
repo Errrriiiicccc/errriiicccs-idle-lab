@@ -27,8 +27,20 @@ Containment is first-class: tab → panel → scroll list → buy buttons.
 - Hotkeys stay Q/W/E, 1–6, R/F, V, B.
 - Tabs resolve to `tab_button` hits + `open_panel` effects.
 - Scroll uses the open tab’s `scroll_list` (`scroll_ref` → shared `upgrade_list_scroll`).
-- Buys resolve to `buy_button` instances (label + effects); live detection still re-parks 1–6 on screen.
-- Evidence rows carry `object_id` / `effects` when the map is loaded.
+- Buys resolve to viewport slots 1–6; **catalog identity** is separate (see below).
+- Evidence rows carry `object_id` / `effects` when identity is known; after an unbound scroll they carry `?` instead of a false page-1 label.
+
+## Catalog vs viewport slots
+
+Keys **1–6** are always *visible* slots. Each upgrade tab’s `scroll_list` now carries an ordered **`catalog`** of upgrades (full list when seeded; provisional deeper rows marked `provisional: true`).
+
+| Concept | Meaning |
+| --- | --- |
+| `catalog[i]` | Durable upgrade (id, label, aliases, left/right, lines) |
+| Viewport slot `N` | Whatever card currently sits under key `N` |
+| `catalog_offset` | Catalog index of the top-left visible card when identity is known |
+
+LCO binds identity by OCRing each visible nameplate after detect and matching the tab `catalog` (`buy_identity.bind_from_slot_texts`). Scroll-step math is not used for labels — an overshoot still names the cards that landed under 1–6. Tab seek-top / T may fall back to page-1 only when OCR misses. Hold **D** shows `N:Label` (or `N:?`).
 
 Code: `src/idle_lab/live_control/objects.py` → projects to `LiveControlPlaybook` for the overlay.
 
@@ -47,8 +59,9 @@ No auto-mapper yet. Observation **fills slots** on these templates.
 | Card size / 2×3 pitch | `shared.buy_grid` |
 | Row drag that advances one tile | `shared.upgrade_list_scroll.drag_fraction` (R/F); fling uses `fling_fraction` (T/G) |
 | First-page labels | `list.*.page_labels` + matching `buy_*.label` / `stat` |
+| Full ordered upgrade list | `list.*.catalog` (aliases / column / lines; mark new rows `provisional`) |
 | Buy tile colors (max / can buy / can’t) | `shared.buy_visual_states` (RGB TBD until cropped) |
-| What a buy does | `buy_*.effects.world` / `.ui` |
+| What a buy does | `buy_*.effects.world` / `.ui` (linked by catalog `id` when known) |
 
 4. **Restart** Idle Lab (or Refresh if only JSON data changed) → **U → 1** → verify circles land on the named objects.
 5. Misses should name an object (`buy.attack.1`, `list.defense`), not a vibes tweak to a lone `origin_ny`.

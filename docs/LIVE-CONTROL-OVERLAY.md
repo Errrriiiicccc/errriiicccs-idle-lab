@@ -15,7 +15,7 @@ Overlay marks: **clicks show hotkeys**; **non-clicks show icons**. **Hold D** to
 | Key | Action | Overlay mark |
 | --- | --- | --- |
 | Q / W / E | Attack / Defense / Utility tab (no retap if already active) | Hotkey (click) |
-| 1–6 | Buy on the visible 2×3 grid | Hotkey (click) |
+| 1–6 | Buy on the visible 2×3 grid (label from catalog when identity known) | Hotkey (click) |
 | R / F | One card-row drag | ▲ / ▼ (R / F while holding D) |
 | T / G | Momentum fling toward list top / bottom | stacked ▲▲▲ / ▼▼▼ (T / G while holding D) |
 | V | Stat collect atom once | clipboard (V while holding D) |
@@ -65,6 +65,22 @@ After enter / tab / **R/F** / **B**, Live Control **detects card rows** from the
 
 Amber circles = geometry unsure (mid-scroll / odd gap). Buys still fire — amber is advisory only.
 
+**Buy identity:** after detect, LCO OCRs each nameplate and scores every catalog *offset* (neighbor structure: Thorn beside Lifesteal implies Knockback below). Hold **D** shows `N:Label` (high conf), `N:Label~` (medium), `N:Label?` / `N:?` (low/unknown). Evidence carries `slot_confidence` / `offset_scores`. Tab home / **T** may fall back to page-1 only if OCR+structure miss. R/F use `drag_fraction≈0.10` + `hold_end_ms≈450`.
+
+## Console (session log)
+
+Flight deck **U → 3** toggles a persisted console (`settings.json` → `lco_console_enabled`) and opens a resizable **LCO Console** window. **U → 4** cycles verbosity while the console is on:
+
+| Level | What gets logged |
+| --- | --- |
+| `events` | Key/action pressed |
+| `results` | + one-line outcome (buy label, identity summary, scroll slot count, …) |
+| `process` | + live steps (OCR prep scores, detect reasons, …) |
+
+The window shows the live buffer, a **Copy** button, a display-only **Timestamps** toggle, and a `User Comment:` field + **Send** (Enter also sends). Comments are written as `User Comment: …` with timestamps. Timestamps always land in `console.log` even when the window hides them.
+
+Each LCO enter with console on creates `runs/lco-console-<timestamp>/`. The buffer flushes to `console.log` on **pause** and **exit** (and on verbosity/toggle changes).
+
 ## From automations
 
 Atoms can fire the same actions headlessly with the `lco` action type — `{ "type": "lco", "key": "W" }`, `{ "type": "lco", "action": "buy_3", "times": 5 }`. No overlay is drawn; detection, object map and scroll physics are shared with U → 1. See [automation-schema.md](automation-schema.md).
@@ -74,4 +90,4 @@ Atoms can fire the same actions headlessly with the `lco` action type — `{ "ty
 - `src/idle_lab/live_control/` — object map + playbook projection, overlay, controller (`run_action` + `NullOverlay` for headless use)  
 - `AutomationRuntime._action_lco` — `lco` atom step → headless controller  
 - `ObservationController.note_live_control` — Troubleshoot evidence bridge  
-- Flight-deck actions: `live_control_enter` / `live_control_enter_troubleshoot` / `live_control_exit` / `live_control_toggle`
+- Flight-deck actions: `live_control_enter` / `live_control_enter_troubleshoot` / `live_control_exit` / `live_control_toggle` / `live_control_console_toggle` / `live_control_console_verbosity`

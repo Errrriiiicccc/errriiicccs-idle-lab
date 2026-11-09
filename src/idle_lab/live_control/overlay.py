@@ -80,6 +80,9 @@ class LiveControlOverlayState:
     toggled_action: str | None = None
     current_action: str | None = None
     queued_actions: tuple[str, ...] = ()
+    # Viewport buy labels for Hold-D; "?" when catalog identity is unknown.
+    slot_labels: dict[int, str] = field(default_factory=dict)
+    identity_known: bool = False
 
 
 @dataclass(frozen=True)
@@ -509,7 +512,6 @@ class LiveControlOverlay:
                 icon_font=("Segoe UI", 11, "bold"),
                 queue_n=queue_n,
             )
-
     def _paint_dim(self) -> None:
         """Gray the anchored window under marks so HV descriptors read clearly."""
 
@@ -587,7 +589,13 @@ class LiveControlOverlay:
 
         # Tight pockets first so later labels still have room.
         if buy_indexed:
-            self._descriptor_buy(layout, buy_indexed, "Buy")
+            group = "Buys" if state.identity_known else "Buys (?)"
+            self._descriptor_buy(layout, buy_indexed, group)
+            for pt, idx in buy_indexed:
+                name = state.slot_labels.get(idx) or "?"
+                prefer = "left" if idx % 2 == 1 else "right"
+                # Labels may include ~ / ? confidence markers from buy identity.
+                self._descriptor_singleton(layout, pt, f"{idx}:{name}", prefer=prefer)
         if len(scroll_pts) >= 2:
             self._descriptor_column(layout, scroll_pts, "Scroll")
         tabs = list(pb.tabs.values())
