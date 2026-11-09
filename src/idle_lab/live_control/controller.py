@@ -17,9 +17,12 @@ from idle_lab.humanize import HumanizeProfile
 from idle_lab.live_control.buy_detect import BuyGridDetection, DetectedBuySlot, detect_buy_grid
 from idle_lab.live_control.overlay import LiveControlOverlay, LiveControlOverlayState
 from idle_lab.live_control.playbook import (
+    FIRE_MODE_SPAM,
+    FIRE_MODE_TOGGLE,
     LiveControlPlaybook,
     PlaybookError,
     default_playbook_path,
+    fire_mode_for,
     is_actuation_action,
     load_playbook,
 )
@@ -34,18 +37,6 @@ EvidenceFn = Callable[..., None]
 PostEventFn = Callable[[tuple], None]
 LegendFn = Callable[[bool], None]
 PauseFn = Callable[[bool], None]
-
-# Hold-to-repeat: light taps/drags. Heavy OCR / seek / redetect stay one-shot.
-_REPEATABLE_ACTIONS = frozenset(
-    {
-        "scroll_up",
-        "scroll_down",
-        "fling_up",
-        "fling_down",
-        "claim_gem",
-        *(f"buy_{i}" for i in range(1, 7)),
-    }
-)
 
 
 class LiveControlError(RuntimeError):
@@ -116,6 +107,7 @@ class LiveControlController:
         # Shared with the keyboard hook so Esc / ` abort mid-drag without waiting on the UI queue.
         self.cancel_event = cancel_event if cancel_event is not None else threading.Event()
         self._held_actions: list[str] = []
+        self._toggled_action: str | None = None
 
     def summary(self) -> LiveControlSummary:
         return LiveControlSummary(
@@ -156,6 +148,7 @@ class LiveControlController:
         self.paused = False
         self.show_descriptors = False
         self._held_actions.clear()
+        self._toggled_action = None
         self.cancel_event.clear()
         self.active = True
         self._notify_legend()
@@ -194,6 +187,7 @@ class LiveControlController:
         self.evidence = False
         self.paused = False
         self.show_descriptors = False
+        self._toggled_action = None
         self.overlay.hide()
         self._log(f"Live Control OFF ({reason})", "warn")
         self.playbook = None
@@ -206,10 +200,11 @@ class LiveControlController:
         self._notify_pause()
 
     def interrupt(self) -> None:
-        """Abort in-flight work and drop hold-to-repeat queue (Esc / `)."""
+        """Abort in-flight work and drop hold/toggle repeat queues (Esc / `)."""
 
         self.cancel_event.set()
         self._held_actions.clear()
+        self._toggled_action = None
 
     def handle_token(self, token: str) -> bool:
         """Compatibility: treat as a key-down (fire immediately)."""
@@ -224,13 +219,17 @@ class LiveControlController:
             return False
         if action == "describe":
             return self._set_describe(held=phase == "down")
+        mode = fire_mode_for(action)
         if phase == "up":
-            self._release_action(action)
+            if mode == FIRE_MODE_SPAM:
+                self._release_action(action)
             return True
         if self.paused:
             self._log("Live Control paused — press ` to resume.", "warn")
             return True
-        if self._is_repeatable(action):
+        if mode == FIRE_MODE_TOGGLE:
+            return self._toggle_action(action)
+        if mode == FIRE_MODE_SPAM:
             self._hold_action(action)
             self.cancel_event.clear()
             return self._kick_held()
@@ -253,13 +252,15 @@ class LiveControlController:
             self._busy = False
 
     def continue_repeat(self, action: str) -> None:
-        """UI-queue continuation after a hold-to-repeat fire finishes."""
+        """UI-queue continuation after a spam-hold or toggle fire finishes."""
 
         if not self.active or self.paused or self.cancel_event.is_set():
             return
-        if action not in self._held_actions:
+        if action in self._held_actions:
+            self._kick_held(preferred=action)
             return
-        self._kick_held(preferred=action)
+        if action == self._toggled_action:
+            self._kick_toggle()
 
     def toggle_pause(self) -> bool:
         """Backtick: gray out / re-arm LCO without exiting the session."""
@@ -281,10 +282,6 @@ class LiveControlController:
         self._notify_pause()
         return True
 
-    @staticmethod
-    def _is_repeatable(action: str) -> bool:
-        return action in _REPEATABLE_ACTIONS
-
     def _hold_action(self, action: str) -> None:
         if action in self._held_actions:
             self._held_actions.remove(action)
@@ -294,22 +291,64 @@ class LiveControlController:
         if action in self._held_actions:
             self._held_actions.remove(action)
 
+    def _toggle_action(self, action: str) -> bool:
+        """Arm/disarm a repeating routine. Key-up is ignored; press again to stop."""
+
+        if self._toggled_action == action:
+            self._stop_toggle(reason="operator")
+            return True
+        if self._toggled_action is not None:
+            self._stop_toggle(reason="switch")
+        self._toggled_action = action
+        self.cancel_event.clear()
+        label = action
+        if self.playbook is not None:
+            for routine in self.playbook.routines:
+                if routine.action == action:
+                    label = routine.label
+                    break
+        self._log(f"Toggle ON · {label} — press again to stop.", "run")
+        self._repaint(f"Toggle ON · {label}")
+        return self._kick_toggle()
+
+    def _stop_toggle(self, *, reason: str = "operator") -> None:
+        if self._toggled_action is None:
+            return
+        was = self._toggled_action
+        self._toggled_action = None
+        self.cancel_event.set()
+        label = was
+        if self.playbook is not None:
+            for routine in self.playbook.routines:
+                if routine.action == was:
+                    label = routine.label
+                    break
+        self._log(f"Toggle OFF · {label} ({reason})", "warn")
+        self._repaint(f"Toggle OFF · {label}")
+
     def _kick_held(self, preferred: str | None = None) -> bool:
         if self.paused or self.cancel_event.is_set() or not self._held_actions:
             return True
         if self._busy:
             return True
         action = preferred if preferred in self._held_actions else self._held_actions[-1]
-        return self._run_action(action, from_hold=True)
+        return self._run_action(action, repeat="hold")
 
-    def _run_action(self, action: str, *, from_hold: bool = False) -> bool:
+    def _kick_toggle(self) -> bool:
+        if self.paused or self.cancel_event.is_set() or not self._toggled_action:
+            return True
+        if self._busy:
+            return True
+        return self._run_action(self._toggled_action, repeat="toggle")
+
+    def _run_action(self, action: str, *, repeat: str | None = None) -> bool:
         if self.paused:
             self._log("Live Control paused — press ` to resume.", "warn")
             return True
-        if self.cancel_event.is_set() and from_hold:
+        if self.cancel_event.is_set() and repeat is not None:
             return True
         if self._busy:
-            if not from_hold:
+            if repeat is None:
                 self._log("Live Control busy — wait for current action.", "warn")
             return True
         try:
@@ -321,9 +360,13 @@ class LiveControlController:
             self._log(f"Live Control action failed: {exc}", "error")
         finally:
             self._busy = False
+        should_requeue = False
+        if repeat == "hold" and action in self._held_actions:
+            should_requeue = True
+        if repeat == "toggle" and action == self._toggled_action:
+            should_requeue = True
         if (
-            from_hold
-            and action in self._held_actions
+            should_requeue
             and self.active
             and not self.paused
             and not self.cancel_event.is_set()
@@ -971,5 +1014,6 @@ class LiveControlController:
             live_slots=self.live_slots,
             show_descriptors=self.show_descriptors,
             paused=self.paused,
+            toggled_action=self._toggled_action,
         )
         self.overlay.show(self.playbook, rect, state)

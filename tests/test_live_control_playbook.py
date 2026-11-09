@@ -9,12 +9,29 @@ from idle_lab.live_control.buy_detect import BuyGridDetection, DetectedBuySlot
 from idle_lab.live_control.controller import LiveControlController
 from idle_lab.live_control.objects import default_object_map_path, load_object_map
 from idle_lab.live_control.overlay import LiveControlOverlay, _Box, _DescribeLayout, _MARKER_R
-from idle_lab.live_control.playbook import default_playbook_path, load_playbook
+from idle_lab.live_control.playbook import (
+    FIRE_MODE_SINGLE,
+    FIRE_MODE_SPAM,
+    FIRE_MODE_TOGGLE,
+    default_playbook_path,
+    fire_mode_for,
+    load_playbook,
+)
 from idle_lab.models import Rect
 from idle_lab.presets import project_root
 
 
 class LiveControlPlaybookTests(unittest.TestCase):
+    def test_fire_modes(self) -> None:
+        self.assertEqual(fire_mode_for("buy_3"), FIRE_MODE_SPAM)
+        self.assertEqual(fire_mode_for("scroll_down"), FIRE_MODE_SPAM)
+        self.assertEqual(fire_mode_for("fling_up"), FIRE_MODE_SPAM)
+        self.assertEqual(fire_mode_for("claim_gem"), FIRE_MODE_SPAM)
+        self.assertEqual(fire_mode_for("tab_defense"), FIRE_MODE_SINGLE)
+        self.assertEqual(fire_mode_for("stat_collect"), FIRE_MODE_SINGLE)
+        self.assertEqual(fire_mode_for("refresh"), FIRE_MODE_SINGLE)
+        self.assertEqual(fire_mode_for("routine_health_damage_claim"), FIRE_MODE_TOGGLE)
+
     def test_loads_tower_main_gameplay(self) -> None:
         path = default_playbook_path(project_root())
         self.assertTrue(path.is_file(), msg=f"missing {path}")
@@ -166,14 +183,41 @@ class LiveControlScrollModelTests(unittest.TestCase):
             ["tab_defense", "buy_1", "tab_attack", "buy_1", "tab_defense", "claim_gem"],
         )
 
-    def test_a_key_fires_routine(self) -> None:
+    def test_a_key_toggles_routine_loop(self) -> None:
         ctrl = self._controller()
+        posts: list[tuple] = []
+        ctrl.post_event = posts.append
         with (
-            patch.object(ctrl, "_do_routine") as routine,
+            patch.object(ctrl, "_do_routine"),
             patch.object(ctrl, "_repaint"),
         ):
             self.assertTrue(ctrl.handle_key("A", phase="down"))
-        routine.assert_called_once_with("routine_health_damage_claim")
+            self.assertEqual(ctrl._toggled_action, "routine_health_damage_claim")
+            self.assertTrue(any(item[0] == "live_control_repeat" for item in posts))
+            posts.clear()
+            self.assertTrue(ctrl.handle_key("A", phase="up"))
+            self.assertEqual(ctrl._toggled_action, "routine_health_damage_claim")
+            self.assertTrue(ctrl.handle_key("A", phase="down"))
+            self.assertIsNone(ctrl._toggled_action)
+
+    def test_spam_hold_repeats_buy_single_does_not(self) -> None:
+        ctrl = self._controller()
+        with patch.object(ctrl, "_do_buy") as buy, patch.object(ctrl, "_repaint"):
+            self.assertTrue(ctrl.handle_key("1", phase="down"))
+            self.assertIn("buy_1", ctrl._held_actions)
+            buy.assert_called()
+            buy.reset_mock()
+            ctrl.continue_repeat("buy_1")
+            buy.assert_called()
+            self.assertTrue(ctrl.handle_key("1", phase="up"))
+            self.assertNotIn("buy_1", ctrl._held_actions)
+
+        with patch.object(ctrl, "_do_tab") as tab, patch.object(ctrl, "_repaint"):
+            self.assertTrue(ctrl.handle_key("Q", phase="down"))
+            tab.assert_called_once()
+            self.assertEqual(ctrl._held_actions, [])
+            self.assertTrue(ctrl.handle_key("Q", phase="up"))
+            self.assertEqual(tab.call_count, 1)
 
     def test_tab_switch_homes_with_fling(self) -> None:
         ctrl = self._controller()

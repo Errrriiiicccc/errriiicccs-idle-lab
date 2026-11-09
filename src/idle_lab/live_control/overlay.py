@@ -65,6 +65,7 @@ class LiveControlOverlayState:
     live_slots: tuple[DetectedBuySlot, ...] = ()
     show_descriptors: bool = False
     paused: bool = False
+    toggled_action: str | None = None
 
 
 @dataclass(frozen=True)
@@ -386,13 +387,14 @@ class LiveControlOverlay:
             icon_font=("Segoe UI", 14, "bold"),
         )
         for routine in pb.routines:
+            armed = (not paused) and state.toggled_action == routine.action
             self._action_badge(
                 routine.nx,
                 routine.ny,
                 key=pb.hotkey_for(routine.action) or "?",
                 icon=routine.icon or "▸▸",
-                outline=_PAUSED_OUTLINE if paused else _ROUTINE_OUTLINE,
-                fill=_PAUSED_FILL if paused else _ROUTINE_FILL,
+                outline=_PAUSED_OUTLINE if paused else (_TAB_ACTIVE_OUTLINE if armed else _ROUTINE_OUTLINE),
+                fill=_PAUSED_FILL if paused else (_TAB_ACTIVE_FILL if armed else _ROUTINE_FILL),
                 show_hotkeys=show_keys,
                 glyph=glyph,
                 icon_font=("Segoe UI", 11, "bold"),

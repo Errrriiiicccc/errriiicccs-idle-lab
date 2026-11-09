@@ -28,7 +28,15 @@ Overlay marks: **clicks show hotkeys**; **non-clicks show icons**. **Hold D** to
 
 Stay in mode after each fire. Pointer passes through. Cursor **stays** on the last click (no restore). Clicks use humanize **off** for precision.
 
-**Hold-to-repeat:** buys (1–6), scroll/fling (R/F/T/G), and claim (C) re-fire while held. **One-shot only:** tabs (Q/W/E), stat collect (V), refresh (B), describe (D). **`** / **Esc** abort in-flight work immediately (mid-drag / queued repeats) — pause or exit still follows.
+**Fire modes**
+
+| Mode | Keys | Hold / repeat |
+| --- | --- | --- |
+| **Spam** | 1–6 buys, R/F scroll, T/G fling, C claim | Re-fires while the key is held; release stops |
+| **Single** | Q/W/E tabs, V stat, B refresh | Fires once on key-down; hold does nothing extra |
+| **Toggle** | A routine (Health → Damage → Claim) | Key-down arms a repeating loop (release ignored); press again to disarm. Esc / `` ` `` also clear it |
+
+Describe (**D**) stays hold-to-show. **`** / **Esc** abort in-flight work immediately (mid-drag / queued repeats) — pause or exit still follows.
 
 ## U → 1 vs U → 2
 

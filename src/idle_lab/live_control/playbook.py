@@ -33,10 +33,50 @@ ACTUATION_ACTIONS = frozenset(
     }
 )
 
+# Hold / repeat policy for LCO hotkeys.
+# - single: fire once on key-down (hold does nothing extra)
+# - spam: re-fire while the key is held
+# - toggle: key-down arms a repeating loop; key-down again disarms (release ignored)
+FIRE_MODE_SINGLE = "single"
+FIRE_MODE_SPAM = "spam"
+FIRE_MODE_TOGGLE = "toggle"
+
+_SPAM_ACTIONS = frozenset(
+    {
+        "scroll_up",
+        "scroll_down",
+        "fling_up",
+        "fling_down",
+        "claim_gem",
+        *(f"buy_{i}" for i in range(1, 7)),
+    }
+)
+
+_SINGLE_ACTIONS = frozenset(
+    {
+        "tab_attack",
+        "tab_defense",
+        "tab_utility",
+        "stat_collect",
+        "refresh",
+    }
+)
+
 
 def is_actuation_action(action: str) -> bool:
     name = (action or "").strip().lower()
     return name in ACTUATION_ACTIONS or name.startswith("routine_")
+
+
+def fire_mode_for(action: str) -> str:
+    name = (action or "").strip().lower()
+    if name.startswith("routine_"):
+        return FIRE_MODE_TOGGLE
+    if name in _SPAM_ACTIONS:
+        return FIRE_MODE_SPAM
+    if name in _SINGLE_ACTIONS:
+        return FIRE_MODE_SINGLE
+    return FIRE_MODE_SINGLE
 
 
 @dataclass(frozen=True)
