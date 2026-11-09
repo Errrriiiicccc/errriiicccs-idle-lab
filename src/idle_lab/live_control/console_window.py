@@ -8,6 +8,7 @@ from typing import Any
 import customtkinter as ctk
 
 from idle_lab.live_control.console import ConsoleSession
+from idle_lab import win32_api
 
 _BG = "#141A22"
 _PANEL = "#0E1319"
@@ -56,13 +57,20 @@ class LcoConsoleWindow(ctk.CTkToplevel):
         self.protocol("WM_DELETE_WINDOW", self._handle_close)
         self._build()
         self.bind("<Configure>", self._on_configure)
-        self.after(0, self._lift)
+        self.after(0, self._orphan_and_lift)
         self.refresh()
 
-    def _lift(self) -> None:
+    def _orphan_and_lift(self) -> None:
+        """Detach from Lab's Win32 owner so Lab hide/lift cannot unmap this window."""
+
+        try:
+            self.update_idletasks()
+            hwnd = win32_api.widget_hwnd(self)
+            win32_api.clear_window_owner(hwnd)
+        except Exception:
+            pass
         try:
             self.lift()
-            self.focus_force()
         except Exception:
             pass
 
@@ -106,7 +114,7 @@ class LcoConsoleWindow(ctk.CTkToplevel):
             pad,
             fg_color=_PANEL,
             text_color="#DCE4EE",
-            font=ctk.CTkFont(family="Consolas", size=12),
+            font=ctk.CTkFont(size=12),
             wrap="word",
             activate_scrollbars=True,
         )

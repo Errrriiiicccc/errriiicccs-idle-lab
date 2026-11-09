@@ -211,6 +211,7 @@ class App(ctk.CTk):
             async_actions=True,
         )
         self._lco_console_window = None
+        self._lco_console_dirty = False
         self.live_control.console.on_change = self._lco_console_session_changed
         self.flight_deck = FlightDeckWindow(
             self,
@@ -238,9 +239,6 @@ class App(ctk.CTk):
             self._rebuild_points()
         self._reload_taxonomy()
         self._sync_lco_console_deck_labels()
-        if self.settings.lco_console_enabled:
-            # Defer so the deck-first boot finishes mapping before the console lifts.
-            self.after(200, self._open_lco_console_window)
         self._refresh_screen_map_catalog()
         # Lab X hides the workbench; full quit is Esc peel → confirm on the deck.
         self.protocol("WM_DELETE_WINDOW", self._hide_lab)
@@ -1450,14 +1448,12 @@ class App(ctk.CTk):
         self.flight_deck.set_live_control_paused(bool(paused))
 
     def _lco_console_session_changed(self) -> None:
-        """ConsoleSession may notify from worker threads — bounce to UI."""
+        """ConsoleSession may notify from OCR worker threads — never touch Tk here."""
 
-        try:
-            self.after(0, self._refresh_lco_console_window)
-        except Exception:
-            pass
+        self._lco_console_dirty = True
 
     def _refresh_lco_console_window(self) -> None:
+        self._lco_console_dirty = False
         window = getattr(self, "_lco_console_window", None)
         if window is None:
             return
@@ -1501,12 +1497,15 @@ class App(ctk.CTk):
         self._sync_lco_console_deck_labels()
 
     def _open_lco_console_window(self) -> None:
+        """Show the console window. Only call while LCO is active (or becoming active)."""
+
+        if not self.settings.lco_console_enabled:
+            return
         existing = getattr(self, "_lco_console_window", None)
         if existing is not None:
             try:
                 if existing.winfo_exists():
                     existing.lift()
-                    existing.focus_force()
                     existing.refresh()
                     return
             except Exception:
@@ -1515,6 +1514,7 @@ class App(ctk.CTk):
         from idle_lab.live_control.console_window import LcoConsoleWindow
 
         def _on_close() -> None:
+            # Closing the window turns the preference off for subsequent LCO enters.
             self._set_lco_console_enabled(False, reason="window-close")
 
         def _on_geometry(value: str) -> None:
@@ -1544,23 +1544,29 @@ class App(ctk.CTk):
         from idle_lab.live_control.console import normalize_verbosity
 
         want = bool(enabled)
-        # Verbosity first; set_enabled owns the on/off transition + folder breadcrumb.
-        self.live_control.console.verbosity = normalize_verbosity(self.settings.lco_console_verbosity)
-        self.live_control.console.set_enabled(want)
-        self._persist_lco_console_settings()
+        verbosity = normalize_verbosity(self.settings.lco_console_verbosity)
+        # Preference flip only — the window opens when LCO enters, not from the deck alone.
         if want:
-            self._open_lco_console_window()
+            self.live_control.console.configure(enabled=True, verbosity=verbosity)
+            if self.live_control.active:
+                self.live_control.console.set_enabled(True)
+                self._open_lco_console_window()
         else:
-            self.live_control.console.flush(reason=reason)
+            if self.live_control.console.enabled:
+                self.live_control.console.set_enabled(False)
+            else:
+                self.live_control.console.configure(enabled=False, verbosity=verbosity)
             self._close_lco_console_window()
+        self._persist_lco_console_settings()
         state = "ON" if want else "OFF"
         msg = f"Toggle LCO Console ({state})"
         if want:
-            msg = f"{msg} · Console Verbosity ({self.settings.lco_console_verbosity})"
+            where = " · opens with LCO" if not self.live_control.active else ""
+            msg = f"{msg} · Console Verbosity ({verbosity}){where}"
         self._status(msg, "ok" if want else "warn")
 
     def _toggle_lco_console_setting(self) -> None:
-        """Flight-deck U→3: flip persisted console and open/close the console window."""
+        """Flight-deck U→3: flip persisted console preference (window follows LCO sessions)."""
 
         self._set_lco_console_enabled(not bool(self.settings.lco_console_enabled), reason="toggle")
 
@@ -1625,6 +1631,8 @@ class App(ctk.CTk):
             self._live_control_owns_observation = False
             self.flight_deck.set_live_control_active(True)
             self._sync_shell_hook_flags()
+            if self.settings.lco_console_enabled:
+                self._open_lco_console_window()
         except LiveControlError as exc:
             self._status(str(exc), "error")
 
@@ -1655,6 +1663,8 @@ class App(ctk.CTk):
             self._live_control_owns_observation = True
             self.flight_deck.set_live_control_active(True)
             self._sync_shell_hook_flags()
+            if self.settings.lco_console_enabled:
+                self._open_lco_console_window()
             self._status(
                 f"Live Control Troubleshoot ON · evidence → {self.observation.folder.name if self.observation.folder else '?'}",
                 "run",
@@ -1662,6 +1672,7 @@ class App(ctk.CTk):
         except LiveControlError as exc:
             self._live_control_owns_observation = False
             self.flight_deck.set_live_control_active(False)
+            self._close_lco_console_window()
             self._stop_observation(reason="live-control-enter-failed", prompt_rename=False)
             self._status(str(exc), "error")
 
@@ -1675,6 +1686,7 @@ class App(ctk.CTk):
         self.hooks.state.live_control_toggle_token = None
         self.flight_deck.set_live_control_active(False)
         self._sync_shell_hook_flags()
+        self._close_lco_console_window()
         if self._live_control_owns_observation:
             self._live_control_owns_observation = False
             if self.observation.active or self.screen_map.active:
@@ -2621,6 +2633,11 @@ class App(ctk.CTk):
             self._drain_observation_ui()
         except Exception as exc:
             self._status(f"Observation UI update failed: {exc}", "error")
+        if self._lco_console_dirty:
+            try:
+                self._refresh_lco_console_window()
+            except Exception as exc:
+                self._status(f"LCO console UI update failed: {exc}", "error")
         if self._alive:
             self.after(30, self._drain_hooks)
 

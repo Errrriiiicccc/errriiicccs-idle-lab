@@ -21,7 +21,7 @@
         {
           "key": "3",
           "label": "Toggle LCO Console (OFF)",
-          "description": "Opens a resizable console window and persists on/off in settings. When on, U→4 cycles verbosity; pause/exit flush runs/lco-console-*/console.log.",
+          "description": "Persists console on/off. When on, entering LCO opens the console window; U→4 cycles verbosity; pause/exit flush runs/lco-console-*/console.log.",
           "action": { "type": "live_control_console_toggle" }
         },
         {
