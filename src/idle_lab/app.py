@@ -218,6 +218,7 @@ class App(ctk.CTk):
         )
         self._taxonomy = None
         self._flight_deck_keymap = None
+        self._molecule_composer = None
         self._shell_phase = ShellPhase.INACTIVE
         self._boot_candidate_hwnd: int | None = None
         self._boot_offer_title: str | None = None
@@ -1401,6 +1402,8 @@ class App(ctk.CTk):
                     self._exit_live_control(reason="toggle")
                 else:
                     self._enter_live_control()
+            elif kind == "molecule_composer_open":
+                self._open_molecule_composer()
             else:
                 self._status(f"Flight deck: unknown action type “{kind}”.", "error")
         except Exception as exc:
@@ -1593,6 +1596,35 @@ class App(ctk.CTk):
         self._start_molecule(collection)
         if self.auto_runtime.collection_running or self.auto_runtime.is_running:
             self._status(f"Flight deck · {path}", "run")
+
+    def _open_molecule_composer(self) -> None:
+        """Flight deck → Molecules → Composer: author molecules without LCO troubleshoot."""
+
+        existing = getattr(self, "_molecule_composer", None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.lift()
+                    existing.focus_force()
+                    self._status("Molecule Composer already open.", "info")
+                    return
+            except Exception:
+                self._molecule_composer = None
+
+        from idle_lab.composer.window import MoleculeComposerWindow
+
+        def _on_exported(collection_id: str) -> None:
+            self._reload_automations()
+            self._status(f"Composer saved molecule “{collection_id}”.", "ok")
+
+        self._molecule_composer = MoleculeComposerWindow(
+            self,
+            automations_root=project_root() / "automations",
+            project_root_path=project_root(),
+            on_exported=_on_exported,
+            on_status=lambda msg, level="info": self._status(msg, level),
+        )
+        self._status("Molecule Composer open — M → 6 from the deck anytime.", "ok")
 
     def _start_observation(self, title: str | None = None) -> None:
         if self.observation.active or self.screen_map.active:

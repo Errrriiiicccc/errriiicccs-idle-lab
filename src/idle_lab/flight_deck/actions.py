@@ -18,6 +18,7 @@ ACTION_TYPES = frozenset(
         "live_control_enter_troubleshoot",  # Live Control + Observation evidence session
         "live_control_exit",
         "live_control_toggle",
+        "molecule_composer_open",  # Context-gated molecule authoring UI
         # Legacy aliases → Observation
         "observe_start",
         "observe_shot",

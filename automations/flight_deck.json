@@ -160,6 +160,12 @@
           "label": "Start all enabled",
           "description": "Interval pool: every atom with enabled:true.",
           "action": { "type": "start_enabled_loops" }
+        },
+        {
+          "key": "6",
+          "label": "Molecule Composer",
+          "description": "Build molecules from legal atoms — tab context gates the palette; saves JSON under automations/.",
+          "action": { "type": "molecule_composer_open" }
         }
       ]
     }
