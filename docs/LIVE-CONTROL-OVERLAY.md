@@ -36,6 +36,10 @@ Stay in mode after each fire. Pointer passes through. Cursor **stays** on the la
 | **Single** | Q/W/E tabs, V stat, B refresh | Fires once on key-down; hold does nothing extra |
 | **Toggle** | A routine (Health → Damage → Claim) | Key-down arms a repeating loop (release ignored); press again to disarm. Esc / `` ` `` also clear it |
 
+**Queue + focus colors:** keys pressed while an action is in flight enqueue FIFO and run in press order. During activity, marks use focus colors — **green** = current action; **armed toggle** = green outline with fill pulsing between active green and the mark’s resting color (not gray); **orange + N** = queued (1, 2, …; current/toggle marks have no number); **gray** = idle while something else is busy. Remaining steps inside a running routine count as queued too.
+
+Scroll gesture settle after R/F/T/G (and tab-home fling) stays short (~80ms). Before buy-grid detect, LCO waits up to `detect_settle_ms` (~220ms) so 1–6 park on settled cards — not mid-fling frames. Pressing **A** again (or **`**) aborts the in-flight pack immediately; the hotkey drain stays free so orange queue marks + numbers can paint while work runs.
+
 Describe (**D**) stays hold-to-show. **`** / **Esc** abort in-flight work immediately (mid-drag / queued repeats) — pause or exit still follows.
 
 ## U → 1 vs U → 2

@@ -37,6 +37,7 @@ EvidenceFn = Callable[..., None]
 PostEventFn = Callable[[tuple], None]
 LegendFn = Callable[[bool], None]
 PauseFn = Callable[[bool], None]
+ToggleTokenFn = Callable[[str | None], None]
 
 
 class LiveControlError(RuntimeError):
@@ -50,6 +51,9 @@ class NullOverlay:
         _ = playbook, anchor, state
 
     def hide(self) -> None:
+        return None
+
+    def pump(self) -> None:
         return None
 
 
@@ -76,9 +80,11 @@ class LiveControlController:
         post_event: PostEventFn | None = None,
         on_legend_change: LegendFn | None = None,
         on_pause_change: PauseFn | None = None,
+        on_toggle_token: ToggleTokenFn | None = None,
         cancel_event: threading.Event | None = None,
         log: LogFn | None = None,
         restore_cursor: bool = True,
+        async_actions: bool = False,
     ) -> None:
         self.overlay = overlay
         self.project_root = Path(project_root)
@@ -89,6 +95,8 @@ class LiveControlController:
         self.post_event = post_event
         self.on_legend_change = on_legend_change
         self.on_pause_change = on_pause_change
+        self.on_toggle_token = on_toggle_token
+        self.async_actions = bool(async_actions)
         self._log = log or (lambda _m, _l="info": None)
         self.restore_cursor = False
         self._settings_restore_cursor = restore_cursor
@@ -108,6 +116,11 @@ class LiveControlController:
         self.cancel_event = cancel_event if cancel_event is not None else threading.Event()
         self._held_actions: list[str] = []
         self._toggled_action: str | None = None
+        self._action_queue: list[str] = []
+        self._current_action: str | None = None
+        self._routine_remaining: list[str] = []
+        self._ui_thread = threading.current_thread()
+        self._worker: threading.Thread | None = None
 
     def summary(self) -> LiveControlSummary:
         return LiveControlSummary(
@@ -148,9 +161,13 @@ class LiveControlController:
         self.paused = False
         self.show_descriptors = False
         self._held_actions.clear()
-        self._toggled_action = None
+        self._set_toggled_action(None)
+        self._action_queue.clear()
+        self._current_action = None
+        self._routine_remaining.clear()
         self.cancel_event.clear()
         self.active = True
+        self._ui_thread = threading.current_thread()
         self._notify_legend()
         self._notify_pause()
         if self.panel_open:
@@ -187,7 +204,10 @@ class LiveControlController:
         self.evidence = False
         self.paused = False
         self.show_descriptors = False
-        self._toggled_action = None
+        self._set_toggled_action(None)
+        self._action_queue.clear()
+        self._current_action = None
+        self._routine_remaining.clear()
         self.overlay.hide()
         self._log(f"Live Control OFF ({reason})", "warn")
         self.playbook = None
@@ -200,11 +220,13 @@ class LiveControlController:
         self._notify_pause()
 
     def interrupt(self) -> None:
-        """Abort in-flight work and drop hold/toggle repeat queues (Esc / `)."""
+        """Abort in-flight work and drop hold/toggle/user queues (Esc / `)."""
 
         self.cancel_event.set()
         self._held_actions.clear()
-        self._toggled_action = None
+        self._set_toggled_action(None)
+        self._action_queue.clear()
+        self._routine_remaining.clear()
 
     def handle_token(self, token: str) -> bool:
         """Compatibility: treat as a key-down (fire immediately)."""
@@ -231,10 +253,8 @@ class LiveControlController:
             return self._toggle_action(action)
         if mode == FIRE_MODE_SPAM:
             self._hold_action(action)
-            self.cancel_event.clear()
-            return self._kick_held()
-        self.cancel_event.clear()
-        return self._run_action(action)
+            return self._request_action(action, repeat="hold")
+        return self._request_action(action)
 
     def run_action(self, action: str) -> None:
         """Headless entry for automation atoms: one action; failures raise instead of logging."""
@@ -256,10 +276,33 @@ class LiveControlController:
 
         if not self.active or self.paused or self.cancel_event.is_set():
             return
+        if self._action_queue:
+            self.drain_queue()
+            return
         if action in self._held_actions:
             self._kick_held(preferred=action)
             return
         if action == self._toggled_action:
+            self._kick_toggle()
+
+    def drain_queue(self) -> None:
+        """Run the next user-queued action, or resume toggle/spam if the queue is empty."""
+
+        if not self.active or self.paused or self.cancel_event.is_set() or self._busy:
+            return
+        if self._action_queue:
+            action = self._action_queue.pop(0)
+            repeat = None
+            if action in self._held_actions:
+                repeat = "hold"
+            elif action == self._toggled_action:
+                repeat = "toggle"
+            self._run_action(action, repeat=repeat)
+            return
+        if self._held_actions:
+            self._kick_held()
+            return
+        if self._toggled_action:
             self._kick_toggle()
 
     def toggle_pause(self) -> bool:
@@ -299,7 +342,7 @@ class LiveControlController:
             return True
         if self._toggled_action is not None:
             self._stop_toggle(reason="switch")
-        self._toggled_action = action
+        self._set_toggled_action(action)
         self.cancel_event.clear()
         label = action
         if self.playbook is not None:
@@ -309,14 +352,16 @@ class LiveControlController:
                     break
         self._log(f"Toggle ON · {label} — press again to stop.", "run")
         self._repaint(f"Toggle ON · {label}")
-        return self._kick_toggle()
+        return self._request_action(action, repeat="toggle")
 
     def _stop_toggle(self, *, reason: str = "operator") -> None:
         if self._toggled_action is None:
             return
         was = self._toggled_action
-        self._toggled_action = None
+        self._set_toggled_action(None)
         self.cancel_event.set()
+        self._action_queue = [item for item in self._action_queue if item != was]
+        self._routine_remaining.clear()
         label = was
         if self.playbook is not None:
             for routine in self.playbook.routines:
@@ -326,10 +371,37 @@ class LiveControlController:
         self._log(f"Toggle OFF · {label} ({reason})", "warn")
         self._repaint(f"Toggle OFF · {label}")
 
+    def _set_toggled_action(self, action: str | None) -> None:
+        self._toggled_action = action
+        token = None
+        if action and self.playbook is not None:
+            token = self.playbook.hotkey_for(action)
+        if self.on_toggle_token is not None:
+            try:
+                self.on_toggle_token(token)
+            except Exception:
+                pass
+
+    def _enqueue(self, action: str) -> None:
+        self._action_queue.append(action)
+        pending = len(self._action_queue)
+        self._log(f"Queued {action} (#{pending})", "info")
+        self._repaint(f"Queued {action} · {pending} waiting")
+
+    def _request_action(self, action: str, *, repeat: str | None = None) -> bool:
+        """Run now, or FIFO-queue if something is already in flight."""
+
+        if self._busy or self._action_queue:
+            self._enqueue(action)
+            return True
+        # Only clear cancel when actually starting fresh work — never while enqueueing.
+        self.cancel_event.clear()
+        return self._run_action(action, repeat=repeat)
+
     def _kick_held(self, preferred: str | None = None) -> bool:
         if self.paused or self.cancel_event.is_set() or not self._held_actions:
             return True
-        if self._busy:
+        if self._busy or self._action_queue:
             return True
         action = preferred if preferred in self._held_actions else self._held_actions[-1]
         return self._run_action(action, repeat="hold")
@@ -337,9 +409,34 @@ class LiveControlController:
     def _kick_toggle(self) -> bool:
         if self.paused or self.cancel_event.is_set() or not self._toggled_action:
             return True
-        if self._busy:
+        if self._busy or self._action_queue:
             return True
         return self._run_action(self._toggled_action, repeat="toggle")
+
+    def _visible_queue(self) -> tuple[str, ...]:
+        """Upcoming marks: remaining routine steps, then user-queued actions."""
+
+        return tuple([*self._routine_remaining, *self._action_queue])
+
+    def _schedule_next(self, action: str, *, repeat: str | None) -> None:
+        if not self.active or self.paused or self.cancel_event.is_set() or self.post_event is None:
+            return
+        try:
+            if self._action_queue:
+                self.post_event(("live_control_dequeue",))
+                return
+            should_requeue = False
+            if repeat == "hold" and action in self._held_actions:
+                should_requeue = True
+            if repeat == "toggle" and action == self._toggled_action:
+                should_requeue = True
+            if should_requeue:
+                self.post_event(("live_control_repeat", action))
+                return
+            if self._toggled_action and action != self._toggled_action:
+                self.post_event(("live_control_repeat", self._toggled_action))
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"Live Control repeat queue failed: {exc}", "warn")
 
     def _run_action(self, action: str, *, repeat: str | None = None) -> bool:
         if self.paused:
@@ -348,11 +445,47 @@ class LiveControlController:
         if self.cancel_event.is_set() and repeat is not None:
             return True
         if self._busy:
-            if repeat is None:
-                self._log("Live Control busy — wait for current action.", "warn")
+            self._enqueue(action)
             return True
+        self._busy = True
+        self._current_action = action
+        self._repaint(action)
+
+        # App path: never block the hotkey drain — worker finishes via live_control_done.
+        if self.async_actions and self.post_event is not None:
+            errors: list[BaseException] = []
+
+            def worker() -> None:
+                try:
+                    self._dispatch(action)
+                except BaseException as exc:  # noqa: BLE001
+                    errors.append(exc)
+                finally:
+                    payload = (
+                        "live_control_done",
+                        action,
+                        repeat,
+                        tuple(
+                            ("live_control", str(exc))
+                            if isinstance(exc, LiveControlError)
+                            else ("error", str(exc))
+                            for exc in errors
+                        ),
+                    )
+                    try:
+                        self.post_event(payload)
+                    except Exception as exc:  # noqa: BLE001
+                        self._busy = False
+                        self._current_action = None
+                        self._routine_remaining.clear()
+                        self._log(f"Live Control done queue failed: {exc}", "warn")
+
+            thread = threading.Thread(target=worker, name=f"lco-{action}", daemon=True)
+            self._worker = thread
+            thread.start()
+            return True
+
         try:
-            self._busy = True
             self._dispatch(action)
         except LiveControlError as exc:
             self._log(str(exc), "error")
@@ -360,23 +493,29 @@ class LiveControlController:
             self._log(f"Live Control action failed: {exc}", "error")
         finally:
             self._busy = False
-        should_requeue = False
-        if repeat == "hold" and action in self._held_actions:
-            should_requeue = True
-        if repeat == "toggle" and action == self._toggled_action:
-            should_requeue = True
-        if (
-            should_requeue
-            and self.active
-            and not self.paused
-            and not self.cancel_event.is_set()
-            and self.post_event is not None
-        ):
-            try:
-                self.post_event(("live_control_repeat", action))
-            except Exception as exc:  # noqa: BLE001
-                self._log(f"Live Control repeat queue failed: {exc}", "warn")
+            self._current_action = None
+            self._routine_remaining.clear()
+        self._schedule_next(action, repeat=repeat)
+        self._repaint("Ready" if not self._action_queue and not self._toggled_action else "…")
         return True
+
+    def finish_action(
+        self,
+        action: str,
+        *,
+        repeat: str | None = None,
+        errors: tuple[tuple[str, str], ...] = (),
+    ) -> None:
+        """UI-thread completion for async actuation (from live_control_done)."""
+
+        for _kind, message in errors:
+            self._log(message, "error")
+        self._busy = False
+        self._current_action = None
+        self._routine_remaining.clear()
+        self._worker = None
+        self._schedule_next(action, repeat=repeat)
+        self._repaint("Ready" if not self._action_queue and not self._toggled_action else "…")
 
     def _sleep_ms(self, ms: int) -> bool:
         """Interruptible pause. True if cancelled."""
@@ -385,7 +524,23 @@ class LiveControlController:
             return True
         if ms <= 0:
             return False
-        return self.cancel_event.wait(max(0.0, ms) / 1000.0)
+        deadline = time.monotonic() + ms / 1000.0
+        while time.monotonic() < deadline:
+            if self.cancel_event.is_set():
+                return True
+            remaining = deadline - time.monotonic()
+            if self.cancel_event.wait(min(0.05, max(0.0, remaining))):
+                return True
+        return False
+
+    def _settle_before_detect(self, scroll: dict[str, Any], *, gesture_ms: int) -> bool:
+        """Wait until list motion settles enough for buy-grid detect. True if cancelled."""
+
+        detect_ms = max(0, int(scroll.get("detect_settle_ms") or 0))
+        wait_ms = max(max(0, int(gesture_ms)), detect_ms)
+        if wait_ms <= 0:
+            return False
+        return self._sleep_ms(wait_ms)
 
     def run_scroll(self, direction: str, *, mode: str = "step", _retries: int = 0) -> None:
         """UI-thread entry for scroll step/fling."""
@@ -572,7 +727,7 @@ class LiveControlController:
         drag_fraction = float(scroll.get("fling_fraction") or 0.42)
         drag_steps = max(3, int(scroll.get("fling_steps") or 5))
         step_ms = max(1, int(scroll.get("fling_step_ms") or 4))
-        settle_ms = max(200, int(scroll.get("fling_settle_ms") or scroll.get("settle_ms") or 700))
+        gesture_ms = max(30, int(scroll.get("fling_settle_ms") or scroll.get("settle_ms") or 80))
         look_for = self._seek_look_for(tab)
         self._log(f"Tab home → fling top ({look_for or 'edge'})", "run")
         fling_list(
@@ -587,8 +742,7 @@ class LiveControlController:
             restore_cursor=False,
             stop=self.cancel_event,
         )
-        if settle_ms:
-            self._sleep_ms(settle_ms)
+        self._settle_before_detect(scroll, gesture_ms=gesture_ms)
 
     def _do_tab(self, tab: str) -> None:
         assert self.playbook is not None
@@ -730,7 +884,7 @@ class LiveControlController:
         if mode_norm == "fling":
             row_fraction = float(scroll.get("fling_fraction") or 0.42)
             hold_end_ms = 0
-            settle_ms = max(200, int(scroll.get("fling_settle_ms") or scroll.get("settle_ms") or 700))
+            settle_ms = max(30, int(scroll.get("fling_settle_ms") or scroll.get("settle_ms") or 80))
             drag_steps = max(3, int(scroll.get("fling_steps") or 5))
             step_ms = max(1, int(scroll.get("fling_step_ms") or 4))
             rows = 1
@@ -741,6 +895,7 @@ class LiveControlController:
                 "row_fraction": row_fraction,
                 "hold_end_ms": hold_end_ms,
                 "settle_ms": settle_ms,
+                "detect_settle_ms": int(scroll.get("detect_settle_ms") or 0),
                 "drag_steps": drag_steps,
                 "step_ms": step_ms,
                 "object_id": listing.id if listing else None,
@@ -767,8 +922,8 @@ class LiveControlController:
         else:
             rows = max(1, int(scroll.get("rows_per_key") or 1))
             row_fraction = float(scroll.get("drag_fraction") or scroll.get("row_fraction") or 0.15)
-            hold_end_ms = int(scroll.get("hold_end_ms") or 280)
-            settle_ms = max(0, int(scroll.get("settle_ms") or 400))
+            hold_end_ms = int(scroll.get("hold_end_ms") or 60)
+            settle_ms = max(30, int(scroll.get("settle_ms") or 80))
             drag_steps = max(2, int(scroll.get("drag_steps") or 6))
             step_ms = max(1, int(scroll.get("step_ms") or 8))
             detail = f"row {direction} ×{rows}"
@@ -779,6 +934,7 @@ class LiveControlController:
                 "row_fraction": row_fraction,
                 "hold_end_ms": hold_end_ms,
                 "settle_ms": settle_ms,
+                "detect_settle_ms": int(scroll.get("detect_settle_ms") or 0),
                 "drag_steps": drag_steps,
                 "step_ms": step_ms,
                 "object_id": listing.id if listing else None,
@@ -814,7 +970,7 @@ class LiveControlController:
             self._repaint("Interrupted")
             return
 
-        if settle_ms and self._sleep_ms(settle_ms):
+        if self._settle_before_detect(scroll, gesture_ms=settle_ms):
             self._log(f"{'Fling' if mode_norm == 'fling' else 'Scroll'} {direction} interrupted", "warn")
             self._repaint("Interrupted")
             return
@@ -873,12 +1029,17 @@ class LiveControlController:
         for index, step in enumerate(steps, start=1):
             if self.cancel_event.is_set():
                 self._log(f"Routine {label} interrupted at step {index}/{len(steps)}", "warn")
+                self._routine_remaining.clear()
                 self._repaint("Routine interrupted")
                 return
             if not is_actuation_action(step) or step.startswith("routine_"):
                 raise LiveControlError(f"routine {action} has invalid step {step!r}")
+            self._current_action = step
+            self._routine_remaining = list(steps[index:])
             self._log(f"Routine {label}: {index}/{len(steps)} → {step}", "run")
+            self._repaint(f"{label} · {index}/{len(steps)}")
             self._dispatch(step)
+        self._routine_remaining.clear()
         self._emit_evidence(
             action,
             "after",
@@ -1001,6 +1162,23 @@ class LiveControlController:
     def _repaint(self, status: str) -> None:
         if not self.active or self.playbook is None:
             return
+        # Worker threads must not touch Tk — marshal to the UI queue.
+        if self.post_event is not None and threading.current_thread() is not self._ui_thread:
+            try:
+                self.post_event(("live_control_repaint", status))
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"Live Control repaint queue failed: {exc}", "warn")
+            return
+        self._repaint_now(status)
+
+    def repaint_now(self, status: str = "") -> None:
+        """UI-thread paint of current/queue/toggle focus colors."""
+
+        self._repaint_now(status)
+
+    def _repaint_now(self, status: str) -> None:
+        if not self.active or self.playbook is None:
+            return
         _title, _hwnd, rect = self.get_anchor()
         if rect is None:
             self.exit(reason="anchor-lost")
@@ -1015,5 +1193,7 @@ class LiveControlController:
             show_descriptors=self.show_descriptors,
             paused=self.paused,
             toggled_action=self._toggled_action,
+            current_action=self._current_action,
+            queued_actions=self._visible_queue(),
         )
         self.overlay.show(self.playbook, rect, state)

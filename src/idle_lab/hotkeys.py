@@ -80,6 +80,8 @@ class HookFlags:
         self.live_control_paused = False
         # Set immediately on Esc / ` so in-flight scrolls can abort before the UI drains the queue.
         self.live_control_cancel = threading.Event()
+        # Hotkey token for the armed toggle (e.g. "A") — second press cancels on the hook thread.
+        self.live_control_toggle_token: str | None = None
         # True while Loops / Missions / collection / playback / etc. can be Esc-stopped.
         self.stoppable = False
         # Flight deck activate model: inactive = only activate VK; active = shell + hotkeys.
@@ -388,6 +390,11 @@ class InputHooks:
             elif vk not in self._menu_down:
                 self._menu_down.add(vk)
                 if token is not None:
+                    # Armed toggle (A): cancel on the hook thread so the pack aborts
+                    # before the UI queue finishes the current step.
+                    armed = self.state.live_control_toggle_token
+                    if armed and token == armed:
+                        self.state.live_control_cancel.set()
                     self.events.put(("live_control_key", token, "down"))
         elif (
             self.state.flight_deck_active

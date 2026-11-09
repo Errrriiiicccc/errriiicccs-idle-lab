@@ -159,6 +159,7 @@ class LiveControlScrollModelTests(unittest.TestCase):
         with (
             patch("idle_lab.live_control.controller.drag_list") as drag,
             patch.object(ctrl, "_relayout_from_screen", side_effect=fake_relayout) as relayout,
+            patch.object(ctrl, "_sleep_ms", return_value=False),
             patch.object(ctrl, "_repaint"),
         ):
             ctrl._do_scroll("down", mode="step")
@@ -219,6 +220,66 @@ class LiveControlScrollModelTests(unittest.TestCase):
             self.assertTrue(ctrl.handle_key("Q", phase="up"))
             self.assertEqual(tab.call_count, 1)
 
+    def test_keys_queue_while_busy(self) -> None:
+        ctrl = self._controller()
+        ctrl._busy = True
+        with patch.object(ctrl, "_repaint"):
+            self.assertTrue(ctrl.handle_key("1", phase="down"))
+            self.assertTrue(ctrl.handle_key("W", phase="down"))
+        self.assertEqual(ctrl._action_queue, ["buy_1", "tab_defense"])
+        self.assertEqual(ctrl._visible_queue(), ("buy_1", "tab_defense"))
+
+    def test_scroll_settle_is_short(self) -> None:
+        ctrl = self._controller()
+        scroll = ctrl._scroll_params("attack")
+        self.assertLessEqual(int(scroll.get("settle_ms") or 0), 100)
+        self.assertLessEqual(int(scroll.get("fling_settle_ms") or 0), 100)
+        self.assertGreaterEqual(int(scroll.get("settle_ms") or 0), 30)
+        self.assertGreaterEqual(int(scroll.get("detect_settle_ms") or 0), 150)
+
+    def test_async_action_finishes_via_done_event(self) -> None:
+        posted: list[tuple] = []
+        tokens: list[str | None] = []
+        ctrl = self._controller()
+        ctrl.post_event = posted.append
+        ctrl.async_actions = True
+        ctrl.on_toggle_token = tokens.append
+        with patch.object(ctrl, "_do_routine") as routine, patch.object(ctrl, "_repaint"):
+            self.assertTrue(ctrl.handle_key("A", phase="down"))
+            self.assertEqual(tokens[-1], "A")
+            self.assertTrue(ctrl._busy)
+            self.assertIsNotNone(ctrl._worker)
+            assert ctrl._worker is not None
+            ctrl._worker.join(timeout=2.0)
+            self.assertFalse(ctrl._worker.is_alive())
+            routine.assert_called_once()
+            self.assertEqual(posted[0][0], "live_control_done")
+            ctrl.finish_action(str(posted[0][1]), repeat=posted[0][2], errors=posted[0][3])
+            self.assertFalse(ctrl._busy)
+            self.assertEqual(posted[1][0], "live_control_repeat")
+
+    def test_toggle_off_sets_cancel_immediately(self) -> None:
+        ctrl = self._controller()
+        tokens: list[str | None] = []
+        ctrl.on_toggle_token = tokens.append
+        with patch.object(ctrl, "_do_routine"), patch.object(ctrl, "_repaint"):
+            self.assertTrue(ctrl.handle_key("A", phase="down"))
+            self.assertEqual(ctrl._toggled_action, "routine_health_damage_claim")
+            self.assertEqual(tokens[-1], "A")
+            self.assertTrue(ctrl.handle_key("A", phase="down"))
+        self.assertIsNone(ctrl._toggled_action)
+        self.assertTrue(ctrl.cancel_event.is_set())
+        self.assertIsNone(tokens[-1])
+
+    def test_enqueue_does_not_clear_cancel(self) -> None:
+        ctrl = self._controller()
+        ctrl._busy = True
+        ctrl.cancel_event.set()
+        with patch.object(ctrl, "_repaint"):
+            self.assertTrue(ctrl.handle_key("1", phase="down"))
+        self.assertTrue(ctrl.cancel_event.is_set())
+        self.assertEqual(ctrl._action_queue, ["buy_1"])
+
     def test_tab_switch_homes_with_fling(self) -> None:
         ctrl = self._controller()
         ctrl.tab = "defense"
@@ -259,6 +320,7 @@ class LiveControlScrollModelTests(unittest.TestCase):
         with (
             patch("idle_lab.live_control.controller.fling_list") as fling,
             patch.object(ctrl, "_relayout_from_screen", side_effect=fake_relayout),
+            patch.object(ctrl, "_sleep_ms", return_value=False),
             patch.object(ctrl, "_repaint"),
         ):
             ctrl._do_scroll("up", mode="fling")
@@ -374,6 +436,7 @@ class LiveControlScrollModelTests(unittest.TestCase):
                 "_relayout_from_screen",
                 return_value=BuyGridDetection(True, [], "ok", (), None),
             ),
+            patch.object(ctrl, "_sleep_ms", return_value=False),
             patch.object(ctrl, "_repaint"),
             patch.object(ctrl, "_emit_evidence"),
         ):

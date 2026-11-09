@@ -42,6 +42,16 @@ _ROUTINE_OUTLINE = "#90E0C8"
 _ROUTINE_FILL = "#102018"
 _GLYPH = "#F2F6FA"
 
+# Activity focus (current / queued / idle-while-busy)
+_CURRENT_OUTLINE = "#7CF0B8"
+_CURRENT_FILL = "#184838"
+_QUEUED_OUTLINE = "#E0A050"
+_QUEUED_FILL = "#2A1C08"
+_IDLE_OUTLINE = "#4A5058"
+_IDLE_FILL = "#141618"
+_IDLE_GLYPH = "#7A8088"
+_QUEUE_NUM = "#F0C070"
+
 # Descriptor diagram layer (hold D)
 _DIM_FILL = "#0A0C10"
 _DESC_LINE = "#C8D4E0"
@@ -53,6 +63,8 @@ _DESC_TEXT = "#F2F6FA"
 _PAUSED_OUTLINE = "#4A5058"
 _PAUSED_FILL = "#141618"
 _PAUSED_GLYPH = "#7A8088"
+
+_BLINK_MS = 420
 
 
 @dataclass
@@ -66,6 +78,8 @@ class LiveControlOverlayState:
     show_descriptors: bool = False
     paused: bool = False
     toggled_action: str | None = None
+    current_action: str | None = None
+    queued_actions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -201,6 +215,8 @@ class LiveControlOverlay:
         self._anchor: Rect | None = None
         self._playbook: LiveControlPlaybook | None = None
         self._state = LiveControlOverlayState()
+        self._blink_on = True
+        self._blink_job: str | None = None
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
@@ -212,6 +228,7 @@ class LiveControlOverlay:
         self.win.update_idletasks()
 
     def destroy(self) -> None:
+        self._stop_blink()
         try:
             self.win.destroy()
         except Exception:
@@ -222,6 +239,7 @@ class LiveControlOverlay:
         return self._shown
 
     def hide(self) -> None:
+        self._stop_blink()
         self.canvas.delete("all")
         if self._shown:
             self.win.withdraw()
@@ -232,6 +250,10 @@ class LiveControlOverlay:
         self._anchor = anchor
         self._state = state
         self._sync_geometry()
+        if state.toggled_action and not state.paused:
+            self._ensure_blink()
+        else:
+            self._stop_blink()
         if not self._shown:
             self.win.deiconify()
             self.win.update_idletasks()
@@ -240,6 +262,23 @@ class LiveControlOverlay:
             win32_api.raise_topmost(hwnd)
             self._shown = True
         self._paint()
+        self._flush()
+
+    def pump(self) -> None:
+        """Process pending Tk timers/paints so blink + focus colors stay live."""
+
+        try:
+            self.root.update_idletasks()
+            self.root.update()
+        except tk.TclError:
+            pass
+
+    def _flush(self) -> None:
+        try:
+            self.canvas.update_idletasks()
+            self.win.update_idletasks()
+        except tk.TclError:
+            pass
 
     def update(self, *, anchor: Rect | None = None, state: LiveControlOverlayState | None = None) -> None:
         if anchor is not None:
@@ -249,6 +288,7 @@ class LiveControlOverlay:
         if self._shown and self._playbook is not None and self._anchor is not None:
             self._sync_geometry()
             self._paint()
+            self._flush()
 
     def _sync_geometry(self) -> None:
         screen = win32_api.virtual_screen()
@@ -273,6 +313,66 @@ class LiveControlOverlay:
         bottom = self._anchor.bottom - self._vs.top - _ANCHOR_INSET
         return left, top, right, bottom
 
+    def _ensure_blink(self) -> None:
+        if self._blink_job is not None:
+            return
+        self._blink_job = self.win.after(_BLINK_MS, self._blink_tick)
+
+    def _stop_blink(self) -> None:
+        if self._blink_job is not None:
+            try:
+                self.win.after_cancel(self._blink_job)
+            except Exception:
+                pass
+            self._blink_job = None
+        self._blink_on = True
+
+    def _blink_tick(self) -> None:
+        self._blink_job = None
+        if not self._shown or self._state.paused or not self._state.toggled_action:
+            return
+        self._blink_on = not self._blink_on
+        self._paint()
+        self._flush()
+        self._ensure_blink()
+
+    def _focus_active(self, state: LiveControlOverlayState) -> bool:
+        return bool(state.current_action or state.queued_actions or state.toggled_action)
+
+    def _queue_index(self, action: str, state: LiveControlOverlayState) -> int | None:
+        for index, item in enumerate(state.queued_actions, start=1):
+            if item == action:
+                return index
+        return None
+
+    def _activity_style(
+        self,
+        action: str,
+        state: LiveControlOverlayState,
+        *,
+        default_outline: str,
+        default_fill: str,
+        default_glyph: str = _GLYPH,
+    ) -> tuple[str, str, str, int | None]:
+        """Return outline, fill, glyph, optional queue number for a mark."""
+
+        if state.paused:
+            return _PAUSED_OUTLINE, _PAUSED_FILL, _PAUSED_GLYPH, None
+        if not self._focus_active(state):
+            return default_outline, default_fill, default_glyph, None
+        if action == state.current_action:
+            return _CURRENT_OUTLINE, _CURRENT_FILL, _GLYPH, None
+        if action == state.toggled_action:
+            # Armed toggle: green outline stays; fill pulses active ↔ resting
+            # (not gray/disabled — still "could fire", just not the hot beat).
+            if self._blink_on:
+                return _CURRENT_OUTLINE, _CURRENT_FILL, _GLYPH, None
+            return _CURRENT_OUTLINE, default_fill, default_glyph, None
+        queue_n = self._queue_index(action, state)
+        if queue_n is not None:
+            return _QUEUED_OUTLINE, _QUEUED_FILL, _GLYPH, queue_n
+        return _IDLE_OUTLINE, _IDLE_FILL, _IDLE_GLYPH, None
+
     def _paint(self) -> None:
         self.canvas.delete("all")
         pb = self._playbook
@@ -281,7 +381,6 @@ class LiveControlOverlay:
             return
         state = self._state
         paused = bool(state.paused)
-        glyph = _PAUSED_GLYPH if paused else _GLYPH
         describe = bool(state.show_descriptors) and not paused
         show_keys = describe
 
@@ -290,114 +389,125 @@ class LiveControlOverlay:
             self._paint_descriptors(pb, state)
 
         for tab in pb.tabs.values():
-            key = pb.hotkey_for(f"tab_{tab.id}") or "?"
+            action = f"tab_{tab.id}"
+            key = pb.hotkey_for(action) or "?"
             active = state.panel_open and state.tab == tab.id
-            if paused:
-                outline, fill = _PAUSED_OUTLINE, _PAUSED_FILL
-            else:
-                outline = _TAB_ACTIVE_OUTLINE if active else _TAB_OUTLINE
-                fill = _TAB_ACTIVE_FILL if active else _TAB_FILL
-            self._key_circle(tab.nx, tab.ny, key, outline=outline, fill=fill, glyph=glyph)
+            default_outline = _TAB_ACTIVE_OUTLINE if active else _TAB_OUTLINE
+            default_fill = _TAB_ACTIVE_FILL if active else _TAB_FILL
+            outline, fill, glyph, queue_n = self._activity_style(
+                action, state, default_outline=default_outline, default_fill=default_fill
+            )
+            self._key_circle(tab.nx, tab.ny, key, outline=outline, fill=fill, glyph=glyph, queue_n=queue_n)
 
         if state.panel_open and state.tab:
-            if paused:
-                buy_outline, buy_fill = _PAUSED_OUTLINE, _PAUSED_FILL
-            else:
-                buy_outline = _BUY_ALIGNED if state.aligned else _BUY_AMBER
-                buy_fill = _BUY_FILL
-            if state.live_slots:
-                for slot in state.live_slots:
-                    key = pb.hotkey_for(f"buy_{slot.index}") or str(slot.index)
-                    self._key_circle(slot.nx, slot.ny, key, outline=buy_outline, fill=buy_fill, glyph=glyph)
-            else:
-                for slot in pb.buy_slots(state.tab):
-                    key = pb.hotkey_for(f"buy_{slot.index}") or str(slot.index)
-                    self._key_circle(slot.nx, slot.ny, key, outline=buy_outline, fill=buy_fill, glyph=glyph)
+            default_buy = _BUY_ALIGNED if state.aligned else _BUY_AMBER
+            slots = state.live_slots or tuple(pb.buy_slots(state.tab))
+            for slot in slots:
+                action = f"buy_{slot.index}"
+                key = pb.hotkey_for(action) or str(slot.index)
+                outline, fill, glyph, queue_n = self._activity_style(
+                    action, state, default_outline=default_buy, default_fill=_BUY_FILL
+                )
+                self._key_circle(slot.nx, slot.ny, key, outline=outline, fill=fill, glyph=glyph, queue_n=queue_n)
             scroll = pb.scroll
-            scroll_outline = _PAUSED_OUTLINE if paused else _SCROLL_OUTLINE
-            scroll_fill = _PAUSED_FILL if paused else _SCROLL_FILL
-            self._action_badge(
-                float(scroll.get("up_badge_nx") or 0.94),
-                float(scroll.get("up_badge_ny") or 0.655),
-                key=pb.hotkey_for("scroll_up") or "R",
-                icon="▲",
-                outline=scroll_outline,
-                fill=scroll_fill,
-                show_hotkeys=show_keys,
-                glyph=glyph,
-            )
-            self._action_badge(
-                float(scroll.get("down_badge_nx") or 0.94),
-                float(scroll.get("down_badge_ny") or 0.830),
-                key=pb.hotkey_for("scroll_down") or "F",
-                icon="▼",
-                outline=scroll_outline,
-                fill=scroll_fill,
-                show_hotkeys=show_keys,
-                glyph=glyph,
-            )
-            self._scroll_fling_badge(
-                float(scroll.get("fling_up_badge_nx") or 0.94),
-                float(scroll.get("fling_up_badge_ny") or 0.615),
-                key=pb.hotkey_for("fling_up") or "T",
-                direction="up",
-                show_hotkeys=show_keys,
-                paused=paused,
-                glyph=glyph,
-            )
-            self._scroll_fling_badge(
-                float(scroll.get("fling_down_badge_nx") or 0.94),
-                float(scroll.get("fling_down_badge_ny") or 0.870),
-                key=pb.hotkey_for("fling_down") or "G",
-                direction="down",
-                show_hotkeys=show_keys,
-                paused=paused,
-                glyph=glyph,
-            )
+            for action, nx_key, ny_key, icon, default_ny in (
+                ("scroll_up", "up_badge_nx", "up_badge_ny", "▲", 0.655),
+                ("scroll_down", "down_badge_nx", "down_badge_ny", "▼", 0.830),
+            ):
+                outline, fill, glyph, queue_n = self._activity_style(
+                    action, state, default_outline=_SCROLL_OUTLINE, default_fill=_SCROLL_FILL
+                )
+                self._action_badge(
+                    float(scroll.get(nx_key) or 0.94),
+                    float(scroll.get(ny_key) or default_ny),
+                    key=pb.hotkey_for(action) or "?",
+                    icon=icon,
+                    outline=outline,
+                    fill=fill,
+                    show_hotkeys=show_keys,
+                    glyph=glyph,
+                    queue_n=queue_n,
+                )
+            for action, nx_key, ny_key, direction, default_ny in (
+                ("fling_up", "fling_up_badge_nx", "fling_up_badge_ny", "up", 0.615),
+                ("fling_down", "fling_down_badge_nx", "fling_down_badge_ny", "down", 0.870),
+            ):
+                outline, fill, glyph, queue_n = self._activity_style(
+                    action, state, default_outline=_FLING_OUTLINE, default_fill=_FLING_FILL
+                )
+                self._scroll_fling_badge(
+                    float(scroll.get(nx_key) or 0.94),
+                    float(scroll.get(ny_key) or default_ny),
+                    key=pb.hotkey_for(action) or "?",
+                    direction=direction,
+                    show_hotkeys=show_keys,
+                    outline=outline,
+                    fill=fill,
+                    glyph=glyph,
+                    queue_n=queue_n,
+                )
 
         stat = pb.stat_collect
+        outline, fill, glyph, queue_n = self._activity_style(
+            "stat_collect", state, default_outline=_STAT_OUTLINE, default_fill=_STAT_FILL
+        )
         self._stat_badge(
             float(stat.get("nx") or 0.15),
             float(stat.get("ny") or 0.09),
             key=pb.hotkey_for("stat_collect") or "V",
-            outline=_PAUSED_OUTLINE if paused else _STAT_OUTLINE,
-            fill=_PAUSED_FILL if paused else _STAT_FILL,
+            outline=outline,
+            fill=fill,
             show_hotkeys=show_keys,
             glyph=glyph,
+            queue_n=queue_n,
         )
         chrome = pb.chrome
+        outline, fill, glyph, queue_n = self._activity_style(
+            "claim_gem", state, default_outline=_CLAIM_OUTLINE, default_fill=_CLAIM_FILL
+        )
         self._claim_badge(
             float(chrome.get("claim_badge_nx") or 0.20),
             float(chrome.get("claim_badge_ny") or 0.50),
             key=pb.hotkey_for("claim_gem") or "C",
-            outline=_PAUSED_OUTLINE if paused else _CLAIM_OUTLINE,
-            fill=_PAUSED_FILL if paused else _CLAIM_FILL,
+            outline=outline,
+            fill=fill,
             show_hotkeys=show_keys,
             glyph=glyph,
+            queue_n=queue_n,
+        )
+        outline, fill, glyph, queue_n = self._activity_style(
+            "refresh", state, default_outline=_REFRESH_OUTLINE, default_fill=_REFRESH_FILL
         )
         self._action_badge(
             float(chrome.get("refresh_badge_nx") or 0.92),
             float(chrome.get("refresh_badge_ny") or 0.50),
             key=pb.hotkey_for("refresh") or "B",
             icon="↻",
-            outline=_PAUSED_OUTLINE if paused else _REFRESH_OUTLINE,
-            fill=_PAUSED_FILL if paused else _REFRESH_FILL,
+            outline=outline,
+            fill=fill,
             show_hotkeys=show_keys,
             glyph=glyph,
             icon_font=("Segoe UI", 14, "bold"),
+            queue_n=queue_n,
         )
         for routine in pb.routines:
-            armed = (not paused) and state.toggled_action == routine.action
+            outline, fill, glyph, queue_n = self._activity_style(
+                routine.action,
+                state,
+                default_outline=_ROUTINE_OUTLINE,
+                default_fill=_ROUTINE_FILL,
+            )
             self._action_badge(
                 routine.nx,
                 routine.ny,
                 key=pb.hotkey_for(routine.action) or "?",
                 icon=routine.icon or "▸▸",
-                outline=_PAUSED_OUTLINE if paused else (_TAB_ACTIVE_OUTLINE if armed else _ROUTINE_OUTLINE),
-                fill=_PAUSED_FILL if paused else (_TAB_ACTIVE_FILL if armed else _ROUTINE_FILL),
+                outline=outline,
+                fill=fill,
                 show_hotkeys=show_keys,
                 glyph=glyph,
                 icon_font=("Segoe UI", 11, "bold"),
+                queue_n=queue_n,
             )
 
     def _paint_dim(self) -> None:
@@ -626,6 +736,18 @@ class LiveControlOverlay:
         )
         self.canvas.create_text(cx, cy, text=text, fill=_DESC_TEXT, font=font)
 
+    def _draw_queue_n(self, x: float, y: float, radius: int, queue_n: int | None) -> None:
+        if queue_n is None:
+            return
+        self.canvas.create_text(
+            x + radius + 8,
+            y - radius + 2,
+            text=str(queue_n),
+            fill=_QUEUE_NUM,
+            font=("Segoe UI", 10, "bold"),
+            anchor="w",
+        )
+
     def _key_circle(
         self,
         nx: float,
@@ -636,11 +758,13 @@ class LiveControlOverlay:
         fill: str,
         glyph: str = _GLYPH,
         radius: int = _MARKER_R,
+        queue_n: int | None = None,
     ) -> None:
         x, y = self._to_canvas(nx, ny)
         r = radius
         self.canvas.create_oval(x - r, y - r, x + r, y + r, outline=outline, fill=fill, width=2)
         self.canvas.create_text(x, y, text=str(key), fill=glyph, font=("Segoe UI", 11, "bold"))
+        self._draw_queue_n(x, y, r, queue_n)
 
     def _action_badge(
         self,
@@ -655,6 +779,7 @@ class LiveControlOverlay:
         glyph: str = _GLYPH,
         radius: int = _MARKER_R,
         icon_font: tuple[str, int, str] = ("Segoe UI", 12, "bold"),
+        queue_n: int | None = None,
     ) -> None:
         """Non-click action: icon by default; hold D flips the mark to its hotkey."""
 
@@ -664,6 +789,7 @@ class LiveControlOverlay:
         mark = str(key) if show_hotkeys else icon
         font = ("Segoe UI", 11, "bold") if show_hotkeys else icon_font
         self.canvas.create_text(x, y, text=mark, fill=glyph, font=font)
+        self._draw_queue_n(x, y, r, queue_n)
 
     def _stat_badge(
         self,
@@ -675,6 +801,7 @@ class LiveControlOverlay:
         fill: str,
         show_hotkeys: bool,
         glyph: str = _GLYPH,
+        queue_n: int | None = None,
     ) -> None:
         """Stat collect: clipboard/notepad glyph (or hotkey while holding D)."""
 
@@ -683,6 +810,7 @@ class LiveControlOverlay:
         self.canvas.create_oval(x - r, y - r, x + r, y + r, outline=outline, fill=fill, width=2)
         if show_hotkeys:
             self.canvas.create_text(x, y, text=str(key), fill=glyph, font=("Segoe UI", 11, "bold"))
+            self._draw_queue_n(x, y, r, queue_n)
             return
         # Clipboard body + clip tab.
         self.canvas.create_rectangle(x - 7, y - 5, x + 7, y + 8, outline=glyph, width=1.5)
@@ -690,6 +818,7 @@ class LiveControlOverlay:
         self.canvas.create_line(x - 4, y - 1, x + 4, y - 1, fill=glyph, width=1)
         self.canvas.create_line(x - 4, y + 2, x + 4, y + 2, fill=glyph, width=1)
         self.canvas.create_line(x - 4, y + 5, x + 2, y + 5, fill=glyph, width=1)
+        self._draw_queue_n(x, y, r, queue_n)
 
     def _claim_badge(
         self,
@@ -701,6 +830,7 @@ class LiveControlOverlay:
         fill: str,
         show_hotkeys: bool,
         glyph: str = _GLYPH,
+        queue_n: int | None = None,
     ) -> None:
         """Timed gem CLAIM: diamond glyph (or hotkey while holding D)."""
 
@@ -709,6 +839,7 @@ class LiveControlOverlay:
         self.canvas.create_oval(x - r, y - r, x + r, y + r, outline=outline, fill=fill, width=2)
         if show_hotkeys:
             self.canvas.create_text(x, y, text=str(key), fill=glyph, font=("Segoe UI", 11, "bold"))
+            self._draw_queue_n(x, y, r, queue_n)
             return
         self.canvas.create_polygon(
             x,
@@ -723,6 +854,7 @@ class LiveControlOverlay:
             fill="",
             width=1.5,
         )
+        self._draw_queue_n(x, y, r, queue_n)
 
     def _scroll_fling_badge(
         self,
@@ -732,18 +864,19 @@ class LiveControlOverlay:
         key: str,
         direction: str,
         show_hotkeys: bool,
-        paused: bool = False,
+        outline: str = _FLING_OUTLINE,
+        fill: str = _FLING_FILL,
         glyph: str = _GLYPH,
+        queue_n: int | None = None,
     ) -> None:
         """Fling = stacked chevrons (or the hotkey letter while D is held)."""
 
         x, y = self._to_canvas(nx, ny)
         r = _FLING_MARKER_R
-        outline = _PAUSED_OUTLINE if paused else _FLING_OUTLINE
-        fill = _PAUSED_FILL if paused else _FLING_FILL
         self.canvas.create_oval(x - r, y - r, x + r, y + r, outline=outline, fill=fill, width=2)
         if show_hotkeys:
             self.canvas.create_text(x, y, text=str(key), fill=glyph, font=("Segoe UI", 11, "bold"))
+            self._draw_queue_n(x, y, r, queue_n)
             return
         chevron = "▲" if direction == "up" else "▼"
         font = ("Segoe UI", 9, "bold")
@@ -751,3 +884,4 @@ class LiveControlOverlay:
         self.canvas.create_text(x, y - gap, text=chevron, fill=glyph, font=font)
         self.canvas.create_text(x, y, text=chevron, fill=glyph, font=font)
         self.canvas.create_text(x, y + gap, text=chevron, fill=glyph, font=font)
+        self._draw_queue_n(x, y, r, queue_n)

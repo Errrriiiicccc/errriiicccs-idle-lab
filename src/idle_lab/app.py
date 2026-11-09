@@ -202,9 +202,11 @@ class App(ctk.CTk):
             post_event=self.hooks.events.put,
             on_legend_change=self._live_control_legend_changed,
             on_pause_change=self._live_control_pause_changed,
+            on_toggle_token=self._live_control_toggle_token_changed,
             cancel_event=self.hooks.state.live_control_cancel,
             log=self._live_control_log,
             restore_cursor=bool(self.settings.restore_cursor),
+            async_actions=True,
         )
         self.flight_deck = FlightDeckWindow(
             self,
@@ -1423,6 +1425,9 @@ class App(ctk.CTk):
             return
         self.flight_deck.set_live_control_legend(bool(show_descriptors))
 
+    def _live_control_toggle_token_changed(self, token: str | None) -> None:
+        self.hooks.state.live_control_toggle_token = token
+
     def _live_control_pause_changed(self, paused: bool) -> None:
         self.hooks.state.live_control_paused = bool(paused)
         if getattr(self, "flight_deck", None) is None:
@@ -1526,6 +1531,7 @@ class App(ctk.CTk):
         self.live_control.exit(reason=reason)
         self.hooks.state.live_control_active = False
         self.hooks.state.live_control_paused = False
+        self.hooks.state.live_control_toggle_token = None
         self.flight_deck.set_live_control_active(False)
         self._sync_shell_hook_flags()
         if self._live_control_owns_observation:
@@ -2396,6 +2402,22 @@ class App(ctk.CTk):
                 elif kind == "live_control_repeat":
                     if self.live_control.active:
                         self.live_control.continue_repeat(str(event[1]))
+                elif kind == "live_control_dequeue":
+                    if self.live_control.active:
+                        self.live_control.drain_queue()
+                elif kind == "live_control_done":
+                    if self.live_control.active:
+                        done_action = str(event[1]) if len(event) > 1 else ""
+                        done_repeat = event[2] if len(event) > 2 else None
+                        done_errors = event[3] if len(event) > 3 else ()
+                        self.live_control.finish_action(
+                            done_action,
+                            repeat=str(done_repeat) if done_repeat is not None else None,
+                            errors=tuple(done_errors) if done_errors else (),
+                        )
+                elif kind == "live_control_repaint":
+                    if self.live_control.active:
+                        self.live_control.repaint_now(str(event[1]) if len(event) > 1 else "")
                 elif kind == "live_control_pause_toggle":
                     if self.live_control.active:
                         self.live_control.toggle_pause()
