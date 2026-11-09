@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sys
 
+from idle_lab.launch_flags import pop_auto_anchor_flag
+
 
 def main(argv: list[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
@@ -24,9 +26,13 @@ def main(argv: list[str] | None = None) -> None:
 
         raise SystemExit(harness_main(args[1:]))
 
+    args, auto_anchor = pop_auto_anchor_flag(args)
+    if args:
+        raise SystemExit(f"Unknown idle_lab args: {' '.join(args)}")
+
     from idle_lab.app import main as app_main
 
-    app_main()
+    app_main(auto_anchor=auto_anchor)
 
 
 if __name__ == "__main__":

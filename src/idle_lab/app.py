@@ -66,6 +66,7 @@ from idle_lab.humanize import HUMANIZE_LEVELS, HumanizeProfile, normalize_level
 from idle_lab.image_viewer import open_image_viewer
 from idle_lab.lab_mode import SuperviseGate, humanize_level_tooltip, normalize_lab_mode
 from idle_lab.lab_watch import dir_fingerprint
+from idle_lab.launch_flags import restart_command
 from idle_lab.models import ClickPoint, Preset, normalized_to_screen, screen_to_normalized
 from idle_lab.live_control import LiveControlController, LiveControlError
 from idle_lab.live_control.overlay import LiveControlOverlay
@@ -111,8 +112,9 @@ STATUS_COLOR = {
 
 
 class App(ctk.CTk):
-    def __init__(self) -> None:
+    def __init__(self, *, auto_anchor: bool = False) -> None:
         super().__init__()
+        self._auto_anchor_on_boot = bool(auto_anchor)
         self.title("Errriiiccc's Idle Lab")
         self.geometry("1100x920")
         self.minsize(900, 700)
@@ -284,7 +286,7 @@ class App(ctk.CTk):
         # Deck-first: hide Lab without withdraw/iconify (both hide Toplevel children
         # like the flight deck on Windows). Alpha + off-screen keeps a taskbar button.
         self._lab_visible = False
-        self.after(0, self._start_deck_first_inactive)
+        self.after(0, self._start_deck_first_boot)
 
     def _build(self) -> None:
         self.status_label = ctk.CTkLabel(self, text="", anchor="w", justify="left", wraplength=980)
@@ -1026,9 +1028,26 @@ class App(ctk.CTk):
             lab_visible=self._is_lab_visible(),
         )
 
-    def _start_deck_first_inactive(self) -> None:
+    def _start_deck_first_boot(self) -> None:
         self._hide_lab(quiet=True)
         self.update_idletasks()
+        if self._auto_anchor_on_boot:
+            self._try_auto_anchor_on_boot()
+            return
+        self._enter_inactive()
+
+    def _try_auto_anchor_on_boot(self) -> None:
+        """Restart path: skip Enter and rebind last title when it is still live."""
+
+        self._refresh_boot_candidate()
+        hwnd = self._boot_candidate_hwnd
+        if hwnd:
+            self._apply_anchor(int(hwnd))
+            return
+        if self._boot_offer_title:
+            # Last title remembered but window gone — surface the unanchored prompt.
+            self._activate_flight_deck()
+            return
         self._enter_inactive()
 
     def _enter_inactive(self) -> None:
@@ -3814,7 +3833,11 @@ class App(ctk.CTk):
             self._status("Nothing running — already Idle.", "info")
 
     def _restart_lab(self) -> None:
-        """Stop runners, save settings, relaunch process, exit (code changes)."""
+        """Stop runners, save settings, relaunch process, exit (code changes).
+
+        Successor gets ``--auto-anchor`` so R / Restart rebinds the last window
+        without the Enter confirm step.
+        """
 
         self._stop_all()
         try:
@@ -3834,7 +3857,7 @@ class App(ctk.CTk):
             )
         try:
             subprocess.Popen(
-                [sys.executable, "-m", "idle_lab"],
+                restart_command(sys.executable, auto_anchor=True),
                 cwd=str(root),
                 close_fds=True,
                 creationflags=creationflags,
@@ -4040,14 +4063,14 @@ class App(ctk.CTk):
         )
 
 
-def main() -> None:
+def main(*, auto_anchor: bool = False) -> None:
     if sys.platform == "win32" and not try_acquire_single_instance():
         # Existing process was signaled to come forward.
         return
     win32_api.set_dpi_aware()
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
-    app = App()
+    app = App(auto_anchor=auto_anchor)
     try:
         app.mainloop()
     finally:

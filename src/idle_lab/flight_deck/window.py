@@ -719,9 +719,12 @@ class FlightDeckWindow(ctk.CTkToplevel):
                 color = _WARN if self._paused else _OK
                 self.run_label.configure(text=self._status_text, text_color=color)
             elif not self._lab_visible:
-                self.run_label.configure(text="I = open Lab · R = restart", text_color=_MUTED)
+                self.run_label.configure(
+                    text="I = open Lab · R = restart (re-anchors)",
+                    text_color=_MUTED,
+                )
             else:
-                self.run_label.configure(text="R = restart", text_color=_MUTED)
+                self.run_label.configure(text="R = restart (re-anchors)", text_color=_MUTED)
             if not self.run_label.winfo_ismapped():
                 self.run_label.pack(fill="x", pady=(4, 0))
             if not self.menu_frame.winfo_ismapped():
