@@ -179,8 +179,8 @@
                     {
                       "id": "loops.events.real.gameplay.stat_collect",
                       "key": "5",
-                      "label": "Stat collect",
-                      "description": "One CSV row now (Start selected). Interval every 30s when in a pool.",
+                      "label": "Persistent state",
+                      "description": "Read tool_export → variables + CSV (Start selected). Interval every 30s when in a pool.",
                       "ref": { "kind": "event", "id": "stat_collect" }
                     },
                     {

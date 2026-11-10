@@ -80,6 +80,8 @@ class MoleculeLcoBridge:
             rebinding_id=self._rebinding_id,
             show_titles=self._show_titles,
         )
+        # Overlay raise_topmost on each paint; pull marks back above it.
+        self.layer.raise_all()
         return remaps
 
     def clear(self) -> None:

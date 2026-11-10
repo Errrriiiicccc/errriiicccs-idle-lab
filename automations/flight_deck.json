@@ -108,8 +108,8 @@
       "children": [
         {
           "key": "1",
-          "label": "Stat collect",
-          "description": "One CSV instrumentation row now.",
+          "label": "Persistent state",
+          "description": "tool_export snapshot → variables + CSV now.",
           "action": { "type": "start_event", "event": "stat_collect" }
         },
         {

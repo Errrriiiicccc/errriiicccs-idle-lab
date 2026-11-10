@@ -1,0 +1,18 @@
+{
+  "id": "mol_123",
+  "title": "123",
+  "version": 1,
+  "description": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires attack tab).",
+  "children": [
+    "composer_123_tab_attack",
+    "composer_123_damage",
+    "composer_123_atk_speed",
+    "composer_123_multishot_chance"
+  ],
+  "branch_variable": "phase",
+  "branches": {},
+  "loop": false,
+  "stop_when": null,
+  "run": "once",
+  "notes": "Authored via Molecule Lab. Files are source of truth.\nNo step conditions."
+}

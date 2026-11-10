@@ -108,8 +108,6 @@ class FlightDeckWindow(ctk.CTkToplevel):
         *,
         on_close: Callable[[], None],
         on_activate_toggle: Callable[[], None],
-        on_pause: Callable[[], None],
-        on_stop: Callable[[], None],
         on_geometry: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(master)
@@ -122,8 +120,6 @@ class FlightDeckWindow(ctk.CTkToplevel):
 
         self._on_close = on_close
         self._on_activate_toggle = on_activate_toggle
-        self._on_pause = on_pause
-        self._on_stop = on_stop
         self._on_geometry = on_geometry
         self._expanded = False
         self._anchored = False
@@ -184,27 +180,6 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self.activate_button.pack(side="left", padx=(6, 0))
         # Alias kept for any older references during the rename.
         self.expand_button = self.activate_button
-
-        self.pause_button = ctk.CTkButton(
-            self.header,
-            text="Pause (F7)",
-            width=88,
-            height=26,
-            fg_color="#3A3520",
-            hover_color="#5A4E28",
-            text_color=_WARN,
-            command=self._on_pause,
-        )
-        self.stop_button = ctk.CTkButton(
-            self.header,
-            text="Stop (F8)",
-            width=88,
-            height=26,
-            fg_color="#5A3030",
-            hover_color="#7A4040",
-            text_color=_DANGER,
-            command=self._on_stop,
-        )
 
         self.run_label = ctk.CTkLabel(
             self._pad,
@@ -292,29 +267,25 @@ class FlightDeckWindow(ctk.CTkToplevel):
 
     def _sync_activate_button_label(self) -> None:
         key = vk_label(self._expand_vk)
-        if self._live_control_active or self._molecule_lab_active:
-            self.activate_button.configure(
-                text=f"Deactivate [{key}]",
-                state="disabled",
-            )
-        elif self._shell_phase is ShellPhase.INACTIVE:
+        if self._shell_phase is ShellPhase.INACTIVE:
             self.activate_button.configure(
                 text=f"Activate Flight Deck [{key}]",
                 state="normal",
             )
         else:
+            # Always available — Deactivate stops runners / exits LCO / idles the deck.
             self.activate_button.configure(
                 text=f"Deactivate [{key}]",
                 state="normal",
             )
 
     def _sync_close_button_label(self) -> None:
-        if self._molecule_lab_close_confirm:
+        if self._live_control_active:
+            self.close_button.configure(text="Exit LCO [Esc]")
+        elif self._molecule_lab_close_confirm:
             self.close_button.configure(text="Stay [Esc]")
         elif self._molecule_lab_active:
             self.close_button.configure(text="Close Lab [Esc]")
-        elif self._live_control_active:
-            self.close_button.configure(text="Exit LCO [Esc]")
         elif self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             self.close_button.configure(text="Stay [Esc]")
         elif self._expanded and self._open_menu_key:
@@ -655,8 +626,6 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._sync_activate_button_label()
 
         if shell is ShellPhase.INACTIVE:
-            self.pause_button.pack_forget()
-            self.stop_button.pack_forget()
             if self.close_button.winfo_ismapped():
                 self.close_button.pack_forget()
             if self.menu_frame.winfo_ismapped():
@@ -672,8 +641,6 @@ class FlightDeckWindow(ctk.CTkToplevel):
             return
 
         if shell is ShellPhase.CLOSE_CONFIRM:
-            self.pause_button.pack_forget()
-            self.stop_button.pack_forget()
             if self.activate_button.winfo_ismapped():
                 self.activate_button.pack_forget()
             if self.menu_frame.winfo_ismapped():
@@ -691,19 +658,11 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self._fit_collapsed_size()
             return
 
-        # ACTIVE
+        # ACTIVE — Pause/Stop removed; Deactivate stops everything.
         if not self.close_button.winfo_ismapped():
             self.close_button.pack(side="left")
         if not self.activate_button.winfo_ismapped():
             self.activate_button.pack(side="left", padx=(6, 0))
-
-        if self._running:
-            self.pause_button.pack(side="left", padx=(6, 0))
-            self.stop_button.pack(side="left", padx=(6, 0))
-            self.pause_button.configure(text="Resume (F7)" if self._paused else "Pause (F7)")
-        else:
-            self.pause_button.pack_forget()
-            self.stop_button.pack_forget()
 
         if self._anchored and self._expanded:
             if self._live_control_active or self._molecule_lab_active:
@@ -743,18 +702,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._fit_collapsed_size()
 
     def _render_menu(self) -> None:
-        if self._molecule_lab_active:
-            hint_color = _WARN if self._molecule_lab_close_confirm else _ACCENT
-            self.menu_path.configure(
-                text=molecule_lab_legend_hint(close_confirm=self._molecule_lab_close_confirm),
-                text_color=hint_color,
-                font=ctk.CTkFont(size=13, weight="bold"),
-            )
-            self.menu_list.configure(
-                text=molecule_lab_active_prompt(close_confirm=self._molecule_lab_close_confirm)
-            )
-            self._sync_close_button_label()
-            return
+        # LCO surface wins while armed so Esc/legend match the overlay (Lab stays open under).
         if self._live_control_active:
             hint_color = _MUTED if self._lco_paused else _WARN
             self.menu_path.configure(
@@ -765,7 +713,24 @@ class FlightDeckWindow(ctk.CTkToplevel):
                 text_color=hint_color,
                 font=ctk.CTkFont(size=13, weight="bold"),
             )
-            self.menu_list.configure(text=live_control_active_prompt(paused=self._lco_paused))
+            self.menu_list.configure(
+                text=live_control_active_prompt(
+                    paused=self._lco_paused,
+                    activate_key=vk_label(self._expand_vk),
+                )
+            )
+            self._sync_close_button_label()
+            return
+        if self._molecule_lab_active:
+            hint_color = _WARN if self._molecule_lab_close_confirm else _ACCENT
+            self.menu_path.configure(
+                text=molecule_lab_legend_hint(close_confirm=self._molecule_lab_close_confirm),
+                text_color=hint_color,
+                font=ctk.CTkFont(size=13, weight="bold"),
+            )
+            self.menu_list.configure(
+                text=molecule_lab_active_prompt(close_confirm=self._molecule_lab_close_confirm)
+            )
             self._sync_close_button_label()
             return
         # Restore path styling when leaving the LCO / Lab surface.

@@ -6,6 +6,7 @@ import tkinter as tk
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from idle_lab import win32_api
 from idle_lab.composer.lco_placement import MoleculeLcoPlacement
 from idle_lab.models import Rect
 
@@ -134,7 +135,21 @@ class MoleculeMark(tk.Toplevel):
         self.geometry(f"{w}x{h}+{left}+{top}")
         if not self.winfo_viewable():
             self.deiconify()
+        self.raise_above_overlay()
+
+    def raise_above_overlay(self) -> None:
+        """Stay above the click-through LCO canvas so drag/rebind clicks hit us."""
+
+        try:
             self.lift()
+            self.attributes("-topmost", True)
+            hwnd = win32_api.widget_hwnd(self)
+            win32_api.raise_topmost(hwnd)
+        except Exception:
+            try:
+                self.lift()
+            except Exception:
+                pass
 
     def _paint(self) -> None:
         self.canvas.delete("all")
@@ -277,6 +292,11 @@ class MoleculeMarkLayer:
                 dimmed=dimmed,
                 show_title=show_titles,
             )
+            mark.raise_above_overlay()
+
+    def raise_all(self) -> None:
+        for mark in self._marks.values():
+            mark.raise_above_overlay()
 
     def flash_conflict(self, molecule_id: str) -> None:
         mark = self._marks.get(molecule_id)

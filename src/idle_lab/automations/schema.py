@@ -14,6 +14,7 @@ ACTION_TYPES = frozenset(
     {
         "screenshot",
         "ocr",
+        "tool_export",
         "decide",
         "mouse",
         "play_preset",

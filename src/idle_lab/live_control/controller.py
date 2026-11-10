@@ -141,6 +141,10 @@ class LiveControlController:
         self._action_queue: list[str] = []
         self._current_action: str | None = None
         self._routine_remaining: list[str] = []
+        # Lab molecule pack: upcoming focus tokens (stat_collect / tab_* / buy_* / …).
+        # Separate from routine_remaining so async key finish_action can't wipe it.
+        self._pack_remaining: list[str] = []
+        self._pack_label: str | None = None
         self._ui_thread = threading.current_thread()
         self._worker: threading.Thread | None = None
         self.molecule_bridge = None  # optional MoleculeLcoBridge
@@ -193,6 +197,8 @@ class LiveControlController:
         self._action_queue.clear()
         self._current_action = None
         self._routine_remaining.clear()
+        self._pack_remaining.clear()
+        self._pack_label = None
         self.cancel_event.clear()
         self.active = True
         self._ui_thread = threading.current_thread()
@@ -200,8 +206,9 @@ class LiveControlController:
         self._notify_pause()
         if self.panel_open:
             self._apply_detection(detect_buy_grid(image), context="enter")
-            # Mid-list is fine — OCR nameplates; never assume page-1 from geometry alone.
-            self._bind_identity_from_image(image, context="enter", fallback_home=False)
+            # Skip nameplate OCR on enter — it blocked the UI for seconds and felt like a crash.
+            # Identity fills in on first scroll/refresh/buy that needs labels (Hold D / B).
+            self._forget_identity("enter-deferred")
         else:
             self.live_slots = ()
             self.aligned = True
@@ -223,6 +230,7 @@ class LiveControlController:
             f"enter mode={mode} panel={'open:' + (self.tab or '?') if self.panel_open else 'closed'} "
             f"reason={panel.reason}"
         )
+        # Paint overlay + molecule marks before any deferred work so U→1 feels instant.
         self._repaint(f"Live Control · {panel.reason}")
         self._sync_molecule_marks(rect)
         if self.evidence:
@@ -232,6 +240,8 @@ class LiveControlController:
                 detail=panel.reason,
                 meta=self._grid_meta(extra={"panel_open": self.panel_open, "tab": self.tab}),
             )
+        if self.panel_open and self.live_slots:
+            self._schedule_enter_identity(image)
         _ = title
 
     def exit(self, *, reason: str = "operator") -> None:
@@ -249,6 +259,8 @@ class LiveControlController:
         self._action_queue.clear()
         self._current_action = None
         self._routine_remaining.clear()
+        self._pack_remaining.clear()
+        self._pack_label = None
         self.overlay.hide()
         if self.molecule_bridge is not None:
             try:
@@ -274,6 +286,7 @@ class LiveControlController:
         self._set_toggled_action(None)
         self._action_queue.clear()
         self._routine_remaining.clear()
+        # Keep molecule pack marks until end_external_pack / exit — cancel only aborts motion.
 
     def handle_token(self, token: str) -> bool:
         """Compatibility: treat as a key-down (fire immediately)."""
@@ -335,24 +348,118 @@ class LiveControlController:
                     "warn",
                 )
             self.molecule_bridge.set_show_titles(bool(self.show_descriptors))
+            if hasattr(self.molecule_bridge, "layer"):
+                self.molecule_bridge.layer.raise_all()
         except Exception as exc:  # noqa: BLE001
             self._log(f"Molecule LCO sync failed: {exc}", "warn")
 
+    def _schedule_enter_identity(self, image: Image.Image) -> None:
+        """OCR nameplates off the UI thread after overlay is already up."""
+
+        if not self.active or not self.live_slots:
+            return
+
+        def worker() -> None:
+            if not self.active or self.cancel_event.is_set():
+                return
+            try:
+                self._bind_identity_from_image(image, context="enter-bg", fallback_home=False)
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"Enter identity OCR failed: {exc}", "warn")
+                return
+            if not self.active or self.cancel_event.is_set():
+                return
+            if self.post_event is not None:
+                try:
+                    self.post_event(("live_control_repaint", "identity"))
+                    return
+                except Exception:  # noqa: BLE001
+                    pass
+            try:
+                self._repaint("identity")
+            except Exception:  # noqa: BLE001
+                pass
+
+        threading.Thread(target=worker, name="lco-enter-identity", daemon=True).start()
+
+    def begin_external_pack(self, label: str, actions: list[str]) -> None:
+        """Lab molecule (or other runner): seed orange queue + grey idle like a key chord."""
+
+        if not self.active:
+            return
+        cleaned = [str(a).strip().lower() for a in actions if str(a).strip()]
+        self._pack_label = str(label or "molecule").strip() or "molecule"
+        self._pack_remaining = list(cleaned)
+        self._current_action = None
+        self.console.event(f"molecule {self._pack_label} · {len(cleaned)} step(s)")
+        self._log(
+            f"LCO molecule [{self._pack_label}] · {len(cleaned)} focus step(s)",
+            "run",
+        )
+        self._repaint(f"Molecule · {self._pack_label}")
+
+    def claim_external_focus(self, action: str) -> None:
+        """Mark one pack/step as current (green); rest of pack stays orange queued."""
+
+        if not self.active:
+            return
+        name = str(action or "").strip().lower()
+        if not name:
+            return
+        if self._pack_remaining and self._pack_remaining[0] == name:
+            self._pack_remaining.pop(0)
+        elif name in self._pack_remaining:
+            self._pack_remaining.remove(name)
+        self._current_action = name
+        self._busy = True
+        self._repaint(name)
+
+    def clear_external_focus(self) -> None:
+        """Clear current after an external step; keep remaining pack queue."""
+
+        if not self.active:
+            return
+        self._current_action = None
+        self._busy = False
+        status = "…" if (self._pack_remaining or self._action_queue or self._toggled_action) else "Ready"
+        self._repaint(status)
+
+    def end_external_pack(self, *, reason: str = "done") -> None:
+        if not self._pack_label and not self._pack_remaining and self._current_action is None:
+            return
+        label = self._pack_label or "molecule"
+        self.console.event(f"molecule {label} · {reason}")
+        self._log(f"LCO molecule [{label}] {reason}", "ok" if reason == "done" else "warn")
+        self._pack_label = None
+        self._pack_remaining.clear()
+        self._current_action = None
+        self._busy = False
+        if self.active:
+            self._repaint("Ready")
 
     def run_action(self, action: str) -> None:
-        """Headless entry for automation atoms: one action; failures raise instead of logging."""
+        """Atom/molecule entry: same focus colors + console path as a key press (sync)."""
 
         if not self.active or self.playbook is None:
             raise LiveControlError("Live Control is not active.")
         if not is_actuation_action(action):
             raise LiveControlError(f"unknown Live Control action: {action}")
+        deadline = time.monotonic() + 2.0
+        while self._busy and time.monotonic() < deadline:
+            if self.cancel_event.is_set() or not self.active:
+                raise LiveControlError("Live Control interrupted.")
+            time.sleep(0.05)
         if self._busy:
             raise LiveControlError("Live Control busy — wait for current action.")
+        self.cancel_event.clear()
+        name = str(action).strip().lower()
+        self.claim_external_focus(name)
         try:
-            self._busy = True
-            self._dispatch(action)
+            self._dispatch(name)
+            if self.cancel_event.is_set():
+                raise LiveControlError("Live Control interrupted.")
         finally:
-            self._busy = False
+            self.clear_external_focus()
 
     def continue_repeat(self, action: str) -> None:
         """UI-queue continuation after a spam-hold or toggle fire finishes."""
@@ -500,9 +607,9 @@ class LiveControlController:
         return self._run_action(self._toggled_action, repeat="toggle")
 
     def _visible_queue(self) -> tuple[str, ...]:
-        """Upcoming marks: remaining routine steps, then user-queued actions."""
+        """Upcoming marks: molecule pack, routine steps, then user-queued actions."""
 
-        return tuple([*self._routine_remaining, *self._action_queue])
+        return tuple([*self._pack_remaining, *self._routine_remaining, *self._action_queue])
 
     def _schedule_next(self, action: str, *, repeat: str | None) -> None:
         if not self.active or self.paused or self.cancel_event.is_set() or self.post_event is None:

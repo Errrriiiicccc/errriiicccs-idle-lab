@@ -12,6 +12,7 @@ from idle_lab.flight_deck.shell import (
     inactive_prompt,
     live_control_active_prompt,
     live_control_legend_hint,
+    molecule_lab_active_prompt,
     resolve_escape,
 )
 
@@ -61,6 +62,29 @@ class ResolveEscapeTests(unittest.TestCase):
                 deck_active=True,
             ),
             EscAction.CANCEL_MOLECULE_LAB_CLOSE,
+        )
+
+    def test_lco_esc_beats_molecule_lab(self) -> None:
+        """Esc must exit LCO even when Molecule Lab is still open underneath."""
+
+        self.assertEqual(
+            resolve_escape(
+                phase=ShellPhase.ACTIVE,
+                live_control_active=True,
+                molecule_lab_active=True,
+                deck_active=True,
+            ),
+            EscAction.EXIT_LIVE_CONTROL,
+        )
+        self.assertEqual(
+            resolve_escape(
+                phase=ShellPhase.ACTIVE,
+                live_control_active=True,
+                live_control_rebinding=True,
+                molecule_lab_active=True,
+                deck_active=True,
+            ),
+            EscAction.CANCEL_LCO_REBIND,
         )
 
     def test_close_confirm_cancel(self) -> None:
@@ -140,15 +164,12 @@ class PromptTests(unittest.TestCase):
         text = live_control_active_prompt()
         self.assertIn("LCO is active", text)
         self.assertIn("Hold D to describe", text)
-        self.assertIn("Esc exits LCO", text)
+        self.assertIn("Esc = exit LCO", text)
+        self.assertIn("deactivate", text.lower())
         # Accordion leave labels must not leak into the LCO surface.
         self.assertNotIn("Enter Live Control", text)
         self.assertNotIn("Exit Live Control", text)
         self.assertNotIn("Troubleshoot", text)
-        paused = live_control_active_prompt(paused=True)
-        self.assertIn("paused", paused.lower())
-        self.assertIn("`", paused)
-        self.assertIn("typing", paused.lower())
 
     def test_live_control_legend_hint_is_bold_d_instruction(self) -> None:
         self.assertEqual(live_control_legend_hint(), "HOLD D = DESCRIBE")
@@ -156,7 +177,16 @@ class PromptTests(unittest.TestCase):
             live_control_legend_hint(show_descriptors=True),
             "HOLDING D = DESCRIBE",
         )
-        self.assertEqual(live_control_legend_hint(paused=True), "` = RESUME LCO")
+        self.assertEqual(live_control_legend_hint(paused=True), "HOLD D = DESCRIBE")
+
+    def test_molecule_lab_prompt_says_deck_paused_for_typing(self) -> None:
+        text = molecule_lab_active_prompt()
+        self.assertIn("Molecule Lab is open", text)
+        self.assertIn("paused", text.lower())
+        self.assertIn("type", text.lower())
+        self.assertIn("Esc", text)
+        confirm = molecule_lab_active_prompt(close_confirm=True)
+        self.assertIn("Enter = yes", confirm)
 
 
 if __name__ == "__main__":

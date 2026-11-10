@@ -1,0 +1,17 @@
+{
+  "id": "mol_test_attack_buy",
+  "title": "Test Attack Buy",
+  "version": 1,
+  "description": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires attack tab).",
+  "children": [
+    "composer_test_attack_buy_tab_attack",
+    "composer_test_attack_buy_damage",
+    "composer_test_attack_buy_atk_speed"
+  ],
+  "branch_variable": "phase",
+  "branches": {},
+  "loop": false,
+  "stop_when": null,
+  "run": "once",
+  "notes": "Authored via Molecule Lab. Files are source of truth.\nNo step conditions."
+}

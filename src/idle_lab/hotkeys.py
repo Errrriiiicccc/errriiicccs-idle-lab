@@ -76,9 +76,9 @@ class HookFlags:
         self.walkthrough_active = False
         # Live Control Overlay mode (keyboard hit-targets).
         self.live_control_active = False
-        # LCO session on but grayed out — keys pass through for typing; ` resumes, Esc exits.
+        # Legacy pause flag (deck Pause removed); kept for LCO gray-out experiments.
         self.live_control_paused = False
-        # Set immediately on Esc / ` so in-flight scrolls can abort before the UI drains the queue.
+        # Set immediately on Esc / deactivate so in-flight scrolls abort before the UI drains.
         self.live_control_cancel = threading.Event()
         # Hotkey token for the armed toggle (e.g. "A") — second press cancels on the hook thread.
         self.live_control_toggle_token: str | None = None
@@ -244,28 +244,46 @@ class InputHooks:
             self.state.flight_deck_remap = False
             self.events.put(("flight_deck_remap_key", vk))
             return 1
-        # While LCO is on, Activate/Deactivate must not fire — ` pauses/resumes LCO; Esc exits.
-        if (
-            self.state.live_control_active
-            and vk == int(self.state.flight_deck_expand_vk)
-            and (self.state.flight_deck_expand_armed or self.state.flight_deck_open)
-        ):
+        # Molecule Lab needs real typing — but not while Live Control is armed.
+        # LCO (incl. molecule marks / rebind) must keep letters+digits; Lab typing
+        # resumes when LCO is off or paused.
+        lab_typing = self.state.molecule_lab_active and not (
+            self.state.live_control_active and not self.state.live_control_paused
+        )
+        if lab_typing:
+            if vk == VK_ESCAPE:
+                if is_up:
+                    self._esc_down = False
+                    return 1
+                if not self._esc_down:
+                    self._esc_down = True
+                    self.events.put(("escape",))
+                return 1
+            if self.state.molecule_lab_close_confirm and vk == VK_RETURN:
+                if is_up:
+                    self._enter_down = False
+                elif not self._enter_down:
+                    self._enter_down = True
+                    self.events.put(("shell_enter",))
+                return 1
+            return self._next(self._kb_hook, n_code, w_param, l_param)
+        # While LCO is armed, Activate key = full deactivate (stop all + idle deck).
+        # Do not require expand_armed/open — LCO ownership alone is enough.
+        if self.state.live_control_active and vk == int(self.state.flight_deck_expand_vk):
+            swallow = True
             if is_up:
-                was = self._expand_down
                 self._expand_down = False
-                if was:
-                    self.state.live_control_cancel.set()
-                    self.events.put(("live_control_pause_toggle",))
             elif not self._expand_down:
                 self._expand_down = True
+                self.state.live_control_cancel.set()
+                self.events.put(("flight_deck_activate",))
             return 1
         if (
             vk == VK_SPACE
             and self.state.flight_deck_expanded
-            and not (self.state.live_control_active and self.state.live_control_paused)
+            and not self.state.live_control_active
         ):
             # Flagship menu key while the flight-deck tree is open.
-            # When LCO is paused, Space must pass through so the user can type.
             swallow = True
             if is_up:
                 self._space_down = False
@@ -333,17 +351,20 @@ class InputHooks:
                     self.events.put(("escape",))
                 elif armed:
                     swallow = True
-        elif vk == int(self.state.flight_deck_expand_vk) and (
-            self.state.flight_deck_expand_armed or self.state.flight_deck_open
+        elif (
+            vk == int(self.state.flight_deck_expand_vk)
+            and (self.state.flight_deck_expand_armed or self.state.flight_deck_open)
+            and not self.state.molecule_lab_active
         ):
             # Activate / Deactivate — only global deck key while inactive.
+            # While Molecule Lab is open, pass through so Lab text boxes can type.
             swallow = True
             if is_up:
                 self._expand_down = False
             elif not self._expand_down:
                 self._expand_down = True
                 self.events.put(("flight_deck_activate",))
-        elif self.state.quit_confirm and vk == VK_RETURN:
+        elif self.state.quit_confirm and vk == VK_RETURN and not self.state.molecule_lab_active:
             swallow = True
             if is_up:
                 self._enter_down = False
@@ -351,6 +372,7 @@ class InputHooks:
                 self._enter_down = True
                 self.events.put(("shell_enter",))
         elif self.state.molecule_lab_close_confirm and vk == VK_RETURN:
+            # Esc peel confirm for closing Molecule Lab — only Enter we keep.
             swallow = True
             if is_up:
                 self._enter_down = False
@@ -361,6 +383,7 @@ class InputHooks:
             self.state.flight_deck_active
             and (not self.state.flight_deck_anchored)
             and vk == VK_RETURN
+            and not self.state.molecule_lab_active
         ):
             swallow = True
             if is_up:
@@ -372,6 +395,7 @@ class InputHooks:
             self.state.flight_deck_active
             and (not self.state.flight_deck_anchored)
             and vk == VK_A
+            and not self.state.molecule_lab_active
         ):
             swallow = True
             if is_up:
@@ -390,6 +414,7 @@ class InputHooks:
         ):
             # Live Control Overlay: playbook hotkeys own letters/digits while armed.
             # When paused, keys pass through for typing (` resumes, Esc exits).
+            # Molecule Lab may stay open underneath — LCO still owns keys until paused/exit.
             swallow = True
             token = menu_token_from_vk(vk)
             if is_up:
@@ -410,7 +435,8 @@ class InputHooks:
             self.state.flight_deck_active
             and (not self.state.lab_visible)
             and vk == VK_I
-            and not (self.state.live_control_active and self.state.live_control_paused)
+            and not self.state.molecule_lab_active
+            and not self.state.live_control_active
         ):
             # Open Lab only while the deck is active.
             swallow = True
@@ -422,7 +448,8 @@ class InputHooks:
         elif (
             self.state.flight_deck_active
             and vk == VK_R
-            and not (self.state.live_control_active and self.state.live_control_paused)
+            and not self.state.molecule_lab_active
+            and not self.state.live_control_active
         ):
             # Restart while deck is active (before accordion eats R).
             swallow = True
@@ -436,13 +463,14 @@ class InputHooks:
             and self.state.flight_deck_anchored
             and self.state.flight_deck_expanded
             and not self.state.molecule_lab_active
-            and not (self.state.live_control_active and self.state.live_control_paused)
+            and not self.state.live_control_active
             and (
                 (VK_A <= vk <= VK_Z)
                 or (VK_0 <= vk <= VK_9)
                 or menu_token_from_vk(vk) is not None
             )
         ):
+            # Accordion must not fire while LCO is booting/armed — that stuttered U→1.
             swallow = True
             if is_up:
                 self._menu_down.discard(vk)
@@ -451,13 +479,6 @@ class InputHooks:
                 token = menu_token_from_vk(vk)
                 if token is not None:
                     self.events.put(("flight_deck_menu_key", token))
-        elif self.state.molecule_lab_active and (
-            (VK_A <= vk <= VK_Z)
-            or (VK_0 <= vk <= VK_9)
-            or menu_token_from_vk(vk) is not None
-        ):
-            # Lab owns the deck — swallow accordion letters so they don't fire deck leaves.
-            swallow = True
         elif self.state.walkthrough_active and VK_A <= vk <= VK_Z:
             swallow = True
             if is_up:

@@ -15,6 +15,7 @@ from idle_lab.automations.collections_runner import run_collection
 from idle_lab.automations.csv_log import append_run_row
 from idle_lab.automations.decide import decide_ab_with_reason
 from idle_lab.automations.ocr import OcrError, ocr_field
+from idle_lab.tool_export import ToolExportError, load_tool_export
 from idle_lab.automations.scheduler import Scheduler
 from idle_lab.automations.schema import Event, Roi
 from idle_lab.automations.store import AutomationStore
@@ -71,6 +72,7 @@ class AutomationRuntime:
         supervise_gate: SuperviseGate | None = None,
         trace_level: str = "failure",
         templates_dir: Path | None = None,
+        shared_lco: LiveControlController | None = None,
     ) -> None:
         self.store = store
         self.runs_dir = Path(runs_dir)
@@ -94,6 +96,8 @@ class AutomationRuntime:
         self._collection_thread: threading.Thread | None = None
         self._session_events: list[Event] | None = None
         self._lco: LiveControlController | None = None
+        # When the flight-deck LCO is already up, reuse it (no second enter/OCR).
+        self._shared_lco = shared_lco
 
     def emit(self, kind: str, **payload: Any) -> None:
         self.events_out.put({"kind": kind, **payload})
@@ -158,7 +162,8 @@ class AutomationRuntime:
     def stop(self) -> None:
         self._enabled = False
         self._stop.set()
-        if self._lco is not None:
+        # Never tear down the interactive overlay LCO from here — only our private session.
+        if self._lco is not None and self._lco is not self._shared_lco:
             self._lco.interrupt()
         thread = self._thread
         if thread and thread.is_alive():
@@ -168,7 +173,14 @@ class AutomationRuntime:
         if coll and coll.is_alive():
             coll.join(timeout=2.0)
         self._collection_thread = None
+        if self._lco is self._shared_lco:
+            self._lco = None
         self.log("Automations runtime stopped.", "warn")
+
+    def attach_shared_lco(self, controller: LiveControlController | None) -> None:
+        """Point atom LCO actions at the flight-deck overlay session when present."""
+
+        self._shared_lco = controller
 
     def reload_schedule(self) -> None:
         self.scheduler.reset(list(self.store.events.values()))
@@ -236,8 +248,11 @@ class AutomationRuntime:
         self._collection_thread.start()
         self.log(f"Atom once started: {event_id}", "ok")
 
-    def start_collection(self, collection_id: str) -> None:
-        """Run a once-molecule on a worker thread (exclusive with interval loop ownership)."""
+    def start_collection(self, collection_id: str, *, lco_pack: bool = False) -> None:
+        """Run a once-molecule on a worker thread (exclusive with interval loop ownership).
+
+        ``lco_pack`` — when the interactive overlay is up, paint queue/focus like key chords.
+        """
 
         collection = self.store.collections.get(collection_id)
         if collection is None:
@@ -250,6 +265,15 @@ class AutomationRuntime:
 
         self._stop.clear()
         self.trace.configure(run_number=self.store.runtime.run_number)
+        pack_armed = False
+        if lco_pack:
+            shared = self._shared_lco
+            if shared is not None and shared.active:
+                from idle_lab.automations.lco_focus import preview_molecule_focus_actions
+
+                steps = preview_molecule_focus_actions(collection, self.store)
+                shared.begin_external_pack(collection.title or collection_id, steps)
+                pack_armed = True
 
         def worker() -> None:
             try:
@@ -267,6 +291,14 @@ class AutomationRuntime:
                 self._write_failure(str(exc), meta={"collection_id": collection_id})
                 self.log(traceback.format_exc(), "error")
             finally:
+                if pack_armed:
+                    shared = self._shared_lco
+                    if shared is not None:
+                        try:
+                            reason = "stopped" if self._stop.is_set() else "done"
+                            shared.end_external_pack(reason=reason)
+                        except Exception:  # noqa: BLE001
+                            pass
                 self.emit("queue", items=[item.__dict__ for item in self.scheduler.queue_snapshot()])
 
         self._collection_thread = threading.Thread(
@@ -389,6 +421,21 @@ class AutomationRuntime:
             {"source": "loops", "event_id": event.id, "action_type": "event_start", "ok": True},
             is_failure=False,
         )
+        # Non-LCO atoms (Stat collect) inside an LCO molecule pack: light the V mark.
+        # Skip when the keyboard path already owns focus (V key → run_event_once).
+        focus_token: str | None = None
+        shared = self._shared_lco
+        if shared is not None and shared.active and getattr(shared, "_pack_label", None):
+            from idle_lab.automations.lco_focus import focus_token_for_event
+
+            focus_token = focus_token_for_event(event, self.store)
+            if focus_token:
+                try:
+                    shared.claim_external_focus(focus_token)
+                    shared.console.event(f"action {focus_token} · atom {event.id}")
+                    shared.console.result(f"{focus_token} → {event.title}")
+                except Exception:  # noqa: BLE001
+                    focus_token = None
         try:
             for index, action in enumerate(event.actions):
                 if self._stop.is_set():
@@ -397,11 +444,26 @@ class AutomationRuntime:
                 self._action_index = index
                 self._dispatch(action.raw)
             self.log(f"✔ finished {event.id}", "ok")
+            if focus_token and shared is not None and shared.active:
+                try:
+                    shared.console.result(f"{focus_token} ✔ {event.title}")
+                except Exception:  # noqa: BLE001
+                    pass
         finally:
+            if focus_token and shared is not None:
+                try:
+                    shared.clear_external_focus()
+                except Exception:  # noqa: BLE001
+                    pass
             self._run_event_stack.pop()
             self._current_event_id = prev_id
             self._action_index = prev_index
-            if not self._run_event_stack and self._lco is not None and self._lco.active:
+            if (
+                not self._run_event_stack
+                and self._lco is not None
+                and self._lco.active
+                and self._lco is not self._shared_lco
+            ):
                 self._lco.exit(reason="atom finished")
 
     def _action_run_event(self, raw: dict[str, Any]) -> None:
@@ -425,6 +487,7 @@ class AutomationRuntime:
         handlers = {
             "screenshot": self._action_screenshot,
             "ocr": self._action_ocr,
+            "tool_export": self._action_tool_export,
             "mouse": self._action_play_preset,
             "play_preset": self._action_play_preset,
             "record_clip": self._action_record_clip,
@@ -528,6 +591,47 @@ class AutomationRuntime:
         self.log(
             f"OCR {roi_id}: observation={result.observation!r} inference={result.inference!r} → {variable}",
             "info",
+        )
+
+    def _action_tool_export(self, raw: dict[str, Any]) -> None:
+        """Load Tower tool_export into variables (Rend cache by default). No clicks / OCR."""
+
+        path = raw.get("path")
+        path_arg = str(path).strip() if path not in (None, "") else None
+        field_map = raw.get("map") or raw.get("fields")
+        mapping = None
+        if isinstance(field_map, dict):
+            mapping = {
+                str(k).strip(): str(v).strip()
+                for k, v in field_map.items()
+                if str(k).strip() and str(v).strip()
+            }
+        max_age = raw.get("max_age_s")
+        max_age_s = float(max_age) if max_age not in (None, "") else None
+        try:
+            snap = load_tool_export(path_arg, field_map=mapping, max_age_s=max_age_s)
+        except ToolExportError as exc:
+            self.state.states["tool_export_ok"] = False
+            self.state.variables["tool_export_ok"] = "false"
+            self.log(str(exc), "error")
+            raise
+        self.state.states["tool_export_ok"] = True
+        self.state.variables["tool_export_ok"] = "true"
+        self.state.states["wave_readable"] = bool(snap.variables.get("wave_number"))
+        for key, value in snap.variables.items():
+            self.state.variables[key] = value
+        wave = snap.variables.get("wave_number")
+        if wave not in (None, ""):
+            self.state.variables["wave_number"] = wave
+        round_active = str(snap.variables.get("round_active") or "").lower()
+        self.state.states["round_active"] = round_active in {"true", "1", "yes"}
+        self.log(
+            f"tool_export {snap.path.name} age={snap.age_s:.1f}s "
+            f"wave={snap.variables.get('wave_number')!r} "
+            f"coins={snap.variables.get('coins')!r} "
+            f"gems={snap.variables.get('gems')!r} "
+            f"tier={snap.variables.get('tier')!r}",
+            "ok",
         )
 
     def _action_decide(self, raw: dict[str, Any]) -> list[dict[str, Any]] | None:
@@ -1005,9 +1109,15 @@ class AutomationRuntime:
         self.state.variables["scroll_list_rows"] = str(rows)
 
     def _lco_session(self) -> LiveControlController:
-        """Headless LCO for this top-level atom: entered on first use, exited when the atom ends."""
+        """LCO for atom actions: reuse interactive overlay when armed; else headless enter."""
 
-        if self._lco is None:
+        shared = self._shared_lco
+        if shared is not None and shared.active:
+            # Shared overlay session: clear a prior Esc/` abort so atom steps can run.
+            shared.cancel_event.clear()
+            self._lco = shared
+            return shared
+        if self._lco is None or self._lco is shared:
             self._lco = LiveControlController(
                 overlay=NullOverlay(),
                 project_root=self.runs_dir.parent,

@@ -814,7 +814,7 @@
     {
       "id": "button.stat_collect",
       "kind": "button",
-      "label": "Stat collect",
+      "label": "Persistent state",
       "hit": { "nx": 0.15, "ny": 0.09 },
       "hotkey_action": "stat_collect",
       "effects": {

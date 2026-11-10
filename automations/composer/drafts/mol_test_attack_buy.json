@@ -1,0 +1,54 @@
+{
+  "draft_id": "a527b9e12f",
+  "title": "Test Attack Buy",
+  "requires_tab": "attack",
+  "notes": "",
+  "phase": "unfiled",
+  "kind": "buy",
+  "collection_id": "mol_test_attack_buy",
+  "steps": [
+    {
+      "kind": "ensure_tab",
+      "label": "Attack [Q]",
+      "tab": "attack",
+      "catalog_id": null,
+      "catalog_index": null,
+      "molecule_id": null,
+      "detail": "Enter this upgrade tab before buys on its list are available."
+    },
+    {
+      "kind": "seek_and_buy",
+      "label": "Damage",
+      "tab": "attack",
+      "catalog_id": "buy.attack.1",
+      "catalog_index": 0,
+      "molecule_id": null,
+      "detail": "page-1: find Damage relative to the viewport, correct overshoot via neighbors, then buy. Skip if maxed/unaffordable (stub).",
+      "guards": {
+        "too_far_up": [],
+        "too_far_down": [
+          "Atk Speed",
+          "Crit Chance"
+        ]
+      }
+    },
+    {
+      "kind": "seek_and_buy",
+      "label": "Atk Speed",
+      "tab": "attack",
+      "catalog_id": "buy.attack.2",
+      "catalog_index": 1,
+      "molecule_id": null,
+      "detail": "page-1: find Atk Speed relative to the viewport, correct overshoot via neighbors, then buy. Skip if maxed/unaffordable (stub).",
+      "guards": {
+        "too_far_up": [
+          "Damage"
+        ],
+        "too_far_down": [
+          "Crit Chance",
+          "Crit Factor"
+        ]
+      }
+    }
+  ]
+}

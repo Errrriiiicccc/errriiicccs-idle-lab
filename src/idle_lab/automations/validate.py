@@ -161,6 +161,11 @@ def _plan_action(
     lines = [head]
     if action_type == "ocr":
         lines.append(f"{pad}  roi={raw.get('roi')} → var={raw.get('variable')} parse_as={raw.get('parse_as')}")
+    elif action_type == "tool_export":
+        lines.append(
+            f"{pad}  path={raw.get('path') or '(rend cache)'} "
+            f"max_age_s={raw.get('max_age_s')!r}"
+        )
     elif action_type in {"play_preset", "mouse"}:
         lines.append(f"{pad}  preset={raw.get('preset') or raw.get('name')!r}")
     elif action_type == "run_event":

@@ -25,7 +25,7 @@ ARCHIVE          archive/                  (deprecated docs/demos; app does not 
 | **Research** | Lanes, analogues, prompt templates | Live “ships today” status (→ FEATURES) |
 | **Ephemeral** | Active focus for the next chat | Durable purpose |
 
-**Planning status:** shell + hygiene **agreed**; FEATURES shows **target vs ships-today**. Next is shape-first code when greenlit — not more north-star invention unless purpose drifts.
+**Planning status:** shell + hygiene **agreed**; FEATURES shows **target vs ships-today**. Shape-first plan: [pieces/shell/SHAPE-FIRST-PLAN.md](pieces/shell/SHAPE-FIRST-PLAN.md). Code when Eric greenlights a phase — not more north-star invention unless purpose drifts.
 
 **Archive:** [archive/README.md](../archive/README.md) (app never loads).
 

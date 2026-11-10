@@ -2,12 +2,12 @@
   "id": "stat_collecting",
   "title": "Stat collecting",
   "version": 1,
-  "description": "Interval molecule: keep Stat collect + 5-min b-roll ticking. For one CSV row now, Start the Stat collect atom instead.",
+  "description": "Interval molecule: keep Persistent state (tool_export) + 5-min b-roll ticking. For one snapshot now, Start the Persistent state atom instead.",
   "children": ["stat_collect", "stat_broll_5m"],
   "branch_variable": "phase",
   "branches": {},
   "loop": true,
   "stop_when": null,
   "run": "interval",
-  "notes": "Start selected → interval pool of child atoms. B-roll outranks the 30s stat tick while ffmpeg is recording. Clips: runs/clips/; sheets: runs/stat_collect.csv + runs/stat_broll.csv."
+  "notes": "Start selected → interval pool of child atoms. B-roll outranks the 30s persistent-state tick while ffmpeg is recording. Clips: runs/clips/; sheets: runs/stat_collect.csv + runs/stat_broll.csv."
 }

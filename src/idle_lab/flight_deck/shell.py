@@ -46,14 +46,15 @@ def resolve_escape(
     Close confirm: Esc cancels.
     """
 
+    # LCO owns Esc while armed — even if Molecule Lab is also open underneath.
     if live_control_active and live_control_rebinding:
         return EscAction.CANCEL_LCO_REBIND
+    if live_control_active:
+        return EscAction.EXIT_LIVE_CONTROL
     if molecule_lab_close_confirm:
         return EscAction.CANCEL_MOLECULE_LAB_CLOSE
     if molecule_lab_active:
         return EscAction.ENTER_MOLECULE_LAB_CLOSE
-    if live_control_active:
-        return EscAction.EXIT_LIVE_CONTROL
     if remap_active:
         return EscAction.CANCEL_REMAP
 
@@ -83,37 +84,33 @@ def inactive_prompt(*, activate_key: str) -> str:
 def live_control_legend_hint(*, show_descriptors: bool = False, paused: bool = False) -> str:
     """Bold flight-deck headline while LCO is on — hold D for descriptors."""
 
-    if paused:
-        return "` = RESUME LCO"
+    _ = paused
     if show_descriptors:
         return "HOLDING D = DESCRIBE"
     return "HOLD D = DESCRIBE"
 
 
-def live_control_active_prompt(*, paused: bool = False) -> str:
+def live_control_active_prompt(*, paused: bool = False, activate_key: str = "`") -> str:
     """Flight-deck body while Live Control Overlay owns the keys."""
 
-    if paused:
-        return (
-            "LCO paused — marks gray / inert · typing passes through\n"
-            "` resumes · Esc exits LCO"
-        )
+    _ = paused
+    key = (activate_key or "`").strip() or "`"
     return (
         "LCO is active\n"
         "Clicks show hotkeys · scroll / stat / refresh show icons\n"
         "Hold D to describe · drag Lab molecules · click mark to rebind\n"
-        "` pauses · Esc exits LCO"
+        f"{key} = deactivate (stops all + idle deck) · Esc = exit LCO only"
     )
 
 
 def molecule_lab_active_prompt(*, close_confirm: bool = False) -> str:
-    """Flight-deck body while Molecule Lab owns Esc/Enter."""
+    """Flight-deck body while Molecule Lab owns Esc (deck hotkeys paused)."""
 
     if close_confirm:
         return "Close Molecule Lab?\nEnter = yes · Esc = stay"
     return (
         "Molecule Lab is open\n"
-        "Compose / toggle LCO placement / edit conditions\n"
+        "Deck hotkeys paused — type in Lab text boxes\n"
         "Esc = close · Enter confirms close"
     )
 

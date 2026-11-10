@@ -30,7 +30,7 @@ Living questions: [DECISIONS.md](DECISIONS.md).
 
 ## After docs
 
-1. **Shape-first UI** — rebuild shell skeletons per pieces/shell  
-2. **State** — deepen Current State when needed  
+1. **Shape-first UI** — [shell/SHAPE-FIRST-PLAN.md](shell/SHAPE-FIRST-PLAN.md) (Phase 0 greenlit)  
+2. **State** — deepen Current State when needed (parked vs shell)  
 3. **Rename pass** — disk/packages with or after UI  
-4. Move CUT demos into `archive/` during waterfall  
+4. Move CUT demos into `archive/` during waterfall (plan Phase 5)  

@@ -224,13 +224,12 @@ class App(ctk.CTk):
             log=self._live_control_log,
         )
         self.live_control.attach_molecule_bridge(self._molecule_lco)
+        self.auto_runtime.attach_shared_lco(self.live_control)
         self._molecule_lab_close_confirm = False
         self.flight_deck = FlightDeckWindow(
             self,
             on_close=self._flight_deck_user_close,
             on_activate_toggle=self._flight_deck_toggle_activate,
-            on_pause=self._flight_deck_pause,
-            on_stop=self._stop_all,
             on_geometry=self._flight_deck_store_geometry,
         )
         self._taxonomy = None
@@ -1099,23 +1098,35 @@ class App(ctk.CTk):
         self._sync_shell_hook_flags()
 
     def _deactivate_flight_deck(self) -> None:
-        """Idle companion: deck stays visible, only Activate key listens."""
+        """Idle companion: stop every runner, exit LCO, deck stays visible (Activate only)."""
 
         if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             self._cancel_close_confirm()
             return
+        # Clear LCO arm even if enter() never finished (hook flag alone).
+        self.hooks.state.live_control_cancel.set()
+        self.hooks.state.live_control_active = False
+        self.hooks.state.live_control_paused = False
+        self.hooks.state.live_control_toggle_token = None
+        # Deactivate is the single stop: Loops / Missions / Bench / Observe / LCO / …
+        self._stop_all()
+        try:
+            self.flight_deck.set_live_control_active(False)
+        except Exception:
+            pass
         self.flight_deck.collapse_menu()
         self._enter_inactive()
-        self._status("Flight deck idle — press Activate to listen again.", "info")
+        self._status("Flight deck idle — everything stopped. Activate to listen again.", "info")
 
     def _flight_deck_toggle_activate(self) -> None:
         if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             return
+        # LCO armed (even mid-boot) always means deactivate — never re-activate.
+        if self.live_control.active or self.hooks.state.live_control_active:
+            self._deactivate_flight_deck()
+            return
         if self._shell_phase is ShellPhase.INACTIVE:
             self._activate_flight_deck()
-            return
-        if self.live_control.active:
-            self._status("Exit LCO (Esc) before deactivating the flight deck.", "warn")
             return
         self._deactivate_flight_deck()
 
@@ -1400,13 +1411,6 @@ class App(ctk.CTk):
         active = self._shell_phase is ShellPhase.ACTIVE
         self.flight_deck_button.configure(text="Deactivate deck" if active else "Activate deck")
 
-    def _flight_deck_pause(self) -> None:
-        if self.player.is_active:
-            self._toggle_pause()
-            self._sync_flight_deck_run_state()
-        else:
-            self._status("Pause is only wired for Bench playback in v0.", "warn")
-
     def _begin_flight_deck_remap(self) -> None:
         status, _hwnd, _rect, _title = self.anchor_target.snapshot()
         if status not in ("ok", "minimized", "closed"):
@@ -1665,6 +1669,18 @@ class App(ctk.CTk):
         except ObservationError as exc:
             self._status(f"Live Control evidence: {exc}", "warn")
 
+    def _arm_live_control_hooks(self) -> None:
+        """Stop accordion listening immediately — before enter() does capture/OCR work."""
+
+        self.hooks.state.live_control_active = True
+        self.hooks.state.live_control_paused = False
+        self.hooks.state.live_control_cancel.clear()
+        try:
+            self.flight_deck.collapse_menu()
+        except Exception:
+            pass
+        self._sync_shell_hook_flags()
+
     def _enter_live_control(self) -> None:
         if self.observation.active or self.screen_map.active:
             self._status("Stop Observation / Screen Map before Live Control Overlay.", "warn")
@@ -1675,23 +1691,30 @@ class App(ctk.CTk):
         if self.walkthrough is not None and self.walkthrough.active:
             self._status("Stop Walkthrough before Live Control Overlay.", "warn")
             return
+        if self.live_control.active:
+            self._status("Live Control Overlay already on.", "info")
+            return
+        # Gate U/digit accordion now so repeated 1s don't pile up while enter boots.
+        self._arm_live_control_hooks()
         try:
             self.live_control.enter(evidence=False)
             self.overlay.set_markers([], False)
-            self.hooks.state.live_control_active = True
-            self.hooks.state.live_control_paused = False
             self._live_control_owns_observation = False
             self.flight_deck.set_live_control_active(True)
             self._sync_shell_hook_flags()
             if self.settings.lco_console_enabled:
                 self._open_lco_console_window()
         except LiveControlError as exc:
+            self.hooks.state.live_control_active = False
+            self.hooks.state.live_control_paused = False
+            self.flight_deck.set_live_control_active(False)
+            self._sync_shell_hook_flags()
             self._status(str(exc), "error")
 
     def _enter_live_control_troubleshoot(self) -> None:
         """Live Control + Observation: playbook hotkeys with framed evidence for each action."""
 
-        if self.live_control.active:
+        if self.live_control.active or self.hooks.state.live_control_active:
             self._status("Exit Live Control first, then U → 2 for Troubleshoot.", "warn")
             return
         if self.observation.active or self.screen_map.active:
@@ -1707,11 +1730,10 @@ class App(ctk.CTk):
         self._start_observation(title=f"live-control-troubleshoot-{stamp}")
         if not self.observation.active:
             return
+        self._arm_live_control_hooks()
         try:
             self.live_control.enter(evidence=True)
             self.overlay.set_markers([], False)
-            self.hooks.state.live_control_active = True
-            self.hooks.state.live_control_paused = False
             self._live_control_owns_observation = True
             self.flight_deck.set_live_control_active(True)
             self._sync_shell_hook_flags()
@@ -1723,8 +1745,11 @@ class App(ctk.CTk):
             )
         except LiveControlError as exc:
             self._live_control_owns_observation = False
+            self.hooks.state.live_control_active = False
+            self.hooks.state.live_control_paused = False
             self.flight_deck.set_live_control_active(False)
             self._close_lco_console_window()
+            self._sync_shell_hook_flags()
             self._stop_observation(reason="live-control-enter-failed", prompt_rename=False)
             self._status(str(exc), "error")
 
@@ -1843,9 +1868,24 @@ class App(ctk.CTk):
     def _lco_run_molecule(self, collection_id: str) -> None:
         collection = self.auto_store.collections.get(collection_id)
         if collection is None:
+            # Lab may have enabled a draft that isn't loaded yet — soft reload once.
+            try:
+                self._reload_automations()
+            except Exception:
+                pass
+            collection = self.auto_store.collections.get(collection_id)
+        if collection is None:
             self._status(f"LCO molecule not found: {collection_id}", "error")
             return
-        self._start_molecule(collection)
+        if self.live_control.active:
+            # Free the shared LCO runway so atom steps aren't "busy" behind a spam hold.
+            try:
+                self.live_control.interrupt()
+                self.hooks.state.live_control_cancel.clear()
+            except Exception:
+                pass
+        self._status(f"LCO molecule [{collection.title}] starting…", "run")
+        self._start_molecule(collection, lco_pack=True)
 
     def _open_molecule_composer(self) -> None:
         """Flight deck → Molecules → Molecule Lab: browse/edit/compose molecules."""
@@ -1854,9 +1894,13 @@ class App(ctk.CTk):
         if existing is not None:
             try:
                 if existing.winfo_exists():
-                    existing.lift()
-                    existing.focus_force()
                     self._set_molecule_lab_deck_mode(active=True)
+                    # Deck chrome rebuild can steal focus — refocus Lab after.
+                    try:
+                        existing._orphan_and_focus()
+                    except Exception:
+                        existing.lift()
+                        existing.focus_force()
                     self._status("Molecule Lab already open.", "info")
                     return
             except Exception:
@@ -1888,7 +1932,17 @@ class App(ctk.CTk):
             on_close=_on_close,
         )
         self._set_molecule_lab_deck_mode(active=True)
-        self._status("Molecule Lab open — Esc closes (Enter confirms).", "ok")
+        # Render happens after construct; steal focus again so entries can type.
+        try:
+            self._molecule_composer._orphan_and_focus()
+            self.after(80, self._molecule_composer._orphan_and_focus)
+            self.after(200, self._molecule_composer._orphan_and_focus)
+        except Exception:
+            pass
+        self._status(
+            "Molecule Lab open — type freely; deck hotkeys paused (Esc still closes).",
+            "ok",
+        )
 
     def _start_observation(self, title: str | None = None) -> None:
         if self.observation.active or self.screen_map.active:
@@ -3572,7 +3626,7 @@ class App(ctk.CTk):
         except Exception as exc:
             self._status(f"Start failed: {exc}", "error")
 
-    def _start_molecule(self, collection) -> None:
+    def _start_molecule(self, collection, *, lco_pack: bool = False) -> None:
         """Molecule Start: run=once → serial pack; run=interval → child atoms on scheduler."""
 
         from idle_lab.automations.schema import collection_interval_event_ids
@@ -3582,7 +3636,7 @@ class App(ctk.CTk):
             return
         mode = (collection.run or "interval").strip().lower()
         if mode == "once":
-            self._run_collection_pack(collection)
+            self._run_collection_pack(collection, lco_pack=lco_pack)
             return
         # interval pool
         if self.auto_runtime.collection_running:
@@ -3643,7 +3697,7 @@ class App(ctk.CTk):
         self.auto_runtime.stop()
         self._status("Automations stopped. (F8 also Stop all)", "warn")
 
-    def _run_collection_pack(self, collection: Collection) -> None:
+    def _run_collection_pack(self, collection: Collection, *, lco_pack: bool = False) -> None:
         """Serial once-molecule (run_collection). Interval molecules use _start_molecule."""
 
         if self.auto_runtime.is_running:
@@ -3656,7 +3710,7 @@ class App(ctk.CTk):
             self.auto_runtime.trace.configure(
                 level=self.settings.trace_level, run_number=self.auto_store.runtime.run_number
             )
-            self.auto_runtime.start_collection(collection.id)
+            self.auto_runtime.start_collection(collection.id, lco_pack=bool(lco_pack))
             self._status(f"Molecule once: {collection.title}", "run")
             if self.auto_panel is not None:
                 self.auto_panel.append_console(

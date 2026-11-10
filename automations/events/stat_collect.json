@@ -1,95 +1,28 @@
 {
   "id": "stat_collect",
-  "title": "Stat collect",
+  "title": "Persistent state",
   "version": 1,
   "enabled": true,
   "priority": 50,
   "timing": {"type": "interval", "every_ms": 30000},
-  "description": "Atom: observe panel (read-only), OCR wave / coins / diamonds, toggle currency HUD for rates, write a CSV row. Start selected runs once now; interval pool uses every 30s when enabled.",
-  "notes": "CSV: runs/stat_collect.csv. Currency toggle only touches the top HUD cluster (nx≈0.15, ny≈0.09), not Attack/Defense/Utility. Keep humanize_upgrade_loop disabled.",
+  "description": "Atom: read The Tower tool_export (Rend/BlueStacks cache) into variables and append a CSV row. No clicks, no OCR.",
+  "notes": "CSV: runs/stat_collect.csv. Source: %APPDATA%/rendapp/emulator-imports/toolExport_unknown.json (enable in Tower: Settings → tap Player ID ×5). cash = CashEarnedThisRound; diamonds ≡ gems.",
   "actions": [
     {
-      "type": "detect_panel",
-      "prefix": "stat_collect",
-      "description": "Read-only status: is the upgrade panel open, and which tab? (No tab clicks.)"
+      "type": "tool_export",
+      "description": "Load wave, wallets, tier, and round flags from tool_export.json."
     },
     {
       "type": "log",
-      "message": "stat collect: panel_open={panel_open} tab={upgrade_tab} — leaving it as-is",
-      "level": "info",
-      "description": "Confirm we will not touch the upgrade footer."
-    },
-    {
-      "type": "ocr",
-      "roi": "wave_tower_roi",
-      "variable": "wave_number",
-      "parse_as": "wave",
-      "description": "Read the current wave."
-    },
-    {
-      "type": "ocr",
-      "roi": "coins_roi",
-      "variable": "coins",
-      "parse_as": "currency_balance",
-      "description": "Read coin balance (balances mode; typed contract)."
-    },
-    {
-      "type": "ocr",
-      "roi": "diamonds_roi",
-      "variable": "diamonds",
-      "parse_as": "currency_int",
-      "description": "Read diamond count (plain int contract)."
-    },
-    {
-      "type": "play_preset",
-      "preset": "currency toggle",
-      "description": "Flip top currency HUD to /min rates (does not touch upgrade tabs)."
-    },
-    {
-      "type": "wait",
-      "ms": 450,
-      "description": "Let the HUD settle after the toggle."
-    },
-    {
-      "type": "screenshot",
-      "prefix": "stat_rates",
-      "description": "Fresh frame for rate OCR."
-    },
-    {
-      "type": "ocr",
-      "roi": "coins_per_min_roi",
-      "variable": "coins_per_min",
-      "parse_as": "currency_rate",
-      "description": "Read coins per minute (rate contract; abstain on /min→m junk)."
-    },
-    {
-      "type": "ocr",
-      "roi": "cash_per_min_roi",
-      "variable": "cash_per_min",
-      "parse_as": "currency_rate",
-      "description": "Read cash per minute (rate contract)."
-    },
-    {
-      "type": "play_preset",
-      "preset": "currency toggle",
-      "description": "Flip currency HUD back to balances."
-    },
-    {
-      "type": "detect_panel",
-      "prefix": "stat_collect_after",
-      "description": "Confirm upgrade panel is still in the same open/closed state after HUD toggles."
-    },
-    {
-      "type": "log",
-      "message": "stat row wave={wave_number} coins={coins} cpm={coins_per_min} cash/min={cash_per_min} diamonds={diamonds} panel={upgrade_tab}",
+      "message": "persistent state wave={wave_number} tier={tier} coins={coins} gems={gems} cells={cells} cash={cash} round={round_active} age={tool_export_age_s}s",
       "level": "ok",
-      "description": "Echo the row to the Automations console."
+      "description": "Echo the snapshot to the Automations console."
     },
     {
       "type": "csv_append",
       "path": "stat_collect.csv",
-      "fields": ["coins", "coins_per_min", "cash_per_min", "diamonds", "panel_open", "upgrade_tab"],
-      "description": "Append datetime, run, wave, coins, coins/min, cash/min, diamonds, panel status to runs/stat_collect.csv."
+      "fields": ["coins", "cash", "diamonds", "gems", "cells", "stones", "tier", "round_active", "exported_at", "tool_export_age_s"],
+      "description": "Append datetime, run, wave, and export fields to runs/stat_collect.csv."
     }
   ]
 }

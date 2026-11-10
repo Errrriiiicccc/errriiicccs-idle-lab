@@ -1,0 +1,71 @@
+{
+  "draft_id": "65108127aa",
+  "title": "Test Wave Check",
+  "requires_tab": "attack",
+  "notes": "",
+  "phase": "beginning",
+  "kind": "buy",
+  "collection_id": "mol_test_wave_check",
+  "steps": [
+    {
+      "kind": "event_ref",
+      "label": "Stat collect",
+      "tab": null,
+      "catalog_id": null,
+      "catalog_index": null,
+      "molecule_id": null,
+      "event_id": "stat_collect",
+      "detail": "OCR wave + currencies into runtime variables (sticky until next collect)."
+    },
+    {
+      "kind": "molecule_ref",
+      "label": "Test Attack Buy",
+      "tab": "attack",
+      "catalog_id": null,
+      "catalog_index": null,
+      "molecule_id": "mol_test_attack_buy",
+      "event_id": null,
+      "detail": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires attack tab).",
+      "condition": {
+        "when_true": "perform",
+        "all": [
+          {
+            "source_step": 0,
+            "field": "wave",
+            "op": "lt",
+            "value": 400.0,
+            "value_hi": null
+          }
+        ]
+      }
+    },
+    {
+      "kind": "molecule_ref",
+      "label": "Test Defense Buy",
+      "tab": "defense",
+      "catalog_id": null,
+      "catalog_index": null,
+      "molecule_id": "mol_test_defense_buy",
+      "event_id": null,
+      "detail": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires defense tab).",
+      "condition": {
+        "when_true": "perform",
+        "all": [
+          {
+            "source_step": 0,
+            "field": "wave",
+            "op": "gte",
+            "value": 395.0,
+            "value_hi": null
+          }
+        ]
+      }
+    }
+  ],
+  "lco": {
+    "enabled": true,
+    "hotkey": "I",
+    "nx": 0.0775716694772344,
+    "ny": 0.25
+  }
+}

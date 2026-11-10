@@ -30,3 +30,7 @@
 | **Flight Deck** | [flight-deck.md](flight-deck.md) — dive complete enough; soft leftovers parked |
 
 ~~Autoclicker Lab~~ → Molecule Lab Atom ([autoclicker-lab.md](autoclicker-lab.md)).
+
+## Implementation
+
+Shape-first waterfall (review before coding): [SHAPE-FIRST-PLAN.md](SHAPE-FIRST-PLAN.md).

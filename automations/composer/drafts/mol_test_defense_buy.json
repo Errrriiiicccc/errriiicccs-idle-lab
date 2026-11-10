@@ -1,0 +1,73 @@
+{
+  "draft_id": "15fd1ffc4c",
+  "title": "Test Defense Buy",
+  "requires_tab": "defense",
+  "notes": "",
+  "phase": "unfiled",
+  "kind": "buy",
+  "collection_id": "mol_test_defense_buy",
+  "steps": [
+    {
+      "kind": "ensure_tab",
+      "label": "Defense [W]",
+      "tab": "defense",
+      "catalog_id": null,
+      "catalog_index": null,
+      "molecule_id": null,
+      "detail": "Enter this upgrade tab before buys on its list are available."
+    },
+    {
+      "kind": "seek_and_buy",
+      "label": "Health",
+      "tab": "defense",
+      "catalog_id": "buy.defense.1",
+      "catalog_index": 0,
+      "molecule_id": null,
+      "detail": "page-1: find Health relative to the viewport, correct overshoot via neighbors, then buy. Skip if maxed/unaffordable (stub).",
+      "guards": {
+        "too_far_up": [],
+        "too_far_down": [
+          "Health Regen",
+          "Defense %"
+        ]
+      }
+    },
+    {
+      "kind": "seek_and_buy",
+      "label": "Health Regen",
+      "tab": "defense",
+      "catalog_id": "buy.defense.2",
+      "catalog_index": 1,
+      "molecule_id": null,
+      "detail": "page-1: find Health Regen relative to the viewport, correct overshoot via neighbors, then buy. Skip if maxed/unaffordable (stub).",
+      "guards": {
+        "too_far_up": [
+          "Health"
+        ],
+        "too_far_down": [
+          "Defense %",
+          "Def Absolute"
+        ]
+      }
+    },
+    {
+      "kind": "seek_and_buy",
+      "label": "Defense %",
+      "tab": "defense",
+      "catalog_id": "buy.defense.3",
+      "catalog_index": 2,
+      "molecule_id": null,
+      "detail": "page-1: find Defense % relative to the viewport, correct overshoot via neighbors, then buy. Skip if maxed/unaffordable (stub).",
+      "guards": {
+        "too_far_up": [
+          "Health",
+          "Health Regen"
+        ],
+        "too_far_down": [
+          "Def Absolute",
+          "Thorn"
+        ]
+      }
+    }
+  ]
+}

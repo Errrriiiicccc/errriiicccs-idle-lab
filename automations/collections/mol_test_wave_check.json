@@ -1,0 +1,17 @@
+{
+  "id": "mol_test_wave_check",
+  "title": "Test Wave Check",
+  "version": 1,
+  "description": "Molecule Lab \u00b7 buy \u00b7 beginning (requires attack tab).",
+  "children": [
+    "stat_collect",
+    "mol_test_attack_buy",
+    "mol_test_defense_buy"
+  ],
+  "branch_variable": "phase",
+  "branches": {},
+  "loop": false,
+  "stop_when": null,
+  "run": "once",
+  "notes": "Authored via Molecule Lab. Files are source of truth.\nstep 2: Condition: step 1.wave < 400\nstep 3: Condition: step 1.wave \u2265 395"
+}

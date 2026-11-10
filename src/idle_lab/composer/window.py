@@ -7,6 +7,7 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from idle_lab import win32_api
 from idle_lab.composer.catalog import CapabilityCatalog, load_capability_catalog
 from idle_lab.composer.expand import (
     ComposerExpandError,
@@ -22,10 +23,13 @@ from idle_lab.composer.model import (
     PHASE_ORDER,
     ComposerContext,
     ComposerDraft,
+    ConditionAny,
+    ConditionLeaf,
     DraftStep,
     PaletteItem,
     StepCondition,
     build_palette,
+    outputs_for_step,
 )
 from idle_lab.presets import project_root
 
@@ -52,8 +56,8 @@ class MoleculeLabWindow(ctk.CTkToplevel):
     ) -> None:
         super().__init__(master)
         self.title("Molecule Lab")
-        self.geometry("1100x700")
-        self.minsize(900, 560)
+        self.geometry("1280x860")
+        self.minsize(1100, 720)
         self.configure(fg_color=_BG)
         self.automations_root = Path(automations_root or (project_root() / "automations"))
         self.project_root_path = Path(project_root_path or project_root())
@@ -74,14 +78,42 @@ class MoleculeLabWindow(ctk.CTkToplevel):
         self._build()
         self.refresh()
         self.protocol("WM_DELETE_WINDOW", self._close)
-        self.after(50, self._lift)
+        # Orphan + focus like LCO console / flight deck — owned Toplevels under a
+        # withdrawn Lab never receive Win32 keyboard focus, so entries look dead.
+        self.after(0, self._orphan_and_focus)
+        self.after(50, self._orphan_and_focus)
+        self.after(150, self._orphan_and_focus)
 
     # --- lifecycle ---------------------------------------------------------
 
-    def _lift(self) -> None:
+    def _orphan_and_focus(self) -> None:
+        """Detach from Lab's Win32 owner and steal keyboard focus into this window."""
+
+        if not self.winfo_exists():
+            return
         try:
+            self.update_idletasks()
+            hwnd = win32_api.widget_hwnd(self)
+            win32_api.clear_window_owner(hwnd)
             self.lift()
+            self.attributes("-topmost", True)
             self.focus_force()
+            win32_api.focus_window(hwnd)
+        except Exception:
+            try:
+                self.lift()
+                self.focus_force()
+            except Exception:
+                pass
+        try:
+            self.after(300, self._release_topmost)
+        except Exception:
+            pass
+
+    def _release_topmost(self) -> None:
+        try:
+            if self.winfo_exists():
+                self.attributes("-topmost", False)
         except Exception:
             pass
 
@@ -122,8 +154,8 @@ class MoleculeLabWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             self,
             text=(
-                "Click palette items to add them. Reorder steps, attach conditions "
-                "(wave / cash gates), save as JSON. Library is grouped by phase."
+                "Click palette items to add them. Select a step to edit conditions "
+                "(previous-step sources). Save as JSON. Library is grouped by phase."
             ),
             text_color=_MUTED,
             anchor="w",
@@ -239,69 +271,99 @@ class MoleculeLabWindow(ctk.CTkToplevel):
             font=ctk.CTkFont(family="Consolas", size=12),
             text_color=_TEXT,
             fg_color="#121820",
-            height=220,
+            height=160,
         )
         self.preview.pack(fill="both", expand=True, padx=10, pady=(0, 8))
 
-        ctk.CTkLabel(frame, text="Condition on selected step", font=ctk.CTkFont(weight="bold")).pack(
+        ctk.CTkLabel(frame, text="Conditions", font=ctk.CTkFont(weight="bold")).pack(
             anchor="w", padx=10, pady=(0, 4)
         )
-        cond = ctk.CTkFrame(frame, fg_color="transparent")
-        cond.pack(fill="x", padx=10, pady=(0, 4))
+        self.cond_hint = ctk.CTkLabel(
+            frame,
+            text="Select a draft step to edit its conditions.",
+            text_color=_MUTED,
+            anchor="w",
+            justify="left",
+            wraplength=280,
+        )
+        self.cond_hint.pack(fill="x", padx=10, pady=(0, 6))
 
-        self.cond_enabled = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(
-            cond,
-            text="Gate this step",
-            variable=self.cond_enabled,
-            command=self._apply_condition_form,
-        ).pack(anchor="w")
+        self.cond_panel = ctk.CTkFrame(frame, fg_color="transparent")
+        # Packed only when a step is selected.
 
-        row1 = ctk.CTkFrame(frame, fg_color="transparent")
-        row1.pack(fill="x", padx=10, pady=2)
-        ctk.CTkLabel(row1, text="Var", text_color=_MUTED, width=36).pack(side="left")
-        self.cond_var = ctk.StringVar(value="wave")
+        pol = ctk.CTkFrame(self.cond_panel, fg_color="transparent")
+        pol.pack(fill="x", pady=(0, 4))
+        ctk.CTkLabel(pol, text="When true", text_color=_MUTED, width=72).pack(side="left")
+        self.cond_when = ctk.StringVar(value="perform")
         ctk.CTkOptionMenu(
-            row1,
-            variable=self.cond_var,
-            values=["wave", "cash", "coins", "diamonds", "custom"],
-            width=110,
-            command=lambda _v: self._apply_condition_form(),
-        ).pack(side="left", padx=(4, 8))
-        self.cond_custom = ctk.CTkEntry(row1, width=100, placeholder_text="custom var")
-        self.cond_custom.pack(side="left")
-        self.cond_custom.bind("<KeyRelease>", lambda _e: self._apply_condition_form())
+            pol,
+            variable=self.cond_when,
+            values=["perform", "skip"],
+            width=120,
+            command=lambda _v: self._apply_polarity(),
+        ).pack(side="left", padx=(4, 0))
 
-        row2 = ctk.CTkFrame(frame, fg_color="transparent")
-        row2.pack(fill="x", padx=10, pady=2)
-        ctk.CTkLabel(row2, text="Op", text_color=_MUTED, width=36).pack(side="left")
+        self.cond_list = ctk.CTkScrollableFrame(self.cond_panel, fg_color="#121820", height=180)
+        self.cond_list.pack(fill="both", expand=True, pady=(0, 6))
+
+        add_row = ctk.CTkFrame(self.cond_panel, fg_color="transparent")
+        add_row.pack(fill="x", pady=(0, 4))
+        ctk.CTkLabel(add_row, text="Source", text_color=_MUTED, width=52).pack(side="left")
+        self.cond_source = ctk.StringVar(value="")
+        self.cond_source_menu = ctk.CTkOptionMenu(
+            add_row,
+            variable=self.cond_source,
+            values=["(none)"],
+            width=160,
+            command=lambda _v: self._on_source_changed(),
+        )
+        self.cond_source_menu.pack(side="left", padx=(4, 0))
+
+        field_row = ctk.CTkFrame(self.cond_panel, fg_color="transparent")
+        field_row.pack(fill="x", pady=2)
+        ctk.CTkLabel(field_row, text="Field", text_color=_MUTED, width=52).pack(side="left")
+        self.cond_field = ctk.StringVar(value="completed")
+        self.cond_field_menu = ctk.CTkOptionMenu(
+            field_row,
+            variable=self.cond_field,
+            values=["completed"],
+            width=160,
+        )
+        self.cond_field_menu.pack(side="left", padx=(4, 0))
+
+        op_row = ctk.CTkFrame(self.cond_panel, fg_color="transparent")
+        op_row.pack(fill="x", pady=2)
+        ctk.CTkLabel(op_row, text="Op", text_color=_MUTED, width=52).pack(side="left")
         self.cond_op = ctk.StringVar(value="gte")
         ctk.CTkOptionMenu(
-            row2,
+            op_row,
             variable=self.cond_op,
-            values=["gte", "lte", "eq", "between", "nonempty"],
-            width=110,
-            command=lambda _v: self._apply_condition_form(),
+            values=["gte", "lte", "gt", "lt", "eq", "between", "nonempty"],
+            width=100,
+            command=lambda _v: self._sync_value_entries(),
         ).pack(side="left", padx=(4, 8))
-        self.cond_value = ctk.CTkEntry(row2, width=70, placeholder_text="1000")
+        self.cond_value = ctk.CTkEntry(op_row, width=64, placeholder_text="value")
         self.cond_value.pack(side="left", padx=(0, 4))
-        self.cond_value.bind("<KeyRelease>", lambda _e: self._apply_condition_form())
-        self.cond_value_hi = ctk.CTkEntry(row2, width=70, placeholder_text="hi")
+        self.cond_value_hi = ctk.CTkEntry(op_row, width=64, placeholder_text="hi")
         self.cond_value_hi.pack(side="left")
-        self.cond_value_hi.bind("<KeyRelease>", lambda _e: self._apply_condition_form())
 
-        row3 = ctk.CTkFrame(frame, fg_color="transparent")
-        row3.pack(fill="x", padx=10, pady=(2, 8))
-        ctk.CTkLabel(row3, text="After", text_color=_MUTED, width=36).pack(side="left")
-        self.cond_after = ctk.StringVar(value="none")
-        self.cond_after_menu = ctk.CTkOptionMenu(
-            row3,
-            variable=self.cond_after,
-            values=["none", "previous", "step 1"],
-            width=120,
-            command=lambda _v: self._apply_condition_form(),
-        )
-        self.cond_after_menu.pack(side="left", padx=(4, 0))
+        btn_row = ctk.CTkFrame(self.cond_panel, fg_color="transparent")
+        btn_row.pack(fill="x", pady=(6, 0))
+        ctk.CTkButton(
+            btn_row,
+            text="Add condition",
+            width=110,
+            fg_color="#2F6F5E",
+            hover_color="#3A8A74",
+            command=self._add_condition_leaf,
+        ).pack(side="left", padx=(0, 6))
+        ctk.CTkButton(
+            btn_row,
+            text="Add OR group",
+            width=110,
+            fg_color="#2A3140",
+            command=self._add_or_group,
+        ).pack(side="left")
 
         self.detail_var = ctk.StringVar(value="")
         ctk.CTkLabel(
@@ -311,7 +373,7 @@ class MoleculeLabWindow(ctk.CTkToplevel):
             wraplength=280,
             justify="left",
             anchor="w",
-        ).pack(fill="x", padx=10, pady=(0, 10))
+        ).pack(fill="x", padx=10, pady=(8, 10))
 
     def _build_footer(self) -> None:
         footer = ctk.CTkFrame(self, fg_color="transparent")
@@ -360,6 +422,7 @@ class MoleculeLabWindow(ctk.CTkToplevel):
             context=self.context,
             tabs=self.catalog.tabs,
             library=self._library,
+            exclude_molecule_id=self.draft.collection_id,
         )
         tab = self.context.tab
         if tab:
@@ -372,7 +435,7 @@ class MoleculeLabWindow(ctk.CTkToplevel):
         self._render_library()
         self._render_palette()
         self._render_steps()
-        self._refresh_after_options()
+        self._render_condition_panel()
         self._render_preview()
 
     # --- library -----------------------------------------------------------
@@ -590,6 +653,20 @@ class MoleculeLabWindow(ctk.CTkToplevel):
             self._emit(f"Added molecule: {item.label}", "ok")
             return
 
+        if item.kind == "event_ref":
+            self.draft.add_step(
+                DraftStep(
+                    kind="event_ref",
+                    label=item.label,
+                    event_id=item.event_id,
+                    detail=item.detail,
+                )
+            )
+            self.refresh()
+            self._select_step(len(self.draft.steps) - 1)
+            self._emit(f"Added atom: {item.label}", "ok")
+            return
+
     # --- draft steps -------------------------------------------------------
 
     def _render_steps(self) -> None:
@@ -618,6 +695,8 @@ class MoleculeLabWindow(ctk.CTkToplevel):
         self._selected_step = index
         self._render_steps()
         if not (0 <= index < len(self.draft.steps)):
+            self.detail_var.set("")
+            self._render_condition_panel()
             return
         step = self.draft.steps[index]
         detail = step.detail
@@ -626,91 +705,232 @@ class MoleculeLabWindow(ctk.CTkToplevel):
             up = ", ".join(step.guards.too_far_up) or "—"
             detail = f"{detail}\n\nToo far up: {up}\nToo far down: {down}"
         self.detail_var.set(detail)
-        self._load_condition_form(step.condition)
+        self._render_condition_panel()
         self._render_preview()
 
-    def _refresh_after_options(self) -> None:
-        values = ["none", "previous"] + [f"step {i + 1}" for i in range(len(self.draft.steps))]
+    def _render_condition_panel(self) -> None:
+        idx = self._selected_step
+        if idx is None or not (0 <= idx < len(self.draft.steps)):
+            try:
+                self.cond_panel.pack_forget()
+            except Exception:
+                pass
+            self.cond_hint.configure(text="Select a draft step to edit its conditions.")
+            try:
+                self.cond_hint.pack(fill="x", padx=10, pady=(0, 6))
+            except Exception:
+                pass
+            return
         try:
-            self.cond_after_menu.configure(values=values)
+            self.cond_hint.pack_forget()
         except Exception:
             pass
+        if not self.cond_panel.winfo_ismapped():
+            self.cond_panel.pack(fill="both", expand=False, padx=10, pady=(0, 4))
 
-    def _load_condition_form(self, cond: StepCondition | None) -> None:
-        if cond is None:
-            self.cond_enabled.set(False)
-            self.cond_var.set("wave")
-            self.cond_op.set("gte")
-            self.cond_value.delete(0, "end")
-            self.cond_value_hi.delete(0, "end")
-            self.cond_after.set("none")
-            self.cond_custom.delete(0, "end")
+        step = self.draft.steps[idx]
+        gate = step.condition
+        self.cond_when.set(gate.when_true if gate else "perform")
+        self._refresh_source_options(idx)
+        self._on_source_changed()
+        self._sync_value_entries()
+        self._render_condition_list(gate)
+
+    def _refresh_source_options(self, step_index: int) -> None:
+        labels: list[str] = []
+        for i in range(step_index):
+            prev = self.draft.steps[i]
+            labels.append(f"{i + 1}. {prev.label}")
+        if not labels:
+            labels = ["(no previous step)"]
+        current = self.cond_source.get()
+        try:
+            self.cond_source_menu.configure(values=labels)
+        except Exception:
+            pass
+        if current in labels and not current.startswith("("):
+            self.cond_source.set(current)
+        else:
+            self.cond_source.set(labels[0])
+
+    def _source_index(self) -> int | None:
+        raw = self.cond_source.get()
+        if not raw or raw.startswith("("):
+            return None
+        try:
+            return int(raw.split(".", 1)[0].strip()) - 1
+        except ValueError:
+            return None
+
+    def _on_source_changed(self) -> None:
+        src = self._source_index()
+        fields = ["completed"]
+        if src is not None and 0 <= src < len(self.draft.steps):
+            fields = outputs_for_step(self.draft.steps[src]) or ["completed"]
+        try:
+            self.cond_field_menu.configure(values=fields)
+        except Exception:
+            pass
+        if self.cond_field.get() not in fields:
+            self.cond_field.set(fields[0])
+
+    def _sync_value_entries(self) -> None:
+        op = self.cond_op.get()
+        if op == "nonempty":
+            self.cond_value.configure(state="disabled")
+            self.cond_value_hi.configure(state="disabled")
+        elif op == "between":
+            self.cond_value.configure(state="normal")
+            self.cond_value_hi.configure(state="normal")
+        else:
+            self.cond_value.configure(state="normal")
+            self.cond_value_hi.configure(state="disabled")
+
+    def _parse_entry_num(self, entry: ctk.CTkEntry) -> float | None:
+        raw = entry.get().strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+    def _ensure_gate(self) -> StepCondition | None:
+        if self._selected_step is None or not (0 <= self._selected_step < len(self.draft.steps)):
+            return None
+        step = self.draft.steps[self._selected_step]
+        if step.condition is None:
+            step.condition = StepCondition(when_true=self.cond_when.get() or "perform")  # type: ignore[arg-type]
+        return step.condition
+
+    def _apply_polarity(self) -> None:
+        gate = self._ensure_gate()
+        if gate is None:
             return
-        self.cond_enabled.set(True)
-        known = {"wave", "cash", "coins", "diamonds"}
-        if cond.variable in known:
-            self.cond_var.set(cond.variable)
-            self.cond_custom.delete(0, "end")
-        else:
-            self.cond_var.set("custom")
-            self.cond_custom.delete(0, "end")
-            self.cond_custom.insert(0, cond.variable)
-        self.cond_op.set(cond.op)
-        self.cond_value.delete(0, "end")
-        if cond.value is not None:
-            self.cond_value.insert(0, f"{cond.value:g}")
-        self.cond_value_hi.delete(0, "end")
-        if cond.value_hi is not None:
-            self.cond_value_hi.insert(0, f"{cond.value_hi:g}")
-        if cond.after_step == -1:
-            self.cond_after.set("previous")
-        elif cond.after_step is not None and cond.after_step >= 0:
-            self.cond_after.set(f"step {cond.after_step + 1}")
-        else:
-            self.cond_after.set("none")
+        when = self.cond_when.get()
+        if when not in {"perform", "skip"}:
+            when = "perform"
+        gate.when_true = when  # type: ignore[assignment]
+        if gate.is_empty():
+            self.draft.steps[self._selected_step].condition = None  # type: ignore[index]
+        self._render_steps()
+        self._render_preview()
 
-    def _apply_condition_form(self) -> None:
+    def _build_leaf_from_form(self) -> ConditionLeaf | None:
+        src = self._source_index()
+        if src is None or self._selected_step is None or src >= self._selected_step:
+            self._emit("Pick a previous step as the condition source.", "warn")
+            return None
+        op = self.cond_op.get()
+        value = self._parse_entry_num(self.cond_value)
+        value_hi = self._parse_entry_num(self.cond_value_hi)
+        if op != "nonempty" and value is None and op != "between":
+            self._emit("Enter a numeric value for this condition.", "warn")
+            return None
+        if op == "between" and (value is None or value_hi is None):
+            self._emit("Between needs both low and high values.", "warn")
+            return None
+        return ConditionLeaf(
+            source_step=src,
+            field=self.cond_field.get() or "completed",
+            op=op,  # type: ignore[arg-type]
+            value=value,
+            value_hi=value_hi if op == "between" else None,
+        )
+
+    def _add_condition_leaf(self) -> None:
+        leaf = self._build_leaf_from_form()
+        if leaf is None:
+            return
+        gate = self._ensure_gate()
+        if gate is None:
+            return
+        gate.when_true = self.cond_when.get() if self.cond_when.get() in {"perform", "skip"} else "perform"  # type: ignore[assignment]
+        gate.all.append(leaf)
+        self._render_condition_list(gate)
+        self._render_steps()
+        self._render_preview()
+
+    def _add_or_group(self) -> None:
+        """Add an OR group: current form leaf + a completed-check on the same source."""
+
+        leaf_a = self._build_leaf_from_form()
+        if leaf_a is None:
+            return
+        # Second arm defaults to completed/nonempty on the same source so the group is valid.
+        leaf_b = ConditionLeaf(
+            source_step=leaf_a.source_step,
+            field="completed",
+            op="nonempty",
+        )
+        if leaf_a.field == "completed" and leaf_a.op == "nonempty":
+            # Avoid identical arms — use first catalog field with gte 1 if possible.
+            fields = outputs_for_step(self.draft.steps[leaf_a.source_step])
+            alt = next((f for f in fields if f != "completed"), None)
+            if alt is None:
+                self._emit("Need two distinct predicates for an OR group — change field/op first.", "warn")
+                return
+            leaf_b = ConditionLeaf(source_step=leaf_a.source_step, field=alt, op="nonempty")
+        gate = self._ensure_gate()
+        if gate is None:
+            return
+        gate.when_true = self.cond_when.get() if self.cond_when.get() in {"perform", "skip"} else "perform"  # type: ignore[assignment]
+        gate.all.append(ConditionAny(leaves=[leaf_a, leaf_b]))
+        self._emit("OR group added — remove an arm or edit JSON later if needed.", "ok")
+        self._render_condition_list(gate)
+        self._render_steps()
+        self._render_preview()
+
+    def _remove_clause(self, clause_index: int) -> None:
         if self._selected_step is None or not (0 <= self._selected_step < len(self.draft.steps)):
             return
         step = self.draft.steps[self._selected_step]
-        if not self.cond_enabled.get():
-            step.condition = None
-            self._render_steps()
-            self._render_preview()
+        gate = step.condition
+        if gate is None or not (0 <= clause_index < len(gate.all)):
             return
-        var = self.cond_var.get()
-        if var == "custom":
-            var = self.cond_custom.get().strip() or "custom"
-        op = self.cond_op.get()
-        def _num(entry: ctk.CTkEntry) -> float | None:
-            raw = entry.get().strip()
-            if not raw:
-                return None
-            try:
-                return float(raw)
-            except ValueError:
-                return None
-
-        after_raw = self.cond_after.get()
-        after: int | None
-        if after_raw == "previous":
-            after = -1
-        elif after_raw.startswith("step "):
-            try:
-                after = int(after_raw.split()[1]) - 1
-            except (IndexError, ValueError):
-                after = None
-        else:
-            after = None
-        step.condition = StepCondition(
-            variable=var,
-            op=op,  # type: ignore[arg-type]
-            value=_num(self.cond_value),
-            value_hi=_num(self.cond_value_hi),
-            after_step=after,
-        )
+        gate.all.pop(clause_index)
+        if gate.is_empty():
+            step.condition = None
+            gate = None
+        self._render_condition_list(gate)
         self._render_steps()
         self._render_preview()
+
+    def _render_condition_list(self, gate: StepCondition | None) -> None:
+        for child in self.cond_list.winfo_children():
+            child.destroy()
+        if gate is None or gate.is_empty():
+            ctk.CTkLabel(
+                self.cond_list,
+                text="No conditions — step always runs (until runtime C5).",
+                text_color=_MUTED,
+                anchor="w",
+            ).pack(fill="x", padx=4, pady=4)
+            return
+        for i, clause in enumerate(gate.all):
+            row = ctk.CTkFrame(self.cond_list, fg_color="transparent")
+            row.pack(fill="x", padx=2, pady=2)
+            label = clause.summary()
+            if isinstance(clause, ConditionAny):
+                prefix = "OR"
+            else:
+                prefix = "AND" if i > 0 else "IF"
+            ctk.CTkLabel(
+                row,
+                text=f"{prefix} {label}",
+                anchor="w",
+                text_color=_TEXT,
+                wraplength=220,
+                justify="left",
+            ).pack(side="left", fill="x", expand=True)
+            ctk.CTkButton(
+                row,
+                text="×",
+                width=28,
+                fg_color="#3A2A2A",
+                hover_color="#5A3A3A",
+                command=lambda idx=i: self._remove_clause(idx),
+            ).pack(side="right")
 
     def _move_up(self) -> None:
         if self._selected_step is None:

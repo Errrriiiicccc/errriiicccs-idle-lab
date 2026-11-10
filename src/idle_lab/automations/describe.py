@@ -33,6 +33,10 @@ def _action_basic(action: Action) -> str:
         variable = raw.get("variable") or roi
         parse_as = raw.get("parse_as") or "raw"
         return f"Read text from region “{roi}” and store it as {variable} ({parse_as})."
+    if kind == "tool_export":
+        path = raw.get("path")
+        where = f" from {path}" if path else " from the Rend tool_export cache"
+        return f"Load persistent Tower state{where} into variables."
     if kind == "decide":
         variable = raw.get("variable") or "signal"
         mode = raw.get("mode") or "contains"
@@ -105,6 +109,17 @@ def _action_detailed(action: Action, *, indent: str = "") -> list[str]:
         lines.append(f"{indent}  → ROI id: {raw.get('roi')}")
         lines.append(f"{indent}  → variable: {raw.get('variable')}  (parse_as={raw.get('parse_as') or 'raw'})")
         lines.append(f"{indent}  → also keeps {raw.get('variable')}_raw with the OCR string")
+    elif kind == "tool_export":
+        path = raw.get("path") or "%APPDATA%/rendapp/emulator-imports/toolExport_unknown.json"
+        lines.append(f"{indent}  → path: {path}")
+        if raw.get("max_age_s") not in (None, ""):
+            lines.append(f"{indent}  → max_age_s: {raw.get('max_age_s')}")
+        field_map = raw.get("map") or raw.get("fields")
+        if isinstance(field_map, dict) and field_map:
+            lines.append(f"{indent}  → custom map: {len(field_map)} field(s)")
+        else:
+            lines.append(f"{indent}  → default map: wave, wallets, tier, round_active, …")
+        lines.append(f"{indent}  → sets tool_export_ok / tool_export_age_s")
     elif kind == "decide":
         variable = raw.get("variable") or "signal"
         mode = raw.get("mode") or "contains"

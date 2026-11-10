@@ -137,7 +137,7 @@ def _guard_note(guards: SeekGuards | None) -> str:
 
 
 def _condition_note(cond: StepCondition | None) -> str:
-    if cond is None:
+    if cond is None or cond.is_empty():
         return ""
     return f"Condition: {cond.summary()}" + (f" — {cond.note}" if cond.note else "")
 
@@ -145,16 +145,20 @@ def _condition_note(cond: StepCondition | None) -> str:
 def _condition_actions(cond: StepCondition | None) -> list[dict[str, Any]]:
     """Emit a log gate today; headless/OCR can turn this into real decide later."""
 
-    if cond is None:
+    if cond is None or cond.is_empty():
         return []
+    if cond.when_true == "skip":
+        intent = f"Would skip this step when ({cond.summary()})."
+    else:
+        intent = f"Would perform this step only when ({cond.summary()})."
     return [
         {
             "type": "log",
             "level": "info",
             "message": f"molecule-lab gate — {_condition_note(cond)}",
             "description": (
-                f"Skip this step unless {cond.summary()}. "
-                "Persistent prior-step memory + numeric compare land with headless runtime."
+                f"{intent} "
+                "Runtime numeric compare + skip land with C5; authoring stores the intent."
             ),
         }
     ]
@@ -239,7 +243,7 @@ def _event_payload(event_id: str, title: str, description: str, notes: str, acti
 
 
 def _preview_line(step: DraftStep, body: str) -> str:
-    if step.condition is None:
+    if step.condition is None or step.condition.is_empty():
         return body
     return f"{body}  |  if {step.condition.summary()}"
 
@@ -280,6 +284,12 @@ def _expand_step(
             raise ComposerExpandError("molecule_ref step missing molecule_id")
         # Nested refs can't wrap decide without a generated shim yet — keep gate in preview/notes.
         return mol_id, None, _preview_line(step, f"reuse molecule → {mol_id}")
+
+    if step.kind == "event_ref":
+        event_id = step.event_id or ""
+        if not event_id:
+            raise ComposerExpandError("event_ref step missing event_id")
+        return event_id, None, _preview_line(step, f"reuse atom → {event_id}")
 
     if step.kind == "seek_and_buy":
         tab = (step.tab or "").lower()
@@ -361,7 +371,7 @@ def expand_and_write(
     condition_notes = [
         f"step {i}: {_condition_note(step.condition)}"
         for i, step in enumerate(draft.steps, start=1)
-        if step.condition is not None
+        if step.condition is not None and not step.condition.is_empty()
     ]
     collection = {
         "id": collection_id,
