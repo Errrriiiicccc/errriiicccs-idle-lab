@@ -1,74 +1,102 @@
 # Features
 
-Product purpose and north star: [VISION.md](VISION.md). This file lists **what the POC ships today**; VISION describes the destination.
+**Purpose:** [VISION.md](VISION.md) · **Cascade:** [README.md](README.md) · **Shell plan:** [pieces/shell/](pieces/shell/README.md) · **Hygiene:** [pieces/hygiene/CUT-REFINE-KEEP.md](pieces/hygiene/CUT-REFINE-KEEP.md)
 
-## Global chrome
+This file has two layers on purpose:
 
-- **Single instance:** a second `python -m idle_lab` focuses the running app (Lab + deck) and exits; Restart releases the lock before relaunch.
-- **Deck-first launch:** process starts with Lab withdrawn and an **inactive** flight deck showing only **Activate Flight Deck [`]**. Nothing else is captured until Activate (key or button). Lab **X** hides Lab; process stays on the deck.
-- **Taskbar + tray:** Lab “hide” parks the window off-screen at alpha 0 (not withdraw/iconify — those hide the flight-deck Toplevel on Windows) so a taskbar button remains. Native tray icon (Open Lab / Show Flight Deck / Quit); Windows 11 often parks new icons under the `^` overflow.
-- Compact **Anchor** button (set/rebind) + red **×** clear (disabled when unbound); tiny window subtitle.
-- **Flight deck** toggle + **Expand [key]** remap (default `` ` ``) beside Anchor — opens the in-flight HUD.
-- **Refresh** (F5): reload presets, automations, missions, Observe catalog, comments, flight-deck keymap — no process kill.
-- **Restart**: stop runners, save settings, relaunch `python -m idle_lab`.
-- **Stop all**: halt Bench playback, Missions, Loops, Observe capture, Walkthrough.
-- **Activity** pulse + **Files changed — Refresh** badge when watched dirs change on disk.
+1. **Target shell** — agreed redesign (shape-first code aims here).  
+2. **Ships today** — what the running POC still is until that waterfall lands.
+
+Day-to-day chat focus: [CONTINUATION.md](CONTINUATION.md).
+
+---
+
+## Target shell (agreed)
+
+### Surfaces
+
+| Surface | Role |
+| --- | --- |
+| **Idle Lab** | Mouse-first home. **No hotkeys** while open. Tabs = **Info** + Labs. Factory boot. Persist last tab. |
+| **Flight Deck** | Hotkey companion. Starts **deactivated** (only `` ` ``). Never shown with Idle Lab at once. |
+| **Labs** | Focused modules (embedded in Idle Lab; **floating** from Deck). |
+
+Hard rules: anything running → Idle Lab closes, Deck only; **Deactivate** = Stop all; resume handle after Deactivate; shared **console** object (docked bottom when Molecule Lab open; floating on Deck).
+
+Detail: [pieces/shell/README.md](pieces/shell/README.md), [pieces/shell/flight-deck.md](pieces/shell/flight-deck.md).
+
+### Idle Lab tabs
+
+| Tab | Job |
+| --- | --- |
+| **Info** | Nested verbose docs / onboarding; checklists + links to Labs |
+| **Live Overlay Lab (LOL)** | Interactive target map + live object-map hands |
+| **Molecule Lab** | **Atom** create/edit + **Molecule** compose; Trial cohesion parked for later polish |
+| **Observation Lab** | **User** capture/review + **AI mission** (Start / Mission view / Results) |
+
+No separate Bench, Loops, Missions, or Autoclicker top-level tabs.
+
+### Flight Deck (target)
+
+- Top-level: **L** LOL · **M** Molecule Lab (float) · **O** Observation Lab (float) · **S** Settings (boot preference for now) · **X** collapse · hold **D** describe · `` ` `` Deactivate.
+- Modes abandon prior hotkeys (LOL/ML float → Esc + `` ` ``; Atom Create → no accordion).
+- Atom Create: **C** place click/drag/key/OCR · **E** edit (**W/S** select, **R/F** reorder) · save on exit · shared overlay primitives with LOL.
+
+### Sense / state / hygiene (target)
+
+- Sense ladder: structured source → title-native hooks → pixels/OCR ([VISION §4.3](VISION.md)).
+- Current State is core (timing vs ML polish parked).
+- Deprecated demos/docs → [archive/](../archive/README.md); observations are **deleted**, not auto-archived.
+- Full disk/package rename pass with or after shape-first ([pieces/hygiene/](pieces/hygiene/README.md)).
+
+### Shape-first build rule
+
+Show UI skeletons/stubs before full wiring — no fake success. Exact runtime (C5 gates, etc.) follows once the shell looks right.
+
+---
+
+## Ships today (POC — lagging the plan)
+
+Until shape-first lands, the running app still has the **mega tabbed** Lab and legacy names.
+
+### Global chrome
+
+- Single instance; deck-first launch; tray; Anchor; Refresh / Restart / Stop all; Activity + files-changed; Auto/Supervised; Humanize Off default.
 - Contract: [REFRESH-RESTART.md](REFRESH-RESTART.md).
 
-## Flight deck (in-flight HUD)
+### Flight Deck (legacy accordion)
 
-- Separate movable topmost window. Starts **inactive**: only **Activate Flight Deck [`]** (`` ` `` by default, remappable). No Esc / I / A / menu capture while inactive — no close control either.
-- **Activate** → show **Close [Esc]** + **Deactivate [`]**; unanchored prompt offers **Enter** re-anchor (if last title lives), **A** new anchor, **I = open Lab** (when Lab hidden), **R = restart**.
-- **Deactivate [`]** = idle companion (deck stays up; only `` ` `` listens). Never Esc.
-- **Close** (button or Esc after menu peel) → confirm. If Lab is open: withdraw the deck, app stays. If Lab is hidden: quit Idle Lab. Esc on confirm cancels (stay active).
-- **Once anchored** while active: full accordion hotkeys + **I = open Lab · R = restart** (I only when Lab hidden; R always).
-- While a run is active: Pause / Stop + run name/status (menu still available).
-- **Esc peel** (active only): Live Control exit → remap cancel → close open letter-section → close-confirm. (The root hotkey list is not a peel layer.)
-- Accordion catalog [`automations/flight_deck.json`](../automations/flight_deck.json) (separate from Lab Loops taxonomy): letters **U/O/C/N/A/M** open one section; digits run leaves; **X** collapses section/menu; **D** descriptions. Max two keys deep. No Space flagship.
-- **Live Control Overlay (U→1 enter / U→2 troubleshoot):** overlay from the Tower object map [`automations/maps/tower_main_gameplay.objects.json`](../automations/maps/tower_main_gameplay.objects.json). Clicks show hotkeys (Q/W/E, 1–6); non-clicks show icons (scroll / clipboard stat / ↻ refresh). **Hold D** flips icons → hotkeys and paints HV descriptors. **`** pauses (gray inert) / resumes; Esc exits. Detail: [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md), [OBJECT-MAP.md](OBJECT-MAP.md).
-- **Humanize** defaults to **Off** (precision). Menu still offers Light/Medium/Heavy for experiments.
+- Inactive → Activate `` ` ``; Deactivate = Stop all.
+- Accordion `flight_deck.json` letters **U/O/C/N/A/M** (to be replaced by L/M/O/S).
+- **LCO** (→ LOL): object map, hold D describe, Esc exit. [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md), [OBJECT-MAP.md](OBJECT-MAP.md).
 
-## Bench (presets)
+### Bench (→ Atom Create)
 
-- Create presets (instantaneous / one second / realtime); Space/Esc recording.
-- Foreground and background clicks; focus; cursor restore; countdown.
-- **Humanize** (Off / Light / Medium / Heavy): runtime jitter shared with Missions/Loops.
-- Loop forever or N times; F6 / F7 / Esc.
-- **Note** comments per preset (`lab-comments.json`).
-- Click logger with WAVE/SIGNAL OCR harness.
+- Preset record/play, Humanize, click logger. Will dissolve into Molecule Lab → Atom.
 
-## Observe (Observation sessions)
+### Observe (→ Observation Lab User)
 
-- **Start observation** (flight deck **O→1** or Observe tab): auto-titled session under `screen-maps/`.
-- While active: mouse moves/clicks/scrolls are logged to `timeline.jsonl`; before/after frames dual-write into the Screen Map manifest. **O→2** Mark bookmarks a frame. Esc / **O→3** / Stop all ends; optional rename prompt.
-- Browse observations + shots; View all; Open folder (includes `observation.json` + timeline).
-- **Note** on batch or individual shot (also writes `manifest.json` notes).
-- Design: [GAMEPLAY-TEST.md](GAMEPLAY-TEST.md).
+- Observation sessions: timeline + shots under `screen-maps/`; Mark / rename-on-stop still present (**CUT** in plan).
+- [SCREEN-MAP-USAGE.md](SCREEN-MAP-USAGE.md), [GAMEPLAY-TEST.md](GAMEPLAY-TEST.md).
 
-## Missions (AI Batches)
+### Missions (→ Observation Lab AI mission)
 
-- File-backed gather/verify runs with executable `steps[]`.
-- Optional `genre`: `probe` / `mission` / `bench` (list shows `[probe]` tags).
-- Probes: `QUESTION.md` + `ACCEPTANCE.md` + `iterations/NNN/reflection.md` — [PROBE-MISSIONS.md](PROBE-MISSIONS.md).
-- Start/Stop; auto-links Observe batch; `run_report.json`.
-- Seeds missing folders from `examples/ai-batches/` on Reload (never overwrites local edits).
-- **Open linked Observe** primary cross-link.
-- On step failure: captures a **FAIL** screenshot into the linked Screen Map before marking missed.
-- **Note** on mission or request; legacy Add feedback still available.
+- `ai-batches/` steps, probes, run_report, Export packet, seeds. [AI-BATCH-USAGE.md](AI-BATCH-USAGE.md), [PROBE-MISSIONS.md](PROBE-MISSIONS.md).
 
-## Loops (Automations)
+### Loops + Molecule Lab composer (→ Molecule Lab)
 
-- **Atoms** (`events/`) and **Molecules** (`collections/`); taxonomy labels Atoms / Molecules (`loops.events` / `loops.collections`).
-- **Start selected** on an atom runs it **once** (no interval wait). Molecules: `run: "interval"` → child interval pool; `run: "once"` → serial pass.
-- Shared `scroll_list` action + scroll atoms (tab-agnostic).
-- Queue; console; Reload/Start/Stop; Walkthrough; Start all enabled.
-- Interval scheduler with priorities; OCR, A/B, clips, CSV.
-- **Note** on atoms and molecules.
+- Atoms/molecules files, scheduler, queue, console, Walkthrough, Validate/Dry-run; **Start all enabled** still exists (**CUT** in plan).
+- Composer: drafts, conditions C1–C4; runtime skip C5 pending. [MOLECULE-LAB-CONDITIONALS.md](MOLECULE-LAB-CONDITIONALS.md).
+- Persistent state via `tool_export`. [knowledge/TOWER-TOOL-EXPORT.md](knowledge/TOWER-TOOL-EXPORT.md).
 
-## Scrolling
+### Harness
 
-- Wheel + middle-drag; per-tab scroll position until leave/restart.
+- `python -m idle_lab.harness …` — [HARNESS.md](HARNESS.md). [`lab-context.json`](../lab-context.json).
 
-## Not in this POC
+### Still not in POC (and mostly still true after redesign)
 
-Full Tower buy-priority playbooks, process injection, stealth claims, in-process LLM, deep nested molecule orchestration.
+- Process injection / stealth / in-process LLM  
+- Full finished Tower buy-priority product loop  
+- Fully wired Current State + C5–C9  
+- In-app auto-classify Observe shots  
+- Inline JSON editors (files stay truth)  

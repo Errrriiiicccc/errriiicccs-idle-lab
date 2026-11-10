@@ -1,6 +1,8 @@
 # Asking for a strategy preset
 
-There is no chatbot in the app. A strategy preset is a JSON file written in chat and dropped into `presets/`. Press Reload.
+There is no chatbot in the app. A strategy preset is a JSON file written in chat and dropped into `presets/`. Press **Refresh** (or Loops Reload).
+
+North star: [VISION.md](VISION.md). Bench format: [preset-format.md](preset-format.md).
 
 `presets/sample-three-points.json` is a working example. Anchor the click logger and the three markers should sit on the drawn targets.
 
@@ -13,4 +15,4 @@ Send:
 
 Coordinates guessed from a screenshot are approximate. Record with Space when the spots have to be exact, or nudge the markers after import.
 
-No Tower routes are stored here yet. A real screenshot has to come first.
+For gated multi-step policies, prefer Molecule Lab + atoms/molecules over a single mega-preset — [MOLECULE-LAB-CONDITIONALS.md](MOLECULE-LAB-CONDITIONALS.md).

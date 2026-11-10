@@ -1,52 +1,50 @@
 # Smoke tests (10–15 minutes)
 
-Run after install. Prefer the click logger over The Tower for OCR/A/B.
+Run after install against the **current POC** UI (mega tabs). Target shell: [FEATURES.md](FEATURES.md). Prefer harness: [HARNESS.md](HARNESS.md).
 
 ## 0. Automated
 
 ```powershell
 cd c:\DEV\Projects\Cursor\errriiicccs-idle-lab
 .\.venv\Scripts\python.exe -m unittest discover -s tests
+.\.venv\Scripts\python.exe -m idle_lab.harness story schema-validate-all
 ```
 
-Expect OK (33+ tests).
+Expect unit OK and harness story green.
 
-## 1. Clicker still works
+## 1. Bench still works
 
-1. Launch `pythonw -m idle_lab`.
-2. Open **Click logger**. Use the top **ANCHOR** bar → **Set anchor** on it.
-3. Load **sample three points**. Foreground, countdown 0, loops 1 → **Start**.
+1. Launch `pythonw -m idle_lab` (deck-first: Activate, then **I** for Lab if needed).
+2. Open **Click logger**. Top chrome → **Anchor** on it.
+3. Load **sample three points**. Foreground, countdown 0, loops 1, Humanize Off → **Start**.
 4. Logger reports hits on upper/middle/lower.
 5. Confirm cyan frame follows move/resize; hides when minimized.
 
-## 2. Automations shell
+## 2. Loops shell
 
-1. Open **Automations** tab.
-2. Events list shows **OCR A/B tick** and **Minute clip**.
-3. Collections shows **Demo POC** with children + phase branches in details.
+1. Open **Loops** workspace.
+2. Atoms list shows known events (enable OCR A/B tick / Minute clip in JSON if you want the classic demo).
+3. Molecules shows packs such as Health then Damage / Stat collecting.
 4. Edit a title in JSON → **Reload** → list updates.
 
 ## 3. Capture + OCR + A/B
 
-1. Anchor the click logger. Automations → **Start**.
+1. Anchor the click logger. Enable `ocr_ab_tick` if disabled → Loops → **Start**.
 2. Within ~10s, console shows screenshot path and OCR for `signal_roi`.
 3. Toggle SIGNAL on the logger between A and B.
 4. Confirm console shows branch A vs B and the matching preset click (upper vs lower).
 
 ## 4. Priority: recording blocks A/B
 
-1. Keep automations running (or set `minute_clip` `every_ms` to `15000`, Reload, Start).
+1. Keep loops running (or set `minute_clip` `every_ms` to `15000`, Reload, Start).
 2. When recording starts, queue shows minute clip **running** and A/B **deferred**.
 3. Console notes priority preemption.
-4. After ~10s, clip appears under `runs/clips/`; A/B resumes.
 
-## 5. CSV
+## 5. Chrome honesty
 
-1. After a clip, open `runs/run_log.csv`.
-2. Header: `datetime,run_number,wave_number`.
-3. Row matches run number from `automations/runtime.json` and OCR wave (or `xx`).
+1. Edit a preset or atom on disk → Activity shows **Files changed — Refresh**.
+2. **Refresh** (F5) reloads without killing the process.
+3. **Stop all** halts Bench / Loops / Missions / Observe / LCO.
+4. **Deactivate** on the flight deck also stops everything, then idles the deck.
 
-## 6. Failure visibility
-
-1. Stop automations. Clear anchor. Start → console shows anchor/capture errors (no silent success).
-2. Rename `ffmpeg` off PATH temporarily if you want to confirm a clear video error (optional).
+Details: [USAGE.md](USAGE.md), [REFRESH-RESTART.md](REFRESH-RESTART.md).

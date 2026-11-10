@@ -69,7 +69,7 @@ screen-maps/ai-run-<slug>/
 - Prefer editing batch JSON + docs over asking Eric to hand-capture.
 - No computer-use / screen control unless he asks.
 - Local commits OK if he asks; **`git push` only outside Mon–Fri 09:00–17:00 Eastern** unless he overrides.
-- Do not edit workspace `idle-lab/docs/` vision tree unless asked.
+- Live purpose is [VISION.md](VISION.md) in this repo only. The separate `idle-lab/docs/` tree is historical.
 
 ## Push (after hours)
 

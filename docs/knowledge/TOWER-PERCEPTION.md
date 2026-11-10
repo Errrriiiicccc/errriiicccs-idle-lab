@@ -3,7 +3,7 @@
 **Status:** living knowledge (start 2026-11-05); **perception paused 2026-11-06** (bad-data watch only)  
 **Trust / auto-review watchlist:** [ocr-trust.json](ocr-trust.json)  
 **Resume / ownership handoff:** [HANDOFF-PERCEPTION.md](../HANDOFF-PERCEPTION.md)  
-**Product frame:** [VISION.md](../VISION.md) §§4–5 / §9  
+**Product frame:** [VISION.md](../VISION.md) §§4–5 (preference order §4.3; exports catalogue [TOWER-TOOL-EXPORT.md](TOWER-TOOL-EXPORT.md))  
 **Code:** `src/idle_lab/automations/ocr.py`, `hud_mode.py`, `automations/rois/`, `tests/fixtures/ocr/`
 
 This document is what later chats should **inherit** instead of rediscovering. Update it when calibrations change.
@@ -100,7 +100,7 @@ surface: main_gameplay | …          (planned: route templates / title OCR)
 
 | Artifact | Path |
 | --- | --- |
-| Stat collect atom | `automations/events/stat_collect.json` |
+| Persistent state atom (`stat_collect`) | `automations/events/stat_collect.json` — **tool_export**, not HUD OCR; see [TOWER-TOOL-EXPORT.md](TOWER-TOOL-EXPORT.md) |
 | ROIs | `automations/rois/*_roi.json` |
 | Fixture bench | `tests/fixtures/ocr/` |
 | Currency toggle preset | `presets/` (name `currency toggle`) |

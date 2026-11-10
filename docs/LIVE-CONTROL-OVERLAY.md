@@ -18,13 +18,13 @@ Overlay marks: **clicks show hotkeys**; **non-clicks show icons**. **Hold D** to
 | 1–6 | Buy on the visible 2×3 grid (label from catalog when identity known) | Hotkey (click) |
 | R / F | One card-row drag | ▲ / ▼ (R / F while holding D) |
 | T / G | Momentum fling toward list top / bottom | stacked ▲▲▲ / ▼▼▼ (T / G while holding D) |
-| V | Stat collect atom once | clipboard (V while holding D) |
+| V | Persistent state atom once (`stat_collect` / tool_export) | clipboard (V while holding D) |
 | C | Claim diamonds (timed tile; fine if absent) | ◆ (C while holding D) |
 | B | Redetect panel + buy grid (no scroll) | ↻ (B while holding D) |
 | A | Routine pack: Health → Damage → Claim (left rail) | ▸▸ (A while holding D) |
 | D | Hold: icons → hotkeys + HV descriptors | — |
-| ` | Pause / resume LCO (gray inert marks; session stays) | — |
-| Esc | Exit Live Control (and stop Observation if Troubleshoot owns it) |
+| ` (Activate key) | Deactivate flight deck (stop all + idle; not Esc) | — |
+| Esc | Exit Live Control only (deck stays active; stops Observation if Troubleshoot owns it) |
 
 Stay in mode after each fire. Pointer passes through. Cursor **stays** on the last click (no restore). Clicks use humanize **off** for precision.
 
@@ -34,13 +34,13 @@ Stay in mode after each fire. Pointer passes through. Cursor **stays** on the la
 | --- | --- | --- |
 | **Spam** | 1–6 buys, R/F scroll, T/G fling, C claim | Re-fires while the key is held; release stops |
 | **Single** | Q/W/E tabs, V stat, B refresh | Fires once on key-down; hold does nothing extra |
-| **Toggle** | A routine (Health → Damage → Claim) | Key-down arms a repeating loop (release ignored); press again to disarm. Esc / `` ` `` also clear it |
+| **Toggle** | A routine (Health → Damage → Claim) | Key-down arms a repeating loop (release ignored); press again to disarm. Esc / deactivate also clear it |
 
 **Queue + focus colors:** keys pressed while an action is in flight enqueue FIFO and run in press order. During activity, marks use focus colors — **green** = current action; **armed toggle** = green outline with fill pulsing between active green and the mark’s resting color (not gray); **orange + N** = queued (1, 2, …; current/toggle marks have no number); **gray** = idle while something else is busy. Remaining steps inside a running routine count as queued too.
 
-Scroll gesture settle after R/F/T/G (and tab-home fling) stays short (~80ms). Before buy-grid detect, LCO waits up to `detect_settle_ms` (~220ms) so 1–6 park on settled cards — not mid-fling frames. Pressing **A** again (or **`**) aborts the in-flight pack immediately; the hotkey drain stays free so orange queue marks + numbers can paint while work runs.
+Scroll gesture settle after R/F/T/G (and tab-home fling) stays short (~80ms). Before buy-grid detect, LCO waits up to `detect_settle_ms` (~220ms) so 1–6 park on settled cards — not mid-fling frames. Pressing **A** again (or **Esc** / deactivate) aborts the in-flight pack immediately; the hotkey drain stays free so orange queue marks + numbers can paint while work runs.
 
-Describe (**D**) stays hold-to-show. **`** / **Esc** abort in-flight work immediately (mid-drag / queued repeats) — pause or exit still follows.
+Describe (**D**) stays hold-to-show. **Esc** exits LCO; **`** deactivates the deck (stop all). Both abort in-flight work immediately.
 
 ## U → 1 vs U → 2
 
@@ -61,7 +61,7 @@ Upgrade lists are short **continuous** lists, not discrete pages. **R/F** move o
 
 After enter / tab / **R/F** / **B**, Live Control **detects card rows** from the screenshot (edge energy). Playbook coords are fallback when detection finds nothing.
 
-**Q/W/E** fling toward list top after the tab tap (game remembers per-tab scroll; same physics as **T**). **T** also flings toward list top. **B** only re-reads the current frame (panel + buy slots) — hit it when markers look misaligned without changing scroll. **A** runs the left-rail routine pack (Health → Damage → Claim; same atom as flight deck **A → 5**). **Hold D** describes related marks with HV connector lines and label rectangles (and flips icons to their keys). **`** pauses (gray / inert, typing passes through) without exiting; **`** again resumes; **Esc** exits.
+**Q/W/E** fling toward list top after the tab tap (game remembers per-tab scroll; same physics as **T**). **T** also flings toward list top. **B** only re-reads the current frame (panel + buy slots) — hit it when markers look misaligned without changing scroll. **A** runs the left-rail routine pack (Health → Damage → Claim; same atom as flight deck **A → 5**). **Hold D** describes related marks with HV connector lines and label rectangles (and flips icons to their keys). **Esc** exits LCO; **`** deactivates (stops loops / LCO / everything). Accordion input is gated as soon as **U→1** is pressed so enter can’t stutter.
 
 Amber circles = geometry unsure (mid-scroll / odd gap). Buys still fire — amber is advisory only.
 

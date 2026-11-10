@@ -61,8 +61,12 @@ Each action may include optional `description` (plain sentence for Basic UI).
   - `game_over` — `GAME_OVER` or `RUNNING` from dialog keywords
   - `presence` — `PRESENT` if ROI OCR has non-trivial text, else `ABSENT` (gem-box piggyback)
   - See [knowledge/TOWER-PERCEPTION.md](knowledge/TOWER-PERCEPTION.md) for HUD field contracts + layered state.
+- `tool_export` — load The Tower `tool_export.json` into variables (no anchor / OCR). Default path: `%APPDATA%/rendapp/emulator-imports/toolExport_unknown.json`.
+  - Optional `{ "path": "…", "map": { "wave_number": "CurrentWave", … }, "max_age_s": 120 }`
+  - Default map: wave, coins, gems/diamonds, cells, stones, tokens, bits, medals, keys, tier, cash (`CashEarnedThisRound`), round_active, play_time, exported_at
+  - Sets `tool_export_ok`, `tool_export_path`, `tool_export_age_s`; see [knowledge/TOWER-TOOL-EXPORT.md](knowledge/TOWER-TOOL-EXPORT.md)
 - `decide` — `{ "variable", "match_a", "mode", "explain_a", "explain_b", "on_a": [...], "on_b": [...] }`
-- `play_preset` / `mouse` — `{ "preset": "ab choice a" }` (preset `name` from `presets/`). Playback uses the Clicker **Humanize** setting (default Medium).
+- `play_preset` / `mouse` — `{ "preset": "ab choice a" }` (preset `name` from `presets/`). Playback uses the Bench **Humanize** setting (default **Off**).
 - `record_clip` — `{ "duration_s": 10 }` → `runs/clips/run_{run}_wave_{wave}.mp4`
 - `csv_append` — `{ "path": "run_log.csv", "fields": ["coins", …] }` under `runs/`
   - Always writes `datetime`, `run_number`, `wave_number`
@@ -131,7 +135,7 @@ Composition of atoms (and nested molecules).
 | `events/gem_box_check.json` | Atom: presence OCR + optional gem tap |
 | `events/buy_health.json` / `buy_damage.json` | Atoms: ensure tab → seek → click (skip if game_over) |
 | `collections/health_then_damage.json` | Once molecule: buy_health → buy_damage |
-| `events/stat_collect.json` | Atom: one CSV row (Start once) or every 30s when pooled |
+| `events/stat_collect.json` | Atom **Persistent state**: `tool_export` + CSV (Start once or every 30s when pooled) |
 | `events/stat_broll_5m.json` | Atom: 20s clip + CSV when pooled |
 | `events/list_scroll_down_1.json` / `list_scroll_up_1.json` | Shared scroll atoms |
 | `collections/scroll_probe_once.json` | Once molecule: ensure Attack → scroll down 1 |
@@ -141,10 +145,10 @@ Composition of atoms (and nested molecules).
 
 | File | Role |
 | --- | --- |
-| `collections/stat_collecting.json` | `run: "interval"` — pools `stat_collect` + `stat_broll_5m` |
-| `events/stat_collect.json` | Start selected → one CSV row **now** |
+| `collections/stat_collecting.json` | `run: "interval"` — pools `stat_collect` (Persistent state) + `stat_broll_5m` |
+| `events/stat_collect.json` | Start selected → tool_export snapshot + one CSV row **now** (no clicks / OCR) |
 | `events/stat_broll_5m.json` | B-roll atom (priority 100) |
-| Stat columns | `datetime`, `run_number`, `wave_number`, `coins`, `coins_per_min`, `cash_per_min`, `diamonds`, `panel_open`, `upgrade_tab` |
+| Stat columns | `datetime`, `run_number`, `wave_number`, `coins`, `cash`, `diamonds`, `gems`, `cells`, `stones`, `tier`, `round_active`, `exported_at`, `tool_export_age_s` |
 | B-roll columns | `datetime`, `run_number`, `wave_number`, `clip_name`, `clip_duration_s`, `clip_kind`, `last_clip`, `panel_open`, `upgrade_tab` |
 
-Does **not** click Attack/Defense/Utility. Currency toggle is top-HUD only. `record_clip` may set `kind` (e.g. `broll`) so filenames include a timestamp and do not overwrite.
+`stat_collect` is the **Persistent state** atom: Rend/BlueStacks `tool_export` cache → variables + CSV. Rate (/min) HUD OCR + currency toggle still live in `endgame_minute_stats` when needed. `record_clip` may set `kind` (e.g. `broll`) so filenames include a timestamp and do not overwrite.

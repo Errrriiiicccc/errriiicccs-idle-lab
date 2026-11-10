@@ -19,7 +19,7 @@ Read every image you can. Use titles as hints; trust pixels over filenames when 
 
 ## What to produce
 
-Write (or update) a markdown screen-map draft Eric can keep — prefer saving under the batch folder or `idle-lab/docs/screen-maps/<batch>-map.md` if he asks you to write files.
+Write (or update) a markdown screen-map draft Eric can keep — prefer saving under the batch folder or `docs/screen-maps/<batch>-map.md` in this repo if he asks you to write files.
 
 For **each** screenshot:
 

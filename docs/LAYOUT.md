@@ -1,72 +1,56 @@
 # Code layout
 
+**Operator language:** [VISION.md § Lexicon](VISION.md#lexicon-operator--disk--code) · **Target vs ships:** [FEATURES.md](FEATURES.md) · **Shell plan:** [pieces/shell/](pieces/shell/README.md)
+
+Disk/package names below are **today’s** tree (rename pass later). `archive/` is never loaded by the app.
+
 ```
 errriiicccs-idle-lab/
   README.md
+  AGENTS.md
   requirements.txt
   pyproject.toml
+  lab-context.json         # active target (Tower / BlueStacks)
+  archive/                 # deprecated docs/demos — app does not load
   docs/
-  presets/
+    README.md              # cascade
+    VISION.md · FEATURES.md · CONTINUATION.md · HARNESS.md
+    pieces/                # redesign plan (shell, hygiene, …)
+    knowledge/             # Tower compounds
+    research/              # cite-only
+  presets/                 # legacy Bench macros (→ atoms later)
   automations/
     runtime.json
-    taxonomy.json           # Lab Loops folder catalog (Atoms / Molecules)
-    flight_deck.json        # in-flight accordion hotkeys (O/C/N/A/M → digits)
-    maps/                   # typed UI object maps (LCO source of truth)
-    playbooks/              # thin shims → maps/ (legacy path)
+    taxonomy.json          # Loops browse labels (→ ML library)
+    flight_deck.json       # legacy U/O/C/N/A/M (→ L/M/O/S)
+    maps/                  # object maps (LOL / Atom overlays)
+    playbooks/
     rois/
-    events/
-    collections/
-  runs/                    # gitignored output (traces, failure packs)
-  screen-maps/             # gitignored Observation / Screen Map batches
-  ai-batches/              # gitignored AI information batches
+    events/                # Atoms (disk name lag)
+    collections/           # Molecules
+    composer/              # Molecule Lab drafts
+    templates/
+  runs/                    # gitignored traces, harness, clips, CSV
+  screen-maps/             # gitignored observations (user-deletable)
+  ai-batches/              # gitignored missions (→ OL AI mission)
   examples/
-    ai-batch-spec.json
+    ai-batches/
+    harness-stories/
   src/idle_lab/
     __main__.py
-    app.py                 # Bench | Observe | Missions | Loops + chrome
-    overlay.py
-    anchor.py
-    recorder.py
-    player.py
-    click_foreground.py
-    click_background.py
-    click_logger.py        # includes WAVE/SIGNAL OCR harness
-    hotkeys.py
-    flight_deck/           # in-flight HUD (actions + movable deck window)
-    observation/           # Observation sessions (timeline + Screen Map dual-write)
-    taxonomy/              # shared virtual taxonomy load/browse/deck adapt
-    presets.py
-    settings_store.py
-    models.py
-    win32_api.py
-    scroll_memory.py       # drag scroll + in-session scroll persistence
-    image_viewer.py
-    comments.py            # hierarchical lab-comments.json store
-    comment_ui.py          # Note button + dialog
-    lab_watch.py           # mtime fingerprint for Refresh badge
-    ai_batch/
-      schema.py
-      store.py
-      ui.py
-    screen_map/
-      names.py
-      manifest.py
-      batch.py
-      catalog.py
-      ui.py
-    automations/
-      schema.py
-      store.py
-      scheduler.py
-      capture.py
-      ocr.py
-      decide.py
-      csv_log.py
-      video.py
-      mouse_sync.py
-      runtime.py
-      ui.py
+    app.py                 # mega Lab chrome today → rebuild as Idle Lab wrap
+    overlay.py · anchor.py · recorder.py · player.py · humanize.py
+    click_foreground.py · click_background.py · click_logger.py
+    hotkeys.py · tool_export.py · prompt_packet.py
+    flight_deck/           # Flight Deck
+    live_control/          # LCO → LOL (+ shared overlay future)
+    composer/              # Molecule Lab
+    observation/ · screen_map/
+    ai_batch/              # Missions runner
+    harness/ · taxonomy/ · automations/
+    presets.py · settings_store.py · models.py · …
+    tray.py · single_instance.py · lab_watch.py · comments.py
   tests/
 ```
 
-`settings.json` is created beside the project and is gitignored. Presets live in `presets/`. Automations live in `automations/`.
+`settings.json` is gitignored beside the project.

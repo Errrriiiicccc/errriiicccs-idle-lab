@@ -1,5 +1,7 @@
 # Usage — Errriiiccc's Idle Lab
 
+**Note:** This guide still uses **POC names** (Bench, Loops, Missions, Observe, LCO). The **agreed product** is Idle Lab ↔ Flight Deck + Labs — see [FEATURES.md](FEATURES.md) (Target shell) and [pieces/shell/](pieces/shell/README.md). Use this file to operate the app **as it runs today**.
+
 ## Install
 
 ```powershell
@@ -29,14 +31,14 @@ See [REFRESH-RESTART.md](REFRESH-RESTART.md). Short version: chat edits JSON →
 
 1. Top chrome → **Anchor** → left-click BlueStacks or the click logger. Red **×** clears.
 2. Load or create a preset under **Presets**. Use **Note** for observations without leaving the app.
-3. Choose Foreground/Background, **Humanize** (default Medium), countdown, loops.
+3. Choose Foreground/Background, **Humanize** (default **Off**), countdown, loops.
 4. **Start** or **F6**. Use the click logger to verify hits before trusting the game.
 
 Humanize only affects playback/execution (jitter + timing). Preset JSON stays exact.
 
 Preset JSON format: [preset-format.md](preset-format.md).
 
-## Loops (Automations)
+## Loops
 
 ### Files
 
@@ -64,10 +66,10 @@ Schema: [automation-schema.md](automation-schema.md).
 ### Recommended first demo — humanize upgrade loop
 
 1. Anchor BlueStacks / The Tower (upgrade panel closed).
-2. Clicker: method **Foreground**, **Humanize → Medium**.
-3. Automations → select **Humanize upgrade loop** → **Reload** → **Start**.
+2. Bench: method **Foreground**, **Humanize → Medium** (experiment; default is Off).
+3. Loops → select **Humanize upgrade loop** → **Reload** → **Start**.
 4. Every ~10s the console should log Attack → Damage → Defense → Health → Attack, with slightly uneven timing/aim.
-5. If Damage/Health miss, open preset `humanize atk def loop` in the Clicker tab and nudge those points, then Reload.
+5. If Damage/Health miss, open preset `humanize atk def loop` in the Bench tab and nudge those points, then Reload.
 
 ### Older OCR A/B demo
 
@@ -75,7 +77,7 @@ Click-logger harness (optional): re-enable `automations/events/ocr_ab_tick.json`
 
 1. **Click logger**, then top bar **Set anchor** on that window.
 2. Countdown **0**, method **Foreground**.
-3. Automations → **Reload** → **Start**.
+3. Loops → **Reload** → **Start**.
 4. Watch console for 10s A/B ticks; toggle SIGNAL A/B on the logger.
    - SIGNAL **A** → UPPER (`ab choice a`); otherwise LOWER (`ab choice b`).
 5. Inspect `runs/screenshots/`, `runs/clips/`, `runs/run_log.csv` when minute_clip is enabled.
@@ -95,9 +97,9 @@ Click-logger harness (optional): re-enable `automations/events/ocr_ab_tick.json`
 
 If OCR misses the wave, the name uses `xx` and the CSV stores `xx`.
 
-## AI Batches
+## Missions
 
-Named information-gathering passes for review chats. See [AI-BATCH-USAGE.md](AI-BATCH-USAGE.md), [PROBE-MISSIONS.md](PROBE-MISSIONS.md), and [examples/ai-batch-spec.json](../examples/ai-batch-spec.json).
+Named gather/verify passes for review chats (on disk: `ai-batches/`). See [AI-BATCH-USAGE.md](AI-BATCH-USAGE.md), [PROBE-MISSIONS.md](PROBE-MISSIONS.md), and [examples/ai-batch-spec.json](../examples/ai-batch-spec.json).
 
 ## Scrolling
 

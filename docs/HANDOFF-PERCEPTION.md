@@ -1,9 +1,9 @@
 # Handoff — image → data (perception) — ACTIVE
 
 **Status:** **paused** (2026-11-06) — feature work stopped; bad-data watch via [knowledge/ocr-trust.json](knowledge/ocr-trust.json). Resume only if watching fields keep failing or Eric asks.  
-**North star:** [VISION.md](VISION.md) §§4–5 / §9  
+**North star:** [VISION.md](VISION.md) §§4–5 (cue stack + layered state; preference order §4.3)  
 **Living field table:** [knowledge/TOWER-PERCEPTION.md](knowledge/TOWER-PERCEPTION.md)  
-**Old Tesseract-tweak thread (history only):** [HANDOFF-OCR.md](HANDOFF-OCR.md)
+**Old Tesseract-tweak thread (archived):** [archive/docs/HANDOFF-OCR.md](../archive/docs/HANDOFF-OCR.md)
 
 ---
 

@@ -1,7 +1,7 @@
 # The Tower — navigation playbook (for event collections)
 
 One-stop reference for Automations **events/collections**.  
-Workflow: Idle Lab **AI Batches** + **Screen Map**.
+Workflow: Idle Lab **Missions** + **Observe** (Screen Map dual-write).
 
 **Canonical scroll lab:** `ai-batches/upgrade-scroll-controlled/`  
 **Screen Map:** `screen-maps/ai-run-upgrade-scroll-controlled/`  
@@ -13,7 +13,7 @@ Workflow: Idle Lab **AI Batches** + **Screen Map**.
 
 1. ANCHOR → BlueStacks (`64x Android`).
 2. Restart Idle Lab after runner code changes.
-3. AI Batches → Reload → run the active batch → tell the AI chat when idle.
+3. Missions → Reload → run the active batch → tell the AI chat when idle.
 
 ### Hard rules
 

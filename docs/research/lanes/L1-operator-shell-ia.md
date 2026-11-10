@@ -6,7 +6,7 @@
 
 ## 1. Restatement (Idle Lab vocabulary)
 
-The shell is the **operator console**: how a human starts, stops, reloads, and switches workspaces (today: Clicker / Automations / Screen Map / AI Batches; redesign: Bench · Observe · Missions · Loops) while seeing whether automation is idle, running, deferred, or disagreeing with intent. Transport language (Refresh / Restart / Stop all) must be unmistakable and always reachable.
+The shell is the **operator console**: how a human starts, stops, reloads, and switches workspaces (**Bench · Observe · Missions · Loops**; older prose said Clicker / Automations / Screen Map / AI Batches) while seeing whether automation is idle, running, deferred, or disagreeing with intent. Transport language (Refresh / Restart / Stop all) must be unmistakable and always reachable.
 
 ## 2. Analogues studied
 

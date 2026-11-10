@@ -2,9 +2,13 @@
 
 Scaffolding for future research prompts. Captures what the app *is*, which pieces matter, which external systems to study, and how to run lane deep-dives.
 
-**Last updated:** 2026-11-05  
+**Last updated:** 2026-11-05 (research snapshot — not live shipping status)  
 **Canonical vision:** [VISION.md](../VISION.md)  
-**Related code docs:** [FEATURES.md](../FEATURES.md), [LAYOUT.md](../LAYOUT.md), [automation-schema.md](../automation-schema.md), [CONTINUATION.md](../CONTINUATION.md)
+**Ships today:** [FEATURES.md](../FEATURES.md)  
+**Cascade:** [../README.md](../README.md)  
+**Related:** [LAYOUT.md](../LAYOUT.md), [automation-schema.md](../automation-schema.md), [CONTINUATION.md](../CONTINUATION.md)
+
+> Operator terms today: **Bench · Observe · Missions · Loops**. This snapshot still says Clicker / Automations / AI Batches / Screen Map in places — treat those as synonyms ([VISION lexicon](../VISION.md#lexicon-operator--disk--code)).
 
 ---
 

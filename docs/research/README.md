@@ -4,25 +4,27 @@ Durable home for **external research and information procurement**: product deco
 
 | Doc | Role |
 | --- | --- |
-| [../VISION.md](../VISION.md) | **Canonical north star** — human-translation workbench, perception as typed cues, layered screen state, knowledge that compounds |
+| [../VISION.md](../VISION.md) | **Canonical north star** — human-translation workbench |
+| [../FEATURES.md](../FEATURES.md) | **Ships today** — living product inventory (not this tree) |
+| [../README.md](../README.md) | Docs cascade |
 | [PRODUCT-MAP.md](PRODUCT-MAP.md) | Scaffolding: pieces, combinations, analogues, research lanes, prompt templates |
-| [lanes/](lanes/README.md) | Deep-dives L1–L10 (complete as of 2026-11-05) |
+| [lanes/](lanes/README.md) | Deep-dives L1–L10 (complete as of 2026-11-05; some “today” snapshots are stale — prefer FEATURES) |
 
-**Framing (2026-11-05):**
+**Framing:**
 
 - Research weight: **balanced** UI/UX / IA **and** runtime/engine patterns.
 - Audience: **personal lab** for now; craft should not block later sharing.
 - Domain: **general Windows GUI observation + actuation**, not Tower-only. Accessibility (assistive automation) is an intentional horizon.
-- Product identity: **human sees → says intent → AI authors files → Idle Lab executes** (screen pixels + ordinary input only).
+- Product identity: **human sees → says intent → AI authors files → Idle Lab executes** (screen pixels + ordinary input + first-party exports when available).
 - Vision hook: **prompt packets** → any gen-AI implements automations; well-integrated AIs also run **knowledge batch** iterate-until-good loops; durable playbooks feed later chats.
 
-Redesign implementation stays in other chats. This tree is for research inputs those chats can cite.
+This tree is for research inputs other chats can **cite**. It does **not** own live shipping status — that lives in [FEATURES.md](../FEATURES.md). Lane prose may still say “Clicker / AI Batches”; operator terms today are Bench · Observe · Missions · Loops ([VISION lexicon](../VISION.md#lexicon-operator--disk--code)).
 
-## Implementation status (2026-11-05)
+## Historical “landed in code” snapshot (2026-11-05)
 
-Research proposals landed in code (Restart required after pull):
+Kept as a research checkpoint. Prefer FEATURES for current truth.
 
-| # | Feature | Where |
+| # | Feature | Where (then) |
 | --- | --- | --- |
 | 1 | Operator honesty (mode chip, deferred Activity) | chrome Mode menu + Activity |
 | 2 | Overdue policies | event `overdue_policy` + scheduler |
@@ -39,6 +41,5 @@ Research proposals landed in code (Restart required after pull):
 
 ## Suggested next use
 
-1. Live smoke after **Restart** (see CONTINUATION / chat retest notes).
-2. Redesign polish can still cite L1/L7/L10 for visuals.
-3. Engine follow-ups: richer `wait_until` deadband, OpenCV install for gem-box, collection yield vs interval coexistence.
+1. Cite L1–L10 / PRODUCT-MAP when redesigning; check FEATURES before claiming something is missing.
+2. Engine follow-ups still worth research: richer `wait_until` deadband, OpenCV install for gem-box, collection yield vs interval coexistence, Current State as queryable fields (VISION §5).

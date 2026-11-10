@@ -7,7 +7,7 @@
 
 ## 1. Restatement
 
-Tesseract OCR is strong for HUD numbers/text and weak for **icon-only** UI (gem box, tab colors, pictograms). Docs already note template-match for gem box and `presence` parse as a weak stand-in. This lane defines a **perception stack**: selectors when possible → template match for stable icons → OCR for text → (later) stronger readers / vision-assisted authoring. Numeric fields must **abstain** rather than invent magnitudes (see VISION §9 / live `142/min` → `m` failure).
+Tesseract OCR is strong for HUD numbers/text and weak for **icon-only** UI (gem box, tab colors, pictograms). Docs already note template-match for gem box and `presence` parse as a weak stand-in. This lane defines a **perception stack**: selectors when possible → template match for stable icons → OCR for text → (later) stronger readers / vision-assisted authoring. Numeric fields must **abstain** rather than invent magnitudes (see VISION §4.2–4.3 / live `142/min` → `m` failure).
 
 ## 2. Analogues studied
 
