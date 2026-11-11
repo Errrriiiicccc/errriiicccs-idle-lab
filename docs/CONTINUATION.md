@@ -9,11 +9,11 @@
 
 ## Active focus (2026-11-11)
 
-**Smoke the accordion slice**, then pick the next depth cut — default lean is **Atom Create visual authoring** (queue + drag-place), not more inventory stubs.
+**Exclusive surfaces polish + smoke**, then Atom Create visual authoring.
 
-→ Confirm L/M/S leaves + Compose jump + Atom Create accordion feel right.  
-→ Next likely: on-screen create queue / drag-place marks (settled in [pieces/shell/flight-deck.md](pieces/shell/flight-deck.md)).  
-→ Alternates if taste says otherwise: Atom Edit W/S R/F · Observation accordion · Trial polish.
+→ Boot Flight Deck must not paint Idle Lab; **I→1** opens IL (closes FD); IL chrome **Open Flight Deck** `(closes Idle Lab)`.  
+→ Next likely: on-screen Atom Create queue / drag-place marks.  
+→ Alternates: Atom Edit W/S R/F · Observation accordion · Trial polish.
 
 **Chat contract:** [REFRESH-RESTART.md](REFRESH-RESTART.md) — data → Refresh; code → Restart.  
 **Test:** [HARNESS.md](HARNESS.md) · [`lab-context.json`](../lab-context.json).

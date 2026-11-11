@@ -69,8 +69,9 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 
 ### Flight Deck
 
-- Inactive → Activate `` ` ``; accordion **L/M/O/S** ([`automations/flight_deck.json`](../automations/flight_deck.json)).
-- **L** → Start · Toggle Console · Console Verbosity; **M** → Molecule Lab float · Atom Lab (create accordion); **O** → Observation entry float; **S** → Open Settings · Set Deactivate Key · Boot Preferences.
+- Inactive → Activate `` ` ``; accordion **L/M/O/I/S** ([`automations/flight_deck.json`](../automations/flight_deck.json)).
+- **L** → Start · Toggle Console · Console Verbosity; **M** → Molecule Lab float · Atom Lab; **O** → Observation float; **I** → Start (closes Flight Deck → Idle Lab); **S** → Open Settings · Set Deactivate Key · Boot Preferences.
+- Idle Lab chrome always has **Open Flight Deck** `(closes Idle Lab)` — surfaces never share the screen.
 - Atom Create keeps FD accordion grammar (Buys/Tabs/Scroll/Utility/Click); Esc saves only with an event id.
 - Live overlay: object map, hold D describe, Esc exit. [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md), [OBJECT-MAP.md](OBJECT-MAP.md).
 

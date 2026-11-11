@@ -34,10 +34,13 @@
 | **L** | Accordion: Start · Toggle Console · Console Verbosity |
 | **M** | Accordion: Molecule Lab (float) · Atom Lab (Atom Create) |
 | **O** | Observation Lab (floating) — accordion depth later |
+| **I** | Accordion: Start (closes Flight Deck → Idle Lab) |
 | **S** | Accordion: Open Settings · Set Deactivate Key · Boot Preferences |
 | **X** | Collapse menu |
 | hold **D** | Describe |
 | `` ` `` | Deactivate |
+
+Idle Lab ↔ Flight Deck are exclusive. Idle Lab chrome always shows **Open Flight Deck** `(closes Idle Lab)`.
 
 Menu letters are abandoned when a Lab mode owns the surface. **Atom Create** swaps in a create keymap but keeps accordion navigation.
 

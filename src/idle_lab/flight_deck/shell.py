@@ -145,7 +145,7 @@ def active_unanchored_prompt(
     lab_visible: bool,
 ) -> str:
     title = (last_title or "").strip()
-    lab = "" if lab_visible else " · I = open Lab"
+    lab = "" if lab_visible else " · I→1 = Idle Lab"
     extras = f"{lab} · R = restart (re-anchors)"
     if title and candidate_found:
         short = title if len(title) <= 32 else title[:29] + "…"

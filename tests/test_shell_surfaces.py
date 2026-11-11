@@ -75,14 +75,15 @@ class ResumeHandleTests(unittest.TestCase):
         self.assertFalse(resolve_resume_escape(resume_handle=False, deck_inactive=True))
         self.assertFalse(resolve_resume_escape(resume_handle=True, deck_inactive=False))
 
-    def test_escape_opens_idle_lab_on_resume(self) -> None:
+    def test_escape_passthrough_when_inactive(self) -> None:
+        # Inactive Esc is pass-through; resume handle is Activate-only (not Esc→Idle Lab).
         self.assertEqual(
             resolve_escape(
                 phase=ShellPhase.INACTIVE,
                 deck_active=False,
                 resume_handle=True,
             ),
-            EscAction.OPEN_IDLE_LAB,
+            EscAction.NONE,
         )
         self.assertEqual(
             resolve_escape(

@@ -445,20 +445,6 @@ class InputHooks:
         elif (
             self.state.flight_deck_active
             and (not self.state.lab_visible)
-            and vk == VK_I
-            and not self.state.molecule_lab_active
-            and not self.state.live_control_active
-        ):
-            # Open Lab only while the deck is active.
-            swallow = True
-            if is_up:
-                self._shell_key_down.discard(vk)
-            elif vk not in self._shell_key_down:
-                self._shell_key_down.add(vk)
-                self.events.put(("shell_i",))
-        elif (
-            self.state.flight_deck_active
-            and (not self.state.lab_visible)
             and vk == VK_R
             and not self.state.molecule_lab_active
             and not self.state.live_control_active

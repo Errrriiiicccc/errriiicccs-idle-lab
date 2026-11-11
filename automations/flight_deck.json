@@ -52,6 +52,19 @@
       "action": { "type": "open_observation_lab" }
     },
     {
+      "key": "I",
+      "label": "Idle Lab",
+      "description": "Exclusive mouse surface — closes Flight Deck.",
+      "children": [
+        {
+          "key": "1",
+          "label": "Start (closes Flight Deck)",
+          "description": "Hide Flight Deck and open Idle Lab. Surfaces never share the screen.",
+          "action": { "type": "open_idle_lab" }
+        }
+      ]
+    },
+    {
       "key": "S",
       "label": "Settings",
       "description": "Common Deck settings inline; full panel still available.",

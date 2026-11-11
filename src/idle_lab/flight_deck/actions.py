@@ -26,6 +26,7 @@ ACTION_TYPES = frozenset(
         "open_molecule_lab",
         "open_atom_lab",
         "open_observation_lab",
+        "open_idle_lab",
         "open_settings",
         "remap_activate_key",
         "cycle_boot_surface",

@@ -316,6 +316,9 @@ class App(ctk.CTk):
             )
         boot = normalize_boot_surface(self.settings.boot_surface)
         self._lab_visible = boot == BOOT_IDLE_LAB
+        # Park Idle Lab before first paint when Deck is the boot surface.
+        if boot == BOOT_FLIGHT_DECK:
+            self._hide_lab(quiet=True)
         self.after(0, self._start_boot)
 
     def _build(self) -> None:
@@ -434,16 +437,26 @@ class App(ctk.CTk):
         self.clear_button.pack(side="left", padx=(2, 0))
         self.anchor_dot = ctk.CTkLabel(anchor_row, text="●", text_color="#5A6474", width=16)
         self.anchor_dot.pack(side="left", padx=(6, 0))
+        deck_col = ctk.CTkFrame(anchor_row, fg_color="transparent")
+        deck_col.pack(side="left", padx=(10, 0))
         self.flight_deck_button = ctk.CTkButton(
-            anchor_row,
-            text="Activate Deck",
-            width=110,
+            deck_col,
+            text="Open Flight Deck",
+            width=140,
             height=28,
             fg_color="#1E3A4A",
             hover_color="#2A5568",
-            command=self._toggle_flight_deck_from_lab,
+            command=self._open_flight_deck_from_lab,
         )
-        self.flight_deck_button.pack(side="left", padx=(10, 0))
+        self.flight_deck_button.pack(anchor="w")
+        self.flight_deck_button_hint = ctk.CTkLabel(
+            deck_col,
+            text="(closes Idle Lab)",
+            anchor="w",
+            text_color="#7E8796",
+            font=ctk.CTkFont(size=11),
+        )
+        self.flight_deck_button_hint.pack(anchor="w")
         # Activate-key remap lives in Settings (A8).
 
         self.anchor_label = ctk.CTkLabel(
@@ -1057,17 +1070,25 @@ class App(ctk.CTk):
         self._status(f"Idle Lab · {tab}. Activate Deck for hotkeys.", "info")
 
     def _try_auto_anchor_on_boot(self) -> None:
-        """Restart path: rebind last title while staying on Idle Lab when possible."""
+        """Restart path: rebind last title; honor boot surface exclusivity."""
 
+        boot = normalize_boot_surface(self.settings.boot_surface)
         self._refresh_boot_candidate()
         hwnd = self._boot_candidate_hwnd
         if hwnd:
             self._apply_anchor(int(hwnd))
+            if boot == BOOT_FLIGHT_DECK:
+                self._switch_to_flight_deck_surface(activate=False)
+                self._status("Flight Deck (boot preference). Activate to listen.", "info")
+                return
             self._show_idle_lab_surface(quiet=True)
             return
         if self._boot_offer_title:
             # Last title remembered but window gone — Deck surface for re-anchor prompt.
             self._switch_to_flight_deck_surface(activate=True)
+            return
+        if boot == BOOT_FLIGHT_DECK:
+            self._switch_to_flight_deck_surface(activate=False)
             return
         self._shell_phase = ShellPhase.INACTIVE
         self._sync_shell_hook_flags()
@@ -1207,8 +1228,8 @@ class App(ctk.CTk):
             anything_running=self._anything_running(),
         )
         _ = surface
-        if self._is_lab_visible():
-            self._hide_lab(quiet=True)
+        # Always park Idle Lab when Deck owns the surface (flag can lag first paint).
+        self._hide_lab(quiet=True)
 
     def _show_idle_lab_surface(self, *, quiet: bool = False) -> None:
         """Exclusive Idle Lab: hide Deck, show Lab (refused while anything is running)."""
@@ -1321,7 +1342,7 @@ class App(ctk.CTk):
         self._sync_shell_hook_flags()
         if not quiet:
             self._status(
-                "Lab hidden (Activate deck then I, or use tray / taskbar).",
+                "Idle Lab closed — Flight Deck only. I→1 opens Idle Lab again.",
                 "info",
             )
 
@@ -1420,6 +1441,8 @@ class App(ctk.CTk):
         self._toggle_anchor_mode()
 
     def _handle_shell_i(self) -> None:
+        """Legacy bare-I path — prefer accordion I→1 (open_idle_lab)."""
+
         if self._is_lab_visible():
             return
         self._show_idle_lab_surface()
@@ -2007,21 +2030,25 @@ class App(ctk.CTk):
         except Exception:
             pass
 
+    def _open_flight_deck_from_lab(self) -> None:
+        """Idle Lab chrome → exclusive Flight Deck (closes Idle Lab)."""
+
+        self._switch_to_flight_deck_surface(activate=False)
+        self._status("Flight Deck open — Idle Lab closed.", "ok")
+
     def _toggle_flight_deck_from_lab(self) -> None:
-        # Chrome: leave Idle Lab for Deck (deactivated). Hotkey ` activates listening.
-        if self._is_lab_visible():
-            self._switch_to_flight_deck_surface(activate=False)
-            return
-        self._flight_deck_toggle_activate()
+        # Compatibility alias — chrome button is exclusive Open Flight Deck.
+        self._open_flight_deck_from_lab()
 
     def _update_flight_deck_lab_button(self) -> None:
         if getattr(self, "flight_deck_button", None) is None:
             return
-        if self._is_lab_visible():
-            self.flight_deck_button.configure(text="Activate Deck")
-            return
-        active = self._shell_phase is ShellPhase.ACTIVE
-        self.flight_deck_button.configure(text="Deactivate" if active else "Activate")
+        self.flight_deck_button.configure(text="Open Flight Deck")
+        if getattr(self, "flight_deck_button_hint", None) is not None:
+            try:
+                self.flight_deck_button_hint.configure(text="(closes Idle Lab)")
+            except Exception:
+                pass
 
     def _begin_flight_deck_remap(self) -> None:
         status, _hwnd, _rect, _title = self.anchor_target.snapshot()
@@ -2066,6 +2093,10 @@ class App(ctk.CTk):
             elif kind == "open_observation_lab":
                 self._enter_deck_mode(DeckMode.OBSERVATION_LAB)
                 # Floating Observation Lab skeleton already opens; panel is Idle Lab-native.
+            elif kind == "open_idle_lab":
+                self._exit_deck_mode(quiet=True)
+                self._show_idle_lab_surface()
+                self._status("Idle Lab open — Flight Deck closed.", "ok")
             elif kind == "open_settings":
                 self._enter_deck_mode(DeckMode.SETTINGS)
             elif kind == "remap_activate_key":

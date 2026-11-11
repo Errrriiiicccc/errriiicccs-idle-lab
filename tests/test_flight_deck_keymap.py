@@ -101,11 +101,12 @@ class FlightDeckAccordionTests(unittest.TestCase):
         try:
             keymap = load_keymap(default_keymap_path(project_root()))
             keys = {node.key.upper() for node in keymap.roots}
-            self.assertEqual(keys, {"L", "M", "O", "S"})
+            self.assertEqual(keys, {"L", "M", "O", "I", "S"})
             by_key = {node.key.upper(): node for node in keymap.roots}
             self.assertFalse(by_key["L"].is_leaf)
             self.assertFalse(by_key["M"].is_leaf)
             self.assertTrue(by_key["O"].is_leaf)
+            self.assertFalse(by_key["I"].is_leaf)
             self.assertFalse(by_key["S"].is_leaf)
             deck.set_keymap(keymap)
             deck.set_shell_phase(
@@ -129,6 +130,12 @@ class FlightDeckAccordionTests(unittest.TestCase):
             self.assertIsNotNone(obs)
             assert obs is not None
             self.assertEqual(obs["type"], "open_observation_lab")
+            self.assertIsNone(deck.navigate("I"))
+            idle = deck.navigate("1")
+            self.assertIsNotNone(idle)
+            assert idle is not None
+            self.assertEqual(idle["type"], "open_idle_lab")
+            self.assertIn("closes", (idle.get("_label") or "").lower())
         finally:
             deck.destroy()
             root.destroy()

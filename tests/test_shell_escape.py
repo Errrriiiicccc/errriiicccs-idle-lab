@@ -155,7 +155,7 @@ class PromptTests(unittest.TestCase):
             lab_visible=False,
         )
         self.assertIn("Esc = close", text)
-        self.assertIn("I = open Lab", text)
+        self.assertIn("I→1 = Idle Lab", text)
         self.assertIn("R = restart", text)
         self.assertNotIn("deactivate", text.lower())
 

@@ -716,7 +716,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
                 self.run_label.configure(text=self._status_text, text_color=color)
             elif not self._lab_visible:
                 self.run_label.configure(
-                    text="I = open Lab · R = restart (re-anchors)",
+                    text="I→1 = Idle Lab (closes Deck) · R = restart",
                     text_color=_MUTED,
                 )
             else:
