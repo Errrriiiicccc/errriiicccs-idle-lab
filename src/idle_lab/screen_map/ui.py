@@ -9,7 +9,7 @@ import customtkinter as ctk
 
 from idle_lab.comment_ui import make_comment_button
 from idle_lab.comments import CommentStore, screen_map_batch_comment_path, screen_map_shot_comment_path
-from idle_lab.screen_map.catalog import BatchSummary
+from idle_lab.screen_map.catalog import BatchSummary, group_batches
 from idle_lab.scroll_memory import ScrollMemory
 
 
@@ -58,7 +58,7 @@ class ScreenMapPanel(ctk.CTkFrame):
 
         toolbar = ctk.CTkFrame(self._content, fg_color="transparent")
         toolbar.pack(fill="x", padx=8, pady=(8, 4))
-        ctk.CTkLabel(toolbar, text="Observe", font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
+        ctk.CTkLabel(toolbar, text="User", font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
         self.refresh_button = ctk.CTkButton(
             toolbar, text="Refresh catalog", width=120, command=self.on_refresh_catalog, fg_color="#2A3140", hover_color="#3A4558"
         )
@@ -74,7 +74,7 @@ class ScreenMapPanel(ctk.CTkFrame):
             command=self.on_mark or (lambda: None),
             state="disabled",
         )
-        self.mark_button.pack(side="right", padx=(6, 0))
+        # CUT Mark from Observation Lab UX — keep attribute; do not pack.
         self.start_button = ctk.CTkButton(
             toolbar, text="Start observation", width=140, command=self.on_start_batch
         )
@@ -99,10 +99,10 @@ class ScreenMapPanel(ctk.CTkFrame):
         ctk.CTkLabel(
             help_frame,
             text=(
-                "Observations record mouse moves, clicks, and scrolls while you play, with before/after "
-                "screenshots dual-written into this Screen Map catalog. Flight deck O→1 start, O→2 mark, "
-                "O→3 or Esc stop. On stop you can rename. Comment bubbles still work on a batch or shot. "
-                "Prefer global Refresh (F5) after chat edits files on disk."
+                "Observations record mouse moves, clicks, and scrolls while you play. "
+                "Stop with Deactivate (`). Mark and rename-on-stop are cut — rename in review later. "
+                "Catalog groups: Today / Yesterday / Last 7 Days / The Past (layout refining). "
+                "Prefer global Refresh after chat edits files on disk."
             ),
             anchor="w",
             justify="left",
@@ -231,37 +231,45 @@ class ScreenMapPanel(ctk.CTkFrame):
                 )
                 return
             selected_slug = self._selected.slug if self._selected else None
-            for batch in self._catalog:
-                row = ctk.CTkFrame(self.batch_list, fg_color="transparent")
-                row.pack(fill="x", pady=3)
-                top = ctk.CTkFrame(row, fg_color="transparent")
-                top.pack(fill="x")
-                btn = ctk.CTkButton(
-                    top,
-                    text=f"{batch.title}",
-                    anchor="w",
-                    fg_color="#1F2A3A" if batch.slug == selected_slug else "transparent",
-                    command=lambda b=batch: self._select_batch(b),
-                )
-                btn.pack(side="left", fill="x", expand=True)
-                if self.on_comment_batch is not None:
-                    path = screen_map_batch_comment_path(batch.slug)
-                    has = bool(
-                        (self.comments and self.comments.has(path))
-                        or (batch.manifest.notes and str(batch.manifest.notes).strip())
-                    )
-                    make_comment_button(
-                        top,
-                        has_notes=has,
-                        command=lambda b=batch: self.on_comment_batch(b),
-                    ).pack(side="right", padx=(4, 0))
+            for group_name, batches in group_batches(self._catalog):
                 ctk.CTkLabel(
-                    row,
-                    text=f"{batch.shot_count} screen(s)  ·  {batch.slug}",
+                    self.batch_list,
+                    text=group_name,
                     anchor="w",
-                    text_color="#9AA4B2",
-                    font=ctk.CTkFont(size=11),
-                ).pack(fill="x", padx=8)
+                    font=ctk.CTkFont(size=12, weight="bold"),
+                    text_color="#C8D0DC",
+                ).pack(anchor="w", padx=4, pady=(8, 2))
+                for batch in batches:
+                    row = ctk.CTkFrame(self.batch_list, fg_color="transparent")
+                    row.pack(fill="x", pady=3)
+                    top = ctk.CTkFrame(row, fg_color="transparent")
+                    top.pack(fill="x")
+                    btn = ctk.CTkButton(
+                        top,
+                        text=f"{batch.title}",
+                        anchor="w",
+                        fg_color="#1F2A3A" if batch.slug == selected_slug else "transparent",
+                        command=lambda b=batch: self._select_batch(b),
+                    )
+                    btn.pack(side="left", fill="x", expand=True)
+                    if self.on_comment_batch is not None:
+                        path = screen_map_batch_comment_path(batch.slug)
+                        has = bool(
+                            (self.comments and self.comments.has(path))
+                            or (batch.manifest.notes and str(batch.manifest.notes).strip())
+                        )
+                        make_comment_button(
+                            top,
+                            has_notes=has,
+                            command=lambda b=batch: self.on_comment_batch(b),
+                        ).pack(side="right", padx=(4, 0))
+                    ctk.CTkLabel(
+                        row,
+                        text=f"{batch.shot_count} screen(s)  ·  {batch.slug}",
+                        anchor="w",
+                        text_color="#9AA4B2",
+                        font=ctk.CTkFont(size=11),
+                    ).pack(fill="x", padx=8)
 
         self.scroll.around_rebuild("screen_map.batches", rebuild)
 

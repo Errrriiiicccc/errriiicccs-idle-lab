@@ -40,7 +40,7 @@ class AiBatchPanel(ctk.CTkFrame):
         on_view_screenshots: Callable[[AiBatch], None],
         on_link_screen_map: Callable[[AiBatch], None],
         on_mark_request: Callable[[AiBatch, BatchRequest, str], None],
-        on_add_feedback: Callable[[AiBatch], None],
+        on_add_feedback: Callable[[AiBatch], None] | None = None,
         on_open_screen_map_batch: Callable[[str], None],
         on_snapshot_event: Callable[[AiBatch, BatchRequest], None] | None = None,
         on_start_run: Callable[[AiBatch], None] | None = None,
@@ -195,17 +195,20 @@ class AiBatchPanel(ctk.CTkFrame):
         self.detail_box.pack(fill="both", expand=True, padx=8, pady=(0, 4))
         self.scroll.register("ai.detail", self.detail_box)
 
-        feedback_bar = ctk.CTkFrame(right, fg_color="transparent")
-        feedback_bar.pack(fill="x", padx=8, pady=(0, 8))
-        self.feedback_btn = ctk.CTkButton(
-            feedback_bar,
-            text="Add feedback (missed something)…",
-            command=self._add_feedback,
-            state="disabled",
-            fg_color="#2A3140",
-            hover_color="#3A4558",
-        )
-        self.feedback_btn.pack(side="left")
+        self.feedback_btn = None
+        if self.on_add_feedback is not None:
+            # Legacy path — CUT from Observation Lab AI mission (H4).
+            feedback_bar = ctk.CTkFrame(right, fg_color="transparent")
+            feedback_bar.pack(fill="x", padx=8, pady=(0, 8))
+            self.feedback_btn = ctk.CTkButton(
+                feedback_bar,
+                text="Add feedback (missed something)…",
+                command=self._add_feedback,
+                state="disabled",
+                fg_color="#2A3140",
+                hover_color="#3A4558",
+            )
+            self.feedback_btn.pack(side="left")
 
         self.refresh_list()
 
@@ -277,7 +280,8 @@ class AiBatchPanel(ctk.CTkFrame):
             self.view_shots_btn.configure(state=state)
             self.open_folder_btn.configure(state=state)
             self.link_map_btn.configure(state=state)
-            self.feedback_btn.configure(state=state)
+            if self.feedback_btn is not None:
+                self.feedback_btn.configure(state=state)
             has_link = bool(batch and batch.linked_screen_map_batches)
             self.open_observe_btn.configure(state="normal" if has_link else "disabled")
             if batch is None:
@@ -454,7 +458,7 @@ class AiBatchPanel(ctk.CTkFrame):
             self.on_link_screen_map(self._selected)
 
     def _add_feedback(self) -> None:
-        if self._selected is not None:
+        if self._selected is not None and self.on_add_feedback is not None:
             self.on_add_feedback(self._selected)
 
     def _export_packet(self) -> None:
