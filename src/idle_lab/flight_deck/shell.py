@@ -21,6 +21,7 @@ class EscAction(str, Enum):
     CANCEL_MOLECULE_LAB_CLOSE = "cancel_molecule_lab_close"
     ENTER_MOLECULE_LAB_CLOSE = "enter_molecule_lab_close"
     CLOSE_MOLECULE_LAB = "close_molecule_lab"
+    EXIT_DECK_MODE = "exit_deck_mode"
     CLOSE_SECTION = "close_section"
     COLLAPSE_MENU = "collapse_menu"
     ENTER_CLOSE_CONFIRM = "enter_close_confirm"
@@ -40,10 +41,12 @@ def resolve_escape(
     deck_expanded: bool = False,
     open_menu: bool = False,
     resume_handle: bool = False,
+    deck_mode_active: bool = False,
 ) -> EscAction:
     """Map Esc. Deactivate is never Esc — that is the Activate key only.
 
     Inactive: Esc ignored unless post-Deactivate resume handle → Idle Lab.
+    Deck Lab mode (LOL / floating ML / OL / Settings): Esc exits mode → menu.
     Active: peel menu, then close-confirm (not deactivate).
     Close confirm: Esc cancels.
     """
@@ -67,6 +70,10 @@ def resolve_escape(
         if resume_handle:
             return EscAction.OPEN_IDLE_LAB
         return EscAction.NONE
+
+    # Floating / LOL / Settings modes abandon accordion — Esc returns to menu.
+    if deck_mode_active:
+        return EscAction.EXIT_DECK_MODE
 
     # Anchored active keeps the hotkey accordion open as the main surface — that is
     # not a peel layer. Only an open letter-section peels; otherwise Esc = close.

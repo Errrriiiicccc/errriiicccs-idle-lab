@@ -11,6 +11,6 @@ def build_observation_lab_tab(parent):
         title="Observation Lab",
         blurb=(
             "User capture/review and AI mission panes land later. "
-            "Mark and rename-on-stop are cut from this shell."
+            "Mark and rename-on-stop are cut. Capture modes can link to Live Overlay Lab later."
         ),
     )

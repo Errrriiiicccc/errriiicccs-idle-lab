@@ -99,6 +99,8 @@ class HookFlags:
         self.lab_visible = True
         # Post-Deactivate resume handle — Esc opens Idle Lab while deck is inactive.
         self.resume_handle = False
+        # True while Deck has abandoned menu letters (LOL / floating Lab / Settings).
+        self.deck_mode_active = False
         self.our_pid = os.getpid()
 
 
@@ -364,6 +366,7 @@ class InputHooks:
                     or self.state.quit_confirm
                     or self.state.flight_deck_active
                     or self.state.resume_handle
+                    or self.state.deck_mode_active
                 )
                 if is_up:
                     self._esc_down = False
@@ -489,6 +492,7 @@ class InputHooks:
         elif (
             self.state.flight_deck_active
             and (not self.state.lab_visible)
+            and (not self.state.deck_mode_active)
             and self.state.flight_deck_anchored
             and self.state.flight_deck_expanded
             and not self.state.molecule_lab_active
@@ -499,7 +503,7 @@ class InputHooks:
                 or menu_token_from_vk(vk) is not None
             )
         ):
-            # Accordion only while Deck is the surface (Idle Lab open → no hotkeys).
+            # Accordion only in menu mode — Lab modes abandon letter map.
             swallow = True
             if is_up:
                 self._menu_down.discard(vk)

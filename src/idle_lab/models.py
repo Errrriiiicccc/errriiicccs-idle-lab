@@ -98,6 +98,8 @@ class Settings:
     last_anchor_title: str | None = None
     # Idle Lab tab strip — factory default Info; thereafter last selected.
     last_tab: str = "Info"
+    # Factory boot surface: idle_lab (default) | flight_deck.
+    boot_surface: str = "idle_lab"
     # Live Control Overlay session console (persists across restarts).
     lco_console_enabled: bool = False
     lco_console_verbosity: str = "results"  # events | results | process

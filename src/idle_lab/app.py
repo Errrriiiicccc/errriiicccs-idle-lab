@@ -55,8 +55,22 @@ from idle_lab.flight_deck.shell import (
     resolve_escape,
 )
 from idle_lab.flight_deck.window import FlightDeckWindow
+from idle_lab.shell.deck_mode import (
+    DeckMode,
+    mode_abandons_menu,
+    mode_display_name,
+    mode_legend,
+    mode_prompt,
+)
+from idle_lab.shell.floating import FloatingLabWindow
 from idle_lab.shell.idle_lab_window import build_tab_host
 from idle_lab.shell.resume import resume_prompt
+from idle_lab.shell.settings_panel import (
+    BOOT_FLIGHT_DECK,
+    BOOT_IDLE_LAB,
+    build_settings_body,
+    normalize_boot_surface,
+)
 from idle_lab.shell.surfaces import SurfaceKind, can_show_idle_lab, ensure_exclusive
 from idle_lab.shell.tabs import normalize_last_tab
 from idle_lab.taxonomy import (
@@ -168,6 +182,9 @@ class App(ctk.CTk):
         self.comment_store.load()
         self._current_tab = normalize_last_tab(self.settings.last_tab)
         self._resume_handle = False
+        self._deck_mode = DeckMode.MENU
+        self._floating_lab: FloatingLabWindow | None = None
+        self._settings_window = None
         self.walkthrough: Walkthrough | None = None
         self.guide_overlay: GuideOverlay | None = None
         self.anchor_target = Anchor()
@@ -281,12 +298,12 @@ class App(ctk.CTk):
             self._status(tray_error, "warn")
         else:
             self._status(
-                "Idle Lab · Info. Activate deck to use hotkeys. Labs are stubs (not wired).",
+                "Idle Lab · Info. Activate Deck for hotkeys. Info outline is live; Labs still stub.",
                 "info",
             )
-        # Shape-first: factory boot shows Idle Lab (Info / last tab); Deck starts deactivated.
-        self._lab_visible = True
-        self.after(0, self._start_idle_lab_boot)
+        boot = normalize_boot_surface(self.settings.boot_surface)
+        self._lab_visible = boot == BOOT_IDLE_LAB
+        self.after(0, self._start_boot)
 
     def _build(self) -> None:
         self.status_label = ctk.CTkLabel(self, text="", anchor="w", justify="left", wraplength=980)
@@ -294,8 +311,7 @@ class App(ctk.CTk):
 
         self._build_chrome()
 
-        # Phase 0: target tab strip with stub panes. Legacy Bench/Observe/Missions/Loops
-        # panels stay unwired (engines remain on App for later phases).
+        # Target tab strip. Info is nested docs; Labs stay stubs until later phases.
         self.auto_panel = None
         self.screen_map_panel = None
         self.ai_batch_panel = None
@@ -305,6 +321,7 @@ class App(ctk.CTk):
             self,
             on_tab_changed=self._on_tab_changed,
             last_tab=self.settings.last_tab,
+            on_open_tab=self._goto_lab_tab,
         )
         self.settings.last_tab = self._current_tab
 
@@ -328,19 +345,18 @@ class App(ctk.CTk):
             self.header_actions,
             text="Settings",
             width=88,
-            state="disabled",
             fg_color="#2A3140",
-            text_color="#7E8796",
-            hover=False,
+            hover_color="#3A4558",
+            command=self._open_settings_from_lab,
         )
         self.settings_button.pack(side="right", padx=(6, 0))
         self.stop_all_button = ctk.CTkButton(
             self.header_actions,
-            text="Stop all (F8)",
-            width=112,
+            text="Deactivate",
+            width=100,
             fg_color="#5A3030",
             hover_color="#7A4040",
-            command=self._stop_all,
+            command=self._deactivate_from_idle_lab,
         )
         self.stop_all_button.pack(side="right", padx=(6, 0))
         self.restart_button = ctk.CTkButton(
@@ -404,16 +420,7 @@ class App(ctk.CTk):
             command=self._toggle_flight_deck_from_lab,
         )
         self.flight_deck_button.pack(side="left", padx=(10, 0))
-        self.remap_expand_button = ctk.CTkButton(
-            anchor_row,
-            text=f"Activate [{vk_label(self.settings.flight_deck_expand_vk or DEFAULT_EXPAND_VK)}]",
-            width=110,
-            height=28,
-            fg_color="#2A3140",
-            hover_color="#3A4558",
-            command=self._begin_flight_deck_remap,
-        )
-        self.remap_expand_button.pack(side="left", padx=(6, 0))
+        # Activate-key remap lives in Settings (A8).
 
         self.anchor_label = ctk.CTkLabel(
             mid,
@@ -940,6 +947,9 @@ class App(ctk.CTk):
         )
         self.hooks.state.lab_visible = bool(self._lab_visible)
         self.hooks.state.resume_handle = bool(self._resume_handle) and (not self._lab_visible)
+        self.hooks.state.deck_mode_active = bool(
+            mode_abandons_menu(self._deck_mode) and (not self._lab_visible)
+        )
         # Keep Activate armed even when the deck window is withdrawn after Close.
         # While Idle Lab is the surface, Activate VK is silent (buttons only).
         self.hooks.state.flight_deck_open = bool(deck_visible) and (not self._lab_visible)
@@ -983,8 +993,8 @@ class App(ctk.CTk):
             lab_visible=self._is_lab_visible(),
         )
 
-    def _start_idle_lab_boot(self) -> None:
-        """Factory / fresh → Idle Lab on Info (or last tab); Deck stays deactivated."""
+    def _start_boot(self) -> None:
+        """Boot from Settings preference: Idle Lab (factory) or Flight Deck."""
 
         tab = normalize_last_tab(self.settings.last_tab)
         try:
@@ -995,8 +1005,17 @@ class App(ctk.CTk):
         self._current_tab = tab
         self.settings.last_tab = tab
         self._clear_resume_handle()
-        self._show_idle_lab_surface(quiet=True)
+        self._exit_deck_mode(quiet=True)
         self.update_idletasks()
+        boot = normalize_boot_surface(self.settings.boot_surface)
+        if boot == BOOT_FLIGHT_DECK:
+            self._switch_to_flight_deck_surface(activate=False)
+            if self._auto_anchor_on_boot:
+                self._try_auto_anchor_on_boot()
+                return
+            self._status("Flight Deck (boot preference). Activate to listen.", "info")
+            return
+        self._show_idle_lab_surface(quiet=True)
         if self._auto_anchor_on_boot:
             self._try_auto_anchor_on_boot()
             return
@@ -1087,6 +1106,7 @@ class App(ctk.CTk):
         self.hooks.state.live_control_active = False
         self.hooks.state.live_control_paused = False
         self.hooks.state.live_control_toggle_token = None
+        self._exit_deck_mode(quiet=True)
         # Deactivate is the single stop: runners + LCO / Observation / …
         self._stop_all()
         try:
@@ -1384,6 +1404,7 @@ class App(ctk.CTk):
             deck_expanded=bool(self.flight_deck.expanded),
             open_menu=bool(self.flight_deck.open_menu_key),
             resume_handle=bool(self._resume_handle),
+            deck_mode_active=mode_abandons_menu(self._deck_mode),
         )
         if action is EscAction.CANCEL_LCO_REBIND:
             self.live_control.cancel_molecule_rebind()
@@ -1395,6 +1416,8 @@ class App(ctk.CTk):
             self._cancel_molecule_lab_close_confirm()
         elif action is EscAction.CLOSE_MOLECULE_LAB:
             self._confirm_close_molecule_lab()
+        elif action is EscAction.EXIT_DECK_MODE:
+            self._exit_deck_mode()
         elif action is EscAction.CANCEL_REMAP:
             self.hooks.state.flight_deck_remap = False
             self._status("Activate remap cancelled.", "info")
@@ -1415,6 +1438,155 @@ class App(ctk.CTk):
         """Window X / hide — exclusive Deck (deactivated), not both surfaces."""
 
         self._switch_to_flight_deck_surface(activate=False)
+
+    def _goto_lab_tab(self, tab_name: str) -> None:
+        """Info checklist link → switch Idle Lab tab."""
+
+        name = normalize_last_tab(tab_name)
+        try:
+            self.tabs.set(name)
+        except Exception:
+            self._status(f"Could not open tab “{tab_name}”.", "warn")
+            return
+        self._current_tab = name
+        self.settings.last_tab = name
+        self._save_settings()
+        if not self._is_lab_visible():
+            self._show_idle_lab_surface()
+        self._status(f"Opened {name}.", "ok")
+
+    def _deactivate_from_idle_lab(self) -> None:
+        """Chrome Deactivate ≡ Deck Deactivate (one stop model)."""
+
+        self._exit_deck_mode(quiet=True)
+        self._ensure_deck_only_surface()
+        self._stop_all()
+        self._enter_inactive(resume=True)
+        self._update_flight_deck_lab_button()
+
+    def _open_settings_from_lab(self) -> None:
+        """Idle Lab Settings → same boot-preference panel as Deck S."""
+
+        self._ensure_deck_only_surface()
+        if self._shell_phase is ShellPhase.INACTIVE:
+            self._activate_flight_deck()
+        self._enter_deck_mode(DeckMode.SETTINGS)
+
+    def _enter_deck_mode(self, mode: DeckMode) -> None:
+        """Abandon menu letters; open floating Lab skeleton when needed."""
+
+        if mode is DeckMode.MENU:
+            self._exit_deck_mode()
+            return
+        self._ensure_deck_only_surface()
+        if self._shell_phase is not ShellPhase.ACTIVE:
+            self._activate_flight_deck()
+        self._close_floating_lab()
+        self._deck_mode = mode
+        key = vk_label(self._flight_deck_expand_vk_for_anchor())
+        prompt = mode_prompt(mode, activate_key=key)
+        legend = mode_legend(mode)
+        self.flight_deck.collapse_menu()
+        self.flight_deck.set_deck_lab_mode(True, prompt=prompt, legend=legend)
+        self.hooks.state.deck_mode_active = True
+        self._sync_shell_hook_flags()
+
+        if mode is DeckMode.MOLECULE_LAB:
+            self._open_floating_lab(
+                title="Idle Lab · Molecule Lab",
+                heading="Molecule Lab",
+                blurb="Floating skeleton — Atom + Molecule composer wiring comes later.",
+            )
+        elif mode is DeckMode.OBSERVATION_LAB:
+            self._open_floating_lab(
+                title="Idle Lab · Observation Lab",
+                heading="Observation Lab",
+                blurb="Floating skeleton — User + AI mission panes come later. Mark is cut.",
+            )
+        elif mode is DeckMode.LOL:
+            self._open_floating_lab(
+                title="Idle Lab · Live Overlay Lab",
+                heading="Live Overlay Lab",
+                blurb="Mode skeleton — live overlay primitives land in Phase 2.",
+            )
+        elif mode is DeckMode.SETTINGS:
+            self._open_settings_float()
+        self._status(f"Deck mode: {mode_display_name(mode)}.", "info")
+
+    def _exit_deck_mode(self, *, quiet: bool = False) -> None:
+        self._close_floating_lab()
+        self._deck_mode = DeckMode.MENU
+        try:
+            self.flight_deck.set_deck_lab_mode(False)
+        except Exception:
+            pass
+        self.hooks.state.deck_mode_active = False
+        if self._shell_phase is ShellPhase.ACTIVE and self._is_anchored() and not self._is_lab_visible():
+            try:
+                self.flight_deck.set_expanded(True)
+            except Exception:
+                pass
+        self._sync_shell_hook_flags()
+        if not quiet:
+            self._status("Deck menu.", "info")
+
+    def _close_floating_lab(self) -> None:
+        win = self._floating_lab
+        self._floating_lab = None
+        settings = self._settings_window
+        self._settings_window = None
+        for target in (win, settings):
+            if target is None:
+                continue
+            try:
+                target.destroy()
+            except Exception:
+                pass
+
+    def _open_floating_lab(self, *, title: str, heading: str, blurb: str) -> None:
+        self._close_floating_lab()
+
+        def on_close() -> None:
+            self._exit_deck_mode()
+
+        self._floating_lab = FloatingLabWindow(
+            self,
+            title=title,
+            heading=heading,
+            blurb=blurb,
+            on_close=on_close,
+        )
+        self._floating_lab.focus_float()
+
+    def _open_settings_float(self) -> None:
+        self._close_floating_lab()
+        win = ctk.CTkToplevel(self)
+        win.title("Idle Lab · Settings")
+        win.geometry("480x320")
+        win.attributes("-topmost", True)
+        win.protocol("WM_DELETE_WINDOW", self._exit_deck_mode)
+
+        def on_boot(value: str) -> None:
+            self.settings.boot_surface = normalize_boot_surface(value)
+            self._save_settings()
+            self._status(
+                f"Boot surface → {BOOT_IDLE_LAB if self.settings.boot_surface == BOOT_IDLE_LAB else 'flight_deck'}.",
+                "ok",
+            )
+
+        build_settings_body(
+            win,
+            boot_surface=self.settings.boot_surface,
+            expand_vk=int(self.settings.flight_deck_expand_vk or DEFAULT_EXPAND_VK),
+            on_boot_change=on_boot,
+            on_begin_remap=self._begin_flight_deck_remap,
+        )
+        self._settings_window = win
+        try:
+            win.lift()
+            win.focus_force()
+        except Exception:
+            pass
 
     def _toggle_flight_deck_from_lab(self) -> None:
         # Chrome: leave Idle Lab for Deck (deactivated). Hotkey ` activates listening.
@@ -1460,13 +1632,13 @@ class App(ctk.CTk):
         path = str(action.get("_path") or action.get("_label") or kind)
         try:
             if kind == "open_lol":
-                self._status("LOL — not wired (Phase 0 stub).", "warn")
+                self._enter_deck_mode(DeckMode.LOL)
             elif kind == "open_molecule_lab":
-                self._status("Molecule Lab — not wired (Phase 0 stub).", "warn")
+                self._enter_deck_mode(DeckMode.MOLECULE_LAB)
             elif kind == "open_observation_lab":
-                self._status("Observation Lab — not wired (Phase 0 stub).", "warn")
+                self._enter_deck_mode(DeckMode.OBSERVATION_LAB)
             elif kind == "open_settings":
-                self._status("Settings — not wired (boot preference later).", "warn")
+                self._enter_deck_mode(DeckMode.SETTINGS)
             elif kind == "play_preset":
                 self._ensure_deck_only_surface()
                 self._flight_deck_play_preset(str(action["preset"]), path=path)
@@ -2243,9 +2415,10 @@ class App(ctk.CTk):
     def _tab_scroll_prefix(self, tab_name: str) -> str:
         return {
             "Info": "info.",
-            "LOL": "lol.",
+            "Live Overlay Lab": "live_overlay_lab.",
             "Molecule Lab": "molecule_lab.",
             "Observation Lab": "observation_lab.",
+            "LOL": "live_overlay_lab.",
             # Legacy mega-tab names
             "Bench": "clicker.",
             "Observe": "screen_map.",
@@ -4011,6 +4184,13 @@ class App(ctk.CTk):
         if self.walkthrough is not None and self.walkthrough.active:
             return "Activity: Walkthrough"
         return "Activity: Idle"
+
+    def _sync_mode_chip(self) -> None:
+        if getattr(self, "mode_chip", None) is None:
+            return
+        mode = normalize_lab_mode(self.settings.lab_mode)
+        label = "Supervised" if mode == "supervised" else "Auto"
+        self.mode_chip.configure(text=f"Mode: {label}")
 
     def _update_activity(self) -> None:
         if getattr(self, "mode_chip", None) is not None:

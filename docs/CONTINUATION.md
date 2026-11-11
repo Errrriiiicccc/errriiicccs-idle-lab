@@ -9,16 +9,14 @@
 
 ## Active focus (2026-11-10)
 
-**Phase 0 greenlit.** Shape-first shell — execute **Phase 0 only** from:
+**Phase 1 in progress** on branch `shape-first-shell`. Phase 0 click-tested.
 
-→ **[pieces/shell/SHAPE-FIRST-PLAN.md](pieces/shell/SHAPE-FIRST-PLAN.md)** (§6 Phase 0 · §10 deliverable)
+→ **[pieces/shell/SHAPE-FIRST-PLAN.md](pieces/shell/SHAPE-FIRST-PLAN.md)** (§6 Phase 1)
 
-Do **not** treat legacy Bench/Loops/Missions/LCO naming in running code as the plan — FEATURES “Target shell” + pieces/shell win. Do **not** start Phase 1+ until M0 is reviewable and Eric greenlights the next phase.
+Do **not** treat legacy Bench/Loops/Missions/LCO naming in running code as the plan — FEATURES “Target shell” + pieces/shell win. Do **not** start Phase 2+ until M1 is reviewable and Eric greenlights.
 
 **Chat contract:** [REFRESH-RESTART.md](REFRESH-RESTART.md) — data → Refresh; code → Restart.  
 **Test:** [HARNESS.md](HARNESS.md) · [`lab-context.json`](../lab-context.json).
-
-**Before coding Phase 0:** resolve dirty-tree merge risk (plan §3) — park/commit/stash/branch WIP so shell rebuild does not fight Molecule/LCO edits. Prefer clean baseline from `b70f5c3` or an explicit “merge WIP first” decision.
 
 ## What the plan locked (short)
 

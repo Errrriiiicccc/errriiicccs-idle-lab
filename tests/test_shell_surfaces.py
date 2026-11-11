@@ -47,13 +47,14 @@ class LastTabTests(unittest.TestCase):
     def test_inventory(self) -> None:
         self.assertEqual(
             IDLE_LAB_TABS,
-            ("Info", "LOL", "Molecule Lab", "Observation Lab"),
+            ("Info", "Live Overlay Lab", "Molecule Lab", "Observation Lab"),
         )
         self.assertEqual(DEFAULT_TAB, "Info")
 
     def test_normalize_defaults_and_legacy(self) -> None:
         self.assertEqual(normalize_last_tab(None), "Info")
-        self.assertEqual(normalize_last_tab("LOL"), "LOL")
+        self.assertEqual(normalize_last_tab("Live Overlay Lab"), "Live Overlay Lab")
+        self.assertEqual(normalize_last_tab("LOL"), "Live Overlay Lab")
         self.assertEqual(normalize_last_tab("Bench"), "Molecule Lab")
         self.assertEqual(normalize_last_tab("Observe"), "Observation Lab")
         self.assertEqual(normalize_last_tab("Missions"), "Observation Lab")

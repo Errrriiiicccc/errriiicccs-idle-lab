@@ -3,8 +3,8 @@
   "roots": [
     {
       "key": "L",
-      "label": "LOL",
-      "description": "Live Overlay Lab — stub in Phase 0.",
+      "label": "Live Overlay Lab",
+      "description": "Live Overlay Lab — skeleton; live overlay wiring later.",
       "action": { "type": "open_lol" }
     },
     {

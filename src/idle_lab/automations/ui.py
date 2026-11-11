@@ -65,8 +65,8 @@ class AutomationsPanel(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
         toolbar.pack(fill="x", padx=8, pady=(8, 4))
         ctk.CTkLabel(toolbar, text="Loops", font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
+        # CUT: Loops-local Reload — global Refresh only. Keep attribute for call sites.
         self.reload_button = ctk.CTkButton(toolbar, text="Reload", width=90, command=self.on_reload)
-        self.reload_button.pack(side="right", padx=(6, 0))
         self.stop_button = ctk.CTkButton(toolbar, text="Stop", width=80, command=self.on_stop)
         self.stop_button.pack(side="right", padx=(6, 0))
         self.start_button = ctk.CTkButton(toolbar, text="Start selected", width=110, command=self._start_selected)

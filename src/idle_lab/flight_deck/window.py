@@ -135,6 +135,9 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._lco_paused = False
         self._molecule_lab_active = False
         self._molecule_lab_close_confirm = False
+        self._deck_lab_mode = False
+        self._deck_lab_prompt = ""
+        self._deck_lab_legend = "ESC"
         self._expand_vk = DEFAULT_EXPAND_VK
         self._keymap: FlightDeckKeymap | None = None
         # Accordion: which top-level menu letter is open (None = all collapsed).
@@ -286,6 +289,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self.close_button.configure(text="Stay [Esc]")
         elif self._molecule_lab_active:
             self.close_button.configure(text="Close Lab [Esc]")
+        elif self._deck_lab_mode:
+            self.close_button.configure(text="Back [Esc]")
         elif self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             self.close_button.configure(text="Stay [Esc]")
         elif self._expanded and self._open_menu_key:
@@ -304,6 +309,17 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self._open_menu_key = None
         else:
             self._molecule_lab_close_confirm = False
+        self._render_chrome()
+
+    def set_deck_lab_mode(self, active: bool, *, prompt: str = "", legend: str = "ESC") -> None:
+        """Abandon accordion for LOL / floating Lab / Settings mode chrome."""
+
+        self._deck_lab_mode = bool(active)
+        self._deck_lab_prompt = prompt or ""
+        self._deck_lab_legend = legend or "ESC"
+        if self._deck_lab_mode:
+            self._open_menu_key = None
+            self._show_descriptions = False
         self._render_chrome()
 
     def set_live_control_active(self, active: bool) -> None:
@@ -413,6 +429,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
         if self._molecule_lab_active:
             return None
         if self._live_control_active:
+            return None
+        if self._deck_lab_mode:
             return None
         if not self._expanded or self._keymap is None:
             return None
@@ -670,6 +688,16 @@ class FlightDeckWindow(ctk.CTkToplevel):
         if not self.activate_button.winfo_ismapped():
             self.activate_button.pack(side="left", padx=(6, 0))
 
+        if self._deck_lab_mode:
+            if self.menu_frame.winfo_ismapped():
+                self.menu_frame.pack_forget()
+            prompt = self._deck_lab_prompt.strip() or "Esc = back to menu"
+            self.run_label.configure(text=prompt, text_color=_ACCENT)
+            if not self.run_label.winfo_ismapped():
+                self.run_label.pack(fill="x", pady=(4, 0))
+            self._fit_collapsed_size()
+            return
+
         if self._anchored and self._expanded:
             if self._live_control_active or self._molecule_lab_active:
                 self.run_label.configure(text="", text_color=_MUTED)
@@ -725,6 +753,15 @@ class FlightDeckWindow(ctk.CTkToplevel):
                     activate_key=vk_label(self._expand_vk),
                 )
             )
+            self._sync_close_button_label()
+            return
+        if self._deck_lab_mode:
+            self.menu_path.configure(
+                text=self._deck_lab_legend,
+                text_color=_ACCENT,
+                font=ctk.CTkFont(size=13, weight="bold"),
+            )
+            self.menu_list.configure(text=self._deck_lab_prompt)
             self._sync_close_button_label()
             return
         if self._molecule_lab_active:
