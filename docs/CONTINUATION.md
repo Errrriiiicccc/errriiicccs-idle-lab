@@ -4,26 +4,24 @@
 
 **North star:** [VISION.md](VISION.md)  
 **Cascade:** [README.md](README.md) · [../AGENTS.md](../AGENTS.md)  
-**Redesign (docs complete):** [pieces/README.md](pieces/README.md) · shell [pieces/shell/](pieces/shell/README.md) · hygiene [pieces/hygiene/CUT-REFINE-KEEP.md](pieces/hygiene/CUT-REFINE-KEEP.md) · [archive/README.md](../archive/README.md)  
+**Redesign:** [pieces/README.md](pieces/README.md) · shell [pieces/shell/](pieces/shell/README.md) · hygiene [pieces/hygiene/CUT-REFINE-KEEP.md](pieces/hygiene/CUT-REFINE-KEEP.md) · [archive/README.md](../archive/README.md)  
 **Target vs code:** [FEATURES.md](FEATURES.md)
 
 ## Active focus (2026-11-10)
 
-**Phase 1 in progress** on branch `shape-first-shell`. Phase 0 click-tested.
+**Shape-first Phases 0–5 complete** on branch `shape-first-shell`.
 
-→ **[pieces/shell/SHAPE-FIRST-PLAN.md](pieces/shell/SHAPE-FIRST-PLAN.md)** (§6 Phase 1)
-
-Do **not** treat legacy Bench/Loops/Missions/LCO naming in running code as the plan — FEATURES “Target shell” + pieces/shell win. Do **not** start Phase 2+ until M1 is reviewable and Eric greenlights.
+→ Next: click-test the Labs end-to-end, then pick a parked slice (Atom Create persist, Trial polish, Current State, rename pass) — or merge when Eric is ready.
 
 **Chat contract:** [REFRESH-RESTART.md](REFRESH-RESTART.md) — data → Refresh; code → Restart.  
 **Test:** [HARNESS.md](HARNESS.md) · [`lab-context.json`](../lab-context.json).
 
-## What the plan locked (short)
+## What landed
 
-- Idle Lab ↔ Flight Deck exclusive; Deactivate = Stop all; factory boot Idle Lab / Info then last tab  
-- Labs: Info, LOL, Molecule (Atom create on Deck), Observation (User + AI mission)  
-- Shared overlay primitives; Atom Create distinct from LOL; archive for deprecated; observations delete  
-- CUT list agreed (Start-all, Mark, mega tabs as-is, etc.)
+- Exclusive Idle Lab ↔ Flight Deck; Deactivate = Stop all; Info + Labs tabs  
+- Deck **L/M/O/S**; shared overlay + Atom Create stubs (no silent save)  
+- Molecule Lab embed/float; Observation Lab User + AI mission; Mark / Start-all / Add feedback cut  
+- CUT demos → [`archive/automations/2026-11-10-cut-demos/`](../archive/automations/2026-11-10-cut-demos/REASON.md)
 
 ## Soft parked (OK later)
 
@@ -32,6 +30,7 @@ Do **not** treat legacy Bench/Loops/Missions/LCO naming in running code as the p
 - In-app AI dispatch  
 - Disk rename pass  
 - Esc peel / post-observe Deck chrome minutiae  
+- Atom Create real persist path + drag paint  
 
 ## Push rule
 

@@ -67,20 +67,12 @@ Schema: [automation-schema.md](automation-schema.md).
 
 1. Anchor BlueStacks / The Tower (upgrade panel closed).
 2. Bench: method **Foreground**, **Humanize → Medium** (experiment; default is Off).
-3. Loops → select **Humanize upgrade loop** → **Reload** → **Start**.
-4. Every ~10s the console should log Attack → Damage → Defense → Health → Attack, with slightly uneven timing/aim.
-5. If Damage/Health miss, open preset `humanize atk def loop` in the Bench tab and nudge those points, then Reload.
+3. Molecule Lab → pick a live atom or pack (e.g. Stat collecting) → **Start selected** / **Run pack**.
+4. Humanize still applies via chrome / settings — the old `humanize_upgrade_loop` demo lives under [`archive/automations/2026-11-10-cut-demos/`](../archive/automations/2026-11-10-cut-demos/REASON.md).
 
-### Older OCR A/B demo
+### Archived OCR A/B / clip demos
 
-Click-logger harness (optional): re-enable `automations/events/ocr_ab_tick.json` and `minute_clip.json` (`"enabled": true`), Reload, then:
-
-1. **Click logger**, then top bar **Set anchor** on that window.
-2. Countdown **0**, method **Foreground**.
-3. Loops → **Reload** → **Start**.
-4. Watch console for 10s A/B ticks; toggle SIGNAL A/B on the logger.
-   - SIGNAL **A** → UPPER (`ab choice a`); otherwise LOWER (`ab choice b`).
-5. Inspect `runs/screenshots/`, `runs/clips/`, `runs/run_log.csv` when minute_clip is enabled.
+Click-logger and minute-clip flagship demos were CUT from live Refresh (Phase 5). Restore from archive only if a harness story needs them — the live app never loads `archive/`.
 
 ### Adding a new automation (no Python)
 

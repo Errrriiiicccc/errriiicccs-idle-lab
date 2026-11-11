@@ -11,34 +11,10 @@
       ]
     },
     {
-      "id": "mol_test_buy",
-      "title": "Test Buy",
-      "requires_tab": "attack",
-      "description": "Molecule Lab \u00b7 phase \u00b7 unfiled (requires attack tab).",
-      "children": [
-        "composer_test_buy_tab_attack",
-        "composer_test_buy_damage",
-        "composer_test_buy_atk_speed",
-        "composer_test_buy_crit_chance",
-        "composer_test_buy_crit_factor",
-        "composer_test_buy_tab_defense",
-        "composer_test_buy_health",
-        "composer_test_buy_health_regen",
-        "composer_test_buy_defense",
-        "composer_test_buy_tab_utility",
-        "composer_test_buy_cash_bonus",
-        "composer_test_buy_cash_wave",
-        "composer_test_buy_free_atk_up"
-      ],
-      "phase": "unfiled",
-      "kind": "phase",
-      "source": "lab"
-    },
-    {
       "id": "mol_lab_smoke_attack_pair",
       "title": "Lab Smoke Attack Pair",
       "requires_tab": "attack",
-      "description": "Molecule Lab \u00b7 buy \u00b7 beginning (requires attack tab).",
+      "description": "Molecule Lab · buy · beginning (requires attack tab).",
       "children": [
         "composer_lab_smoke_attack_pair_tab_attack",
         "composer_lab_smoke_attack_pair_damage",
@@ -49,53 +25,10 @@
       "source": "lab"
     },
     {
-      "id": "mol_test_attack_buy",
-      "title": "Test Attack Buy",
-      "requires_tab": "attack",
-      "description": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires attack tab).",
-      "children": [
-        "composer_test_attack_buy_tab_attack",
-        "composer_test_attack_buy_damage",
-        "composer_test_attack_buy_atk_speed"
-      ],
-      "phase": "unfiled",
-      "kind": "buy",
-      "source": "lab"
-    },
-    {
-      "id": "mol_test_defense_buy",
-      "title": "Test Defense Buy",
-      "requires_tab": "defense",
-      "description": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires defense tab).",
-      "children": [
-        "composer_test_defense_buy_tab_defense",
-        "composer_test_defense_buy_health",
-        "composer_test_defense_buy_health_regen",
-        "composer_test_defense_buy_defense"
-      ],
-      "phase": "unfiled",
-      "kind": "buy",
-      "source": "lab"
-    },
-    {
-      "id": "mol_test_wave_check",
-      "title": "Test Wave Check",
-      "requires_tab": "attack",
-      "description": "Molecule Lab \u00b7 buy \u00b7 beginning (requires attack tab).",
-      "children": [
-        "stat_collect",
-        "mol_test_attack_buy",
-        "mol_test_defense_buy"
-      ],
-      "phase": "beginning",
-      "kind": "buy",
-      "source": "lab"
-    },
-    {
       "id": "mol_123",
       "title": "123",
       "requires_tab": "attack",
-      "description": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires attack tab).",
+      "description": "Molecule Lab · buy · unfiled (requires attack tab).",
       "children": [
         "composer_123_tab_attack",
         "composer_123_damage",

@@ -16,10 +16,10 @@
       "detail": "One clear shot of the lab screen with research rows visible."
     },
     {
-      "id": "req-ocr-event",
+      "id": "req-stat-collect",
       "kind": "event_snapshot",
-      "label": "OCR A/B tick event",
-      "detail": "Snapshot automations/events/ocr_ab_tick.json into this batch for the review chat."
+      "label": "Persistent state atom",
+      "detail": "Snapshot automations/events/stat_collect.json into this batch for the review chat."
     },
     {
       "id": "req-gaps",

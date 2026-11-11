@@ -89,7 +89,7 @@ class CollectionBranchTests(unittest.TestCase):
             store.events,
             store.collections,
         )
-        self.assertEqual(ids, ["stat_collect", "stat_broll_5m"])
+        self.assertEqual(ids, ["stat_collect"])
 
 
 class StoreTests(unittest.TestCase):
@@ -97,9 +97,11 @@ class StoreTests(unittest.TestCase):
         store = AutomationStore(project_root() / "automations")
         errors = store.load_all()
         self.assertEqual(errors, [])
-        self.assertIn("ocr_ab_tick", store.events)
-        self.assertIn("minute_clip", store.events)
-        self.assertIn("humanize_upgrade_loop", store.events)
+        # CUT demos live under archive/ — never load into the live store.
+        self.assertNotIn("ocr_ab_tick", store.events)
+        self.assertNotIn("minute_clip", store.events)
+        self.assertNotIn("humanize_upgrade_loop", store.events)
+        self.assertNotIn("stat_broll_5m", store.events)
         self.assertNotIn("demo_poc", store.collections)
         self.assertNotIn("phase_begin_stub", store.collections)
         self.assertIn("endgame_tier1", store.collections)
@@ -109,7 +111,7 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(store.collections["endgame_phase_loop"].title, "Endgame Phase Loop")
         self.assertEqual(
             store.collections["endgame_phase_loop"].children,
-            ["endgame_status_buy", "stat_collect", "stat_broll_5m"],
+            ["endgame_status_buy", "stat_collect"],
         )
         self.assertEqual(store.collections["endgame_phase_loop"].run, "interval")
         self.assertEqual(store.collections["stat_collecting"].run, "interval")
@@ -118,16 +120,12 @@ class StoreTests(unittest.TestCase):
         self.assertIn("endgame_minute_stats", store.events)
         self.assertIn("stat_collect", store.events)
         self.assertNotIn("stat_collect_30s", store.events)
-        self.assertIn("stat_broll_5m", store.events)
         self.assertIn("list_scroll_down_1", store.events)
         self.assertIn("list_scroll_up_1", store.events)
         self.assertTrue(store.events["endgame_status_buy"].enabled)
-        self.assertFalse(store.events["humanize_upgrade_loop"].enabled)
         self.assertTrue(store.events["stat_collect"].enabled)
-        self.assertTrue(store.events["stat_broll_5m"].enabled)
         self.assertEqual(store.events["stat_collect"].every_ms, 30000)
-        self.assertEqual(store.events["stat_broll_5m"].every_ms, 300000)
-        self.assertEqual(store.collections["stat_collecting"].children, ["stat_collect", "stat_broll_5m"])
+        self.assertEqual(store.collections["stat_collecting"].children, ["stat_collect"])
         types = {action.type for action in store.events["endgame_status_buy"].actions}
         self.assertIn("detect_panel", types)
         scroll_types = {action.type for action in store.events["list_scroll_down_1"].actions}

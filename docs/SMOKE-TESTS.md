@@ -22,29 +22,27 @@ Expect unit OK and harness story green.
 
 ## 2. Loops shell
 
-1. Open **Loops** workspace.
-2. Atoms list shows known events (enable OCR A/B tick / Minute clip in JSON if you want the classic demo).
-3. Molecules shows packs such as Health then Damage / Stat collecting.
-4. Edit a title in JSON → **Reload** → list updates.
+1. Open Idle Lab → **Molecule Lab**.
+2. Atoms list shows live events (CUT demos are under `archive/`, not Refresh).
+3. Molecules shows packs such as Health then Damage / Stat collecting / Endgame Phase Loop.
+4. Edit a title in JSON → **Refresh** → list updates.
 
-## 3. Capture + OCR + A/B
+## 3. Capture (Observation Lab)
 
-1. Anchor the click logger. Enable `ocr_ab_tick` if disabled → Loops → **Start**.
-2. Within ~10s, console shows screenshot path and OCR for `signal_roi`.
-3. Toggle SIGNAL on the logger between A and B.
-4. Confirm console shows branch A vs B and the matching preset click (upper vs lower).
+1. Idle Lab → **Observation Lab** → **User**.
+2. Anchor a window → **Start observation** → move/click → **Deactivate** (`` ` ``) to stop.
+3. Catalog groups Today / Yesterday / Last 7 Days / The Past; Mark is cut.
 
-## 4. Priority: recording blocks A/B
+## 4. Live Overlay Lab
 
-1. Keep loops running (or set `minute_clip` `every_ms` to `15000`, Reload, Start).
-2. When recording starts, queue shows minute clip **running** and A/B **deferred**.
-3. Console notes priority preemption.
+1. Anchor → Idle Lab → **Live Overlay Lab** → **Start live** (or Deck **L**).
+2. Hold **D** describes; Esc exits live; Deactivate stops all.
 
 ## 5. Chrome honesty
 
 1. Edit a preset or atom on disk → Activity shows **Files changed — Refresh**.
 2. **Refresh** (F5) reloads without killing the process.
-3. **Stop all** halts Bench / Loops / Missions / Observe / LCO.
+3. **Stop all** / **Deactivate** halt runners (Molecules, Observation, Live Overlay, AI mission).
 4. **Deactivate** on the flight deck also stops everything, then idles the deck.
 
 Details: [USAGE.md](USAGE.md), [REFRESH-RESTART.md](REFRESH-RESTART.md).

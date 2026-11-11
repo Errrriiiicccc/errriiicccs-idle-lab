@@ -1,6 +1,6 @@
 # Shape-first shell — implementation plan
 
-**Status:** Phase 0 **greenlit** (2026-11-10) — execute Phase 0 only; later phases need their own go  
+**Status:** Phases **0–5 complete** on `shape-first-shell` (2026-11-10). Plan retained as the waterfall record.  
 **Authority:** [VISION.md](../../VISION.md) · [shell/README.md](README.md) · [FEATURES.md](../../FEATURES.md) Target shell · [CUT-REFINE-KEEP.md](../hygiene/CUT-REFINE-KEEP.md)  
 **Out of scope here:** new product vision, deep Current State schema, Trial IA polish, disk rename pass, in-app AI dispatch (parked unless a phase hard-depends — none do).
 

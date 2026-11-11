@@ -43,8 +43,8 @@ Do **not** auto-move old observations into `archive/` — that recreates Screen 
 | Kind | Examples | Status |
 | --- | --- | --- |
 | Historical handoffs / thin milestones | HANDOFF-OCR, IMPLEMENTATION | Moved under `archive/docs/` when this policy landed |
-| Flagship-demo automations | `ocr_ab_tick`, `minute_clip`, `humanize_upgrade_loop` (CUT story) | Move in shape-first waterfall, not necessarily today |
-| Noise composer smoke atoms | excess `composer_test_*` | Triage during ML cleanup |
+| Flagship-demo automations | `ocr_ab_tick`, `minute_clip`, `stat_broll_5m`, `humanize_upgrade_loop` (CUT story) | Moved → `automations/2026-11-10-cut-demos/` |
+| Noise composer smoke atoms | excess `composer_test_*` + `mol_test_*` | Moved with the same Phase 5 bucket |
 | External `idle-lab/docs` | Pre-fork vision | Stay out of this repo; ignore (D12) |
 
 ## Operator / agent checklist

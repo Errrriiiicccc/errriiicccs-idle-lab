@@ -2,16 +2,15 @@
   "id": "endgame_phase_loop",
   "title": "Endgame Phase Loop",
   "version": 1,
-  "description": "Interval molecule: status+buy + stat collect + 5-min b-roll until you Stop (stop_when game_over is for once-mode packs).",
+  "description": "Interval molecule: status+buy + stat collect until you Stop (stop_when game_over is for once-mode packs).",
   "children": [
     "endgame_status_buy",
-    "stat_collect",
-    "stat_broll_5m"
+    "stat_collect"
   ],
   "branch_variable": "phase",
   "branches": {},
   "loop": true,
   "stop_when": "game_over",
   "run": "interval",
-  "notes": "Start selected → interval pool of child atoms. B-roll (prio 100) defers buys/stats while recording. Keep humanize_upgrade_loop disabled."
+  "notes": "Start selected → interval pool of child atoms. B-roll demo archived (Phase 5)."
 }
