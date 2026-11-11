@@ -9,9 +9,26 @@ from dataclasses import dataclass, field
 from idle_lab.live_control.buy_detect import DetectedBuySlot
 from idle_lab.live_control.playbook import LiveControlPlaybook
 from idle_lab.models import Rect
+from idle_lab.shared_overlay.primitives import (
+    CURRENT_FILL as _CURRENT_FILL,
+    CURRENT_OUTLINE as _CURRENT_OUTLINE,
+    DESC_BOX_FILL as _DESC_BOX_FILL,
+    DESC_BOX_OUTLINE as _DESC_BOX_OUTLINE,
+    DESC_LINE as _DESC_LINE,
+    DESC_TEXT as _DESC_TEXT,
+    GLYPH as _GLYPH,
+    IDLE_FILL as _IDLE_FILL,
+    IDLE_OUTLINE as _IDLE_OUTLINE,
+    MARK_R as _MARKER_R,
+    PAUSED_FILL as _PAUSED_FILL,
+    PAUSED_OUTLINE as _PAUSED_OUTLINE,
+    QUEUE_NUM as _QUEUE_NUM,
+    QUEUED_FILL as _QUEUED_FILL,
+    QUEUED_OUTLINE as _QUEUED_OUTLINE,
+    queue_index as shared_queue_index,
+)
 from idle_lab import win32_api
 
-_MARKER_R = 15
 _FLING_MARKER_R = 16
 _LABEL_PAD_X = 8
 _LABEL_PAD_Y = 4
@@ -20,7 +37,7 @@ _OBSTACLE_PAD = 8
 _PATH_CROSS_PENALTY = 120.0
 _PREF_MISS_PENALTY = 22.0
 
-# Live colors
+# Live colors (LOL-specific marks; activity/describe palette is shared_overlay)
 _TAB_OUTLINE = "#6A90A8"
 _TAB_ACTIVE_OUTLINE = "#7CF0B8"
 _TAB_FILL = "#121820"
@@ -40,28 +57,8 @@ _REFRESH_OUTLINE = "#E0B85E"
 _REFRESH_FILL = "#201808"
 _ROUTINE_OUTLINE = "#90E0C8"
 _ROUTINE_FILL = "#102018"
-_GLYPH = "#F2F6FA"
-
-# Activity focus (current / queued / idle-while-busy)
-_CURRENT_OUTLINE = "#7CF0B8"
-_CURRENT_FILL = "#184838"
-_QUEUED_OUTLINE = "#E0A050"
-_QUEUED_FILL = "#2A1C08"
-_IDLE_OUTLINE = "#4A5058"
-_IDLE_FILL = "#141618"
 _IDLE_GLYPH = "#7A8088"
-_QUEUE_NUM = "#F0C070"
-
-# Descriptor diagram layer (hold D)
 _DIM_FILL = "#0A0C10"
-_DESC_LINE = "#C8D4E0"
-_DESC_BOX_OUTLINE = "#D8E2EC"
-_DESC_BOX_FILL = "#1A222C"
-_DESC_TEXT = "#F2F6FA"
-
-# Paused: lose color, stay visible but inert.
-_PAUSED_OUTLINE = "#4A5058"
-_PAUSED_FILL = "#141618"
 _PAUSED_GLYPH = "#7A8088"
 
 _BLINK_MS = 420
@@ -343,10 +340,8 @@ class LiveControlOverlay:
         return bool(state.current_action or state.queued_actions or state.toggled_action)
 
     def _queue_index(self, action: str, state: LiveControlOverlayState) -> int | None:
-        for index, item in enumerate(state.queued_actions, start=1):
-            if item == action:
-                return index
-        return None
+        idx = shared_queue_index(state.queued_actions, action)
+        return None if idx is None else idx + 1
 
     def _activity_style(
         self,

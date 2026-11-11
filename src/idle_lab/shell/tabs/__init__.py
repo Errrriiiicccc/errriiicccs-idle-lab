@@ -1,8 +1,8 @@
-"""Idle Lab tab inventory + stub panes."""
+"""Idle Lab tab inventory + Lab panes."""
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 from idle_lab.shell.tabs.info import build_info_tab
 from idle_lab.shell.tabs.lol import build_lol_tab
@@ -23,7 +23,6 @@ def normalize_last_tab(raw: str | None) -> str:
     name = str(raw or "").strip()
     if name in IDLE_LAB_TABS:
         return name
-    # Legacy mega-tab / short names → current operator labels.
     legacy = {
         "Bench": "Molecule Lab",
         "Observe": "Observation Lab",
@@ -43,20 +42,37 @@ def mount_stub_tabs(
     tabs,
     *,
     on_open_tab: Callable[[str], None] | None = None,
+    on_start_live_overlay: Callable[[], None] | None = None,
+    on_open_atom_create: Callable[[], None] | None = None,
+    on_open_composer: Callable[[], None] | None = None,
+    host_automations: Callable[[Any], None] | None = None,
+    host_observation_user: Callable[[Any], None] | None = None,
+    host_observation_ai: Callable[[Any], None] | None = None,
 ) -> dict[str, object]:
-    """Add target tabs and fill panes. Info gets real outline; Labs stay stubs."""
-
     frames: dict[str, object] = {}
     for name in IDLE_LAB_TABS:
         host = tabs.add(name)
         if name == "Info":
             frames[name] = build_info_tab(host, on_open_tab=on_open_tab)
         elif name == "Live Overlay Lab":
-            frames[name] = build_lol_tab(host)
+            frames[name] = build_lol_tab(
+                host,
+                on_start_live=on_start_live_overlay,
+                on_open_atom_create=on_open_atom_create,
+            )
         elif name == "Molecule Lab":
-            frames[name] = build_molecule_lab_tab(host)
+            frames[name] = build_molecule_lab_tab(
+                host,
+                on_open_atom_create=on_open_atom_create,
+                on_open_composer=on_open_composer,
+                host_automations=host_automations,
+            )
         else:
-            frames[name] = build_observation_lab_tab(host)
+            frames[name] = build_observation_lab_tab(
+                host,
+                host_user=host_observation_user,
+                host_ai_mission=host_observation_ai,
+            )
     return frames
 
 

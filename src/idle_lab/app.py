@@ -62,6 +62,8 @@ from idle_lab.shell.deck_mode import (
     mode_legend,
     mode_prompt,
 )
+from idle_lab.shell.atom_create import AtomCreatePhase, atom_create_legend, atom_create_prompt
+from idle_lab.shell.console import SharedConsole
 from idle_lab.shell.floating import FloatingLabWindow
 from idle_lab.shell.idle_lab_window import build_tab_host
 from idle_lab.shell.resume import resume_prompt
@@ -183,6 +185,8 @@ class App(ctk.CTk):
         self._current_tab = normalize_last_tab(self.settings.last_tab)
         self._resume_handle = False
         self._deck_mode = DeckMode.MENU
+        self._atom_create_phase = AtomCreatePhase.IDLE
+        self._shared_console = SharedConsole()
         self._floating_lab: FloatingLabWindow | None = None
         self._settings_window = None
         self.walkthrough: Walkthrough | None = None
@@ -322,6 +326,12 @@ class App(ctk.CTk):
             on_tab_changed=self._on_tab_changed,
             last_tab=self.settings.last_tab,
             on_open_tab=self._goto_lab_tab,
+            on_start_live_overlay=self._start_live_overlay_from_lab,
+            on_open_atom_create=self._open_atom_create_from_lab,
+            on_open_composer=self._open_molecule_composer,
+            host_automations=self._host_molecule_automations,
+            host_observation_user=self._host_observation_user,
+            host_observation_ai=self._host_observation_ai,
         )
         self.settings.last_tab = self._current_tab
 
@@ -950,6 +960,9 @@ class App(ctk.CTk):
         self.hooks.state.deck_mode_active = bool(
             mode_abandons_menu(self._deck_mode) and (not self._lab_visible)
         )
+        self.hooks.state.atom_create_active = bool(
+            self._deck_mode is DeckMode.ATOM_CREATE and (not self._lab_visible)
+        )
         # Keep Activate armed even when the deck window is withdrawn after Close.
         # While Idle Lab is the surface, Activate VK is silent (buttons only).
         self.hooks.state.flight_deck_open = bool(deck_visible) and (not self._lab_visible)
@@ -1455,6 +1468,142 @@ class App(ctk.CTk):
             self._show_idle_lab_surface()
         self._status(f"Opened {name}.", "ok")
 
+    def _start_live_overlay_from_lab(self) -> None:
+        """Live Overlay Lab tab → Deck + live enter (Anchor required)."""
+
+        self._ensure_deck_only_surface()
+        if self._shell_phase is ShellPhase.INACTIVE:
+            self._activate_flight_deck()
+        self._enter_deck_mode(DeckMode.LOL)
+        try:
+            self._enter_live_control()
+        except Exception as exc:
+            self._status(f"Live Overlay Lab: {exc}", "error")
+
+    def _open_atom_create_from_lab(self) -> None:
+        self._ensure_deck_only_surface()
+        if self._shell_phase is ShellPhase.INACTIVE:
+            self._activate_flight_deck()
+        self._atom_create_phase = AtomCreatePhase.IDLE
+        self._enter_deck_mode(DeckMode.ATOM_CREATE)
+        self._status(
+            "Atom Create — not wired for save yet (needs persist path). C/E stubs on Deck.",
+            "warn",
+        )
+
+    def _refresh_atom_create_chrome(self) -> None:
+        if self._deck_mode is not DeckMode.ATOM_CREATE:
+            return
+        key = vk_label(self._flight_deck_expand_vk_for_anchor())
+        self.flight_deck.set_deck_lab_mode(
+            True,
+            prompt=atom_create_prompt(phase=self._atom_create_phase, activate_key=key),
+            legend=atom_create_legend(phase=self._atom_create_phase),
+        )
+
+    def _handle_atom_create_key(self, token: str) -> None:
+        """C/E/W/S/R/F stubs — never claim a silent save."""
+
+        key = str(token or "").strip().upper()
+        if not key:
+            return
+        if key == "C":
+            self._atom_create_phase = AtomCreatePhase.CREATE
+            self._refresh_atom_create_chrome()
+            self._status(
+                "Atom Create: place chords stub — drag indicator later. Save needs persist path.",
+                "warn",
+            )
+            return
+        if key == "E":
+            self._atom_create_phase = AtomCreatePhase.EDIT
+            self._refresh_atom_create_chrome()
+            self._status(
+                "Atom Edit: W/S select · R/F reorder stubs. Save needs persist path.",
+                "warn",
+            )
+            return
+        if self._atom_create_phase is AtomCreatePhase.EDIT and key in {"W", "S", "R", "F"}:
+            labels = {"W": "prev", "S": "next", "R": "reorder up", "F": "reorder down"}
+            self._status(f"Atom Edit {labels[key]} — not wired yet.", "warn")
+            return
+        self._status(f"Atom Create: {key} ignored in this phase (stub).", "info")
+
+    def _host_molecule_automations(self, parent) -> None:
+        if self.auto_panel is not None:
+            try:
+                self.auto_panel.pack_forget()
+            except Exception:
+                pass
+        self.auto_panel = AutomationsPanel(
+            parent,
+            store=self.auto_store,
+            on_reload=self._reload_automations,
+            on_start=self._start_automations_selection,
+            on_start_all_enabled=None,
+            on_stop=self._stop_automations,
+            on_walkthrough=self._start_collection_walkthrough,
+            on_walkthrough_stop=self._stop_collection_walkthrough,
+            on_run_collection=self._start_molecule,
+            on_validate=self._validate_automations,
+            on_dry_run=self._dry_run_selection,
+            on_comment_event=self._comment_event,
+            on_comment_collection=self._comment_collection,
+            comments=self.comment_store,
+            scroll=self.scroll_memory,
+        )
+        self.auto_panel.pack(fill="both", expand=True)
+        try:
+            self._reload_taxonomy()
+        except Exception:
+            pass
+
+    def _host_observation_user(self, parent) -> None:
+        self.screen_map_panel = ScreenMapPanel(
+            parent,
+            on_start_batch=self._start_observation,
+            on_end_batch=lambda: self._stop_observation(reason="operator", prompt_rename=False),
+            on_mark=None,
+            on_open_folder=self._open_screen_map_folder,
+            on_refresh_catalog=self._refresh_screen_map_catalog,
+            on_view_shot=self._view_screen_map_shot,
+            on_view_batch=self._view_screen_map_batch,
+            on_comment_batch=self._comment_screen_map_batch,
+            on_comment_shot=self._comment_screen_map_shot,
+            comments=self.comment_store,
+            scroll=self.scroll_memory,
+        )
+        self.screen_map_panel.pack(fill="both", expand=True)
+        self._refresh_screen_map_catalog()
+
+    def _host_observation_ai(self, parent) -> None:
+        self.ai_batch_panel = AiBatchPanel(
+            parent,
+            store=self.ai_batch_store,
+            scroll=self.scroll_memory,
+            screen_maps_root=self.screen_maps_root,
+            on_reload=self._reload_ai_batches,
+            on_new_batch=self._new_ai_batch,
+            on_open_folder=self._open_ai_batch_folder,
+            on_view_screenshots=self._view_ai_batch_screenshots,
+            on_link_screen_map=self._link_ai_batch_screen_map,
+            on_mark_request=self._mark_ai_request,
+            on_add_feedback=None,
+            on_open_screen_map_batch=self._goto_screen_map_batch,
+            on_snapshot_event=self._snapshot_event_into_ai_batch,
+            on_start_run=self._start_ai_batch_run,
+            on_stop_run=self._stop_ai_batch_run,
+            on_export_packet=self._export_prompt_packet,
+            on_comment_batch=self._comment_mission,
+            on_comment_request=self._comment_mission_request,
+            comments=self.comment_store,
+        )
+        self.ai_batch_panel.pack(fill="both", expand=True)
+        try:
+            self.ai_batch_panel.refresh_list()
+        except Exception:
+            pass
+
     def _deactivate_from_idle_lab(self) -> None:
         """Chrome Deactivate ≡ Deck Deactivate (one stop model)."""
 
@@ -1492,30 +1641,28 @@ class App(ctk.CTk):
         self._sync_shell_hook_flags()
 
         if mode is DeckMode.MOLECULE_LAB:
-            self._open_floating_lab(
-                title="Idle Lab · Molecule Lab",
-                heading="Molecule Lab",
-                blurb="Floating skeleton — Atom + Molecule composer wiring comes later.",
-            )
+            # Floating composer opened by caller / Deck M dispatch.
+            pass
         elif mode is DeckMode.OBSERVATION_LAB:
             self._open_floating_lab(
                 title="Idle Lab · Observation Lab",
                 heading="Observation Lab",
-                blurb="Floating skeleton — User + AI mission panes come later. Mark is cut.",
+                blurb="Review/capture lives in Idle Lab → Observation Lab. This float is a lightweight entry stub.",
             )
         elif mode is DeckMode.LOL:
-            self._open_floating_lab(
-                title="Idle Lab · Live Overlay Lab",
-                heading="Live Overlay Lab",
-                blurb="Mode skeleton — live overlay primitives land in Phase 2.",
-            )
+            # Live enter is the product surface — no extra float.
+            pass
         elif mode is DeckMode.SETTINGS:
             self._open_settings_float()
+        elif mode is DeckMode.ATOM_CREATE:
+            self._atom_create_phase = AtomCreatePhase.IDLE
+            self._refresh_atom_create_chrome()
         self._status(f"Deck mode: {mode_display_name(mode)}.", "info")
 
     def _exit_deck_mode(self, *, quiet: bool = False) -> None:
         self._close_floating_lab()
         self._deck_mode = DeckMode.MENU
+        self._atom_create_phase = AtomCreatePhase.IDLE
         try:
             self.flight_deck.set_deck_lab_mode(False)
         except Exception:
@@ -1632,11 +1779,18 @@ class App(ctk.CTk):
         path = str(action.get("_path") or action.get("_label") or kind)
         try:
             if kind == "open_lol":
+                self._ensure_deck_only_surface()
                 self._enter_deck_mode(DeckMode.LOL)
+                try:
+                    self._enter_live_control()
+                except Exception as exc:
+                    self._status(f"Live Overlay Lab: {exc}", "warn")
             elif kind == "open_molecule_lab":
                 self._enter_deck_mode(DeckMode.MOLECULE_LAB)
+                self._open_molecule_composer()
             elif kind == "open_observation_lab":
                 self._enter_deck_mode(DeckMode.OBSERVATION_LAB)
+                # Floating Observation Lab skeleton already opens; panel is Idle Lab-native.
             elif kind == "open_settings":
                 self._enter_deck_mode(DeckMode.SETTINGS)
             elif kind == "play_preset":
@@ -1677,7 +1831,8 @@ class App(ctk.CTk):
             elif kind == "live_control_console_verbosity":
                 self._cycle_lco_console_verbosity()
             elif kind == "molecule_composer_open":
-                self._status("Molecule Lab composer — not wired from Deck yet (stub).", "warn")
+                self._enter_deck_mode(DeckMode.MOLECULE_LAB)
+                self._open_molecule_composer()
             else:
                 self._status(f"Flight deck: unknown action type “{kind}”.", "error")
         except Exception as exc:
@@ -1691,6 +1846,10 @@ class App(ctk.CTk):
 
     def _live_control_log(self, message: str, level: str = "info") -> None:
         self._status(message, level if level in STATUS_COLOR else "info")
+        try:
+            self._shared_console.append(message, level)
+        except Exception:
+            pass
         if self.auto_panel is not None:
             try:
                 self.auto_panel.append_console(message, level if level in {"ok", "warn", "error", "run", "info"} else "info")
@@ -2951,7 +3110,7 @@ class App(ctk.CTk):
                     elif self.recorder.active:
                         self._finish_recording()
                     elif self.observation.active:
-                        self._stop_observation(reason="operator", prompt_rename=True)
+                        self._stop_observation(reason="operator", prompt_rename=False)
                     elif (
                         self.player.is_active
                         or self.auto_runtime.is_running
@@ -3009,6 +3168,9 @@ class App(ctk.CTk):
                         self._sync_shell_hook_flags()
                         if action is not None:
                             self._dispatch_flight_deck_action(action)
+                elif kind == "atom_create_key":
+                    if self._deck_mode is DeckMode.ATOM_CREATE:
+                        self._handle_atom_create_key(str(event[1]))
                 elif kind == "flight_deck_remap_key":
                     self._apply_flight_deck_remap(int(event[1]))
                 elif kind == "f6":
@@ -3232,7 +3394,7 @@ class App(ctk.CTk):
 
     def _end_screen_map_batch(self) -> None:
         if self.observation.active:
-            self._stop_observation(reason="operator", prompt_rename=True)
+            self._stop_observation(reason="operator", prompt_rename=False)
             return
         if self._screen_map_title_dialog is not None:
             try:
@@ -3895,30 +4057,9 @@ class App(ctk.CTk):
                 self.auto_panel.append_console(str(exc), "error")
 
     def _start_automations_all_enabled(self) -> None:
-        if self.auto_runtime.collection_running:
-            self._status("Stop the collection pack before starting interval Loops.", "error")
-            return
-        if self.auto_runtime.is_running:
-            self._status("Loops already running — Stop (or F8) first.", "warn")
-            return
-        if self.anchor_target.rect is None:
-            self._status("Anchor a window before starting Loops.", "error")
-            return
-        enabled = [event for event in self.auto_store.events.values() if event.enabled]
-        if not enabled:
-            self._status("No events have enabled:true in JSON.", "warn")
-            return
-        try:
-            self.auto_runtime.trace.configure(
-                level=self.settings.trace_level, run_number=self.auto_store.runtime.run_number
-            )
-            self.auto_runtime.start()
-            names = ", ".join(event.id for event in enabled)
-            self._status(f"Loops started (all enabled): {len(enabled)} event(s).", "run")
-            if self.auto_panel is not None:
-                self.auto_panel.append_console(f"Started all enabled: {names} (F8 = Stop all)", "ok")
-        except Exception as exc:
-            self._status(f"Start all failed: {exc}", "error")
+        """CUT — Start-all-enabled removed from product UX."""
+
+        self._status("Start all enabled is cut — start an explicit atom or molecule pack.", "warn")
 
     def _stop_automations(self) -> None:
         self.auto_runtime.stop()

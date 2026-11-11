@@ -101,6 +101,8 @@ class HookFlags:
         self.resume_handle = False
         # True while Deck has abandoned menu letters (LOL / floating Lab / Settings).
         self.deck_mode_active = False
+        # Atom Create is a distinct Deck mode that owns C/E/W/S/R/F.
+        self.atom_create_active = False
         self.our_pid = os.getpid()
 
 
@@ -489,6 +491,24 @@ class InputHooks:
             elif vk not in self._shell_key_down:
                 self._shell_key_down.add(vk)
                 self.events.put(("shell_r",))
+        elif (
+            self.state.flight_deck_active
+            and (not self.state.lab_visible)
+            and self.state.deck_mode_active
+            and self.state.atom_create_active
+            and not self.state.live_control_active
+            and not self.state.molecule_lab_active
+            and menu_token_from_vk(vk) is not None
+        ):
+            # Atom Create mode owns C/E/W/S/R/F (and ignores other letters).
+            swallow = True
+            token = menu_token_from_vk(vk)
+            if is_up:
+                self._menu_down.discard(vk)
+            elif vk not in self._menu_down:
+                self._menu_down.add(vk)
+                if token is not None:
+                    self.events.put(("atom_create_key", token))
         elif (
             self.state.flight_deck_active
             and (not self.state.lab_visible)

@@ -4,25 +4,25 @@
     {
       "key": "L",
       "label": "Live Overlay Lab",
-      "description": "Live Overlay Lab — skeleton; live overlay wiring later.",
+      "description": "Enter live object-map overlay (Anchor required).",
       "action": { "type": "open_lol" }
     },
     {
       "key": "M",
       "label": "Molecule Lab",
-      "description": "Floating Molecule Lab — stub in Phase 0.",
+      "description": "Open floating Molecule Lab composer.",
       "action": { "type": "open_molecule_lab" }
     },
     {
       "key": "O",
       "label": "Observation Lab",
-      "description": "Floating Observation Lab — stub in Phase 0. Mark cut.",
+      "description": "Observation Lab entry float — full panes in Idle Lab. Mark cut.",
       "action": { "type": "open_observation_lab" }
     },
     {
       "key": "S",
       "label": "Settings",
-      "description": "Boot preference (stub) — Phase 1 wires S.",
+      "description": "Boot preference + Activate key (Restart to apply boot).",
       "action": { "type": "open_settings" }
     }
   ]

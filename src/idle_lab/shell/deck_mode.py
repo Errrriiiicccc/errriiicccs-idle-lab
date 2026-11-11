@@ -11,6 +11,7 @@ class DeckMode(str, Enum):
     MOLECULE_LAB = "molecule_lab"
     OBSERVATION_LAB = "observation_lab"
     SETTINGS = "settings"
+    ATOM_CREATE = "atom_create"
 
 
 def mode_abandons_menu(mode: DeckMode | str) -> bool:
@@ -23,28 +24,32 @@ def mode_prompt(mode: DeckMode | str, *, activate_key: str = "`") -> str:
     key = (activate_key or "`").strip() or "`"
     if kind is DeckMode.LOL:
         return (
-            "Live Overlay Lab mode (skeleton)\n"
-            f"Esc = back to Deck menu · {key} = Deactivate\n"
-            "Live overlay wiring lands in Phase 2 — not wired yet."
+            "Live Overlay Lab\n"
+            f"Esc = exit live → Deck menu · {key} = Deactivate\n"
+            "Hold D = describe · Anchor required"
         )
     if kind is DeckMode.MOLECULE_LAB:
         return (
-            "Molecule Lab floating (skeleton)\n"
-            f"Esc = close float → Deck menu · {key} = Deactivate\n"
-            "Full composer wiring comes later — not wired yet."
+            "Molecule Lab (floating composer)\n"
+            f"Esc = close composer → Deck menu · {key} = Deactivate\n"
+            "Type freely — deck letter map paused"
         )
     if kind is DeckMode.OBSERVATION_LAB:
         return (
-            "Observation Lab floating (skeleton)\n"
+            "Observation Lab\n"
             f"Esc = close float → Deck menu · {key} = Deactivate\n"
-            "User + AI mission panes later — not wired yet."
+            "Full User + AI mission panes live in Idle Lab"
         )
     if kind is DeckMode.SETTINGS:
         return (
             "Settings\n"
             f"Esc = back to Deck menu · {key} = Deactivate\n"
-            "Boot preference + Activate key."
+            "Boot preference + Activate key (applies on Restart)."
         )
+    if kind is DeckMode.ATOM_CREATE:
+        from idle_lab.shell.atom_create import atom_create_prompt
+
+        return atom_create_prompt(phase="idle", activate_key=key)
     return ""
 
 
@@ -60,6 +65,10 @@ def mode_legend(mode: DeckMode | str) -> str:
         return "ESC = CLOSE OBSERVATION LAB"
     if kind is DeckMode.SETTINGS:
         return "ESC = CLOSE SETTINGS"
+    if kind is DeckMode.ATOM_CREATE:
+        from idle_lab.shell.atom_create import atom_create_legend
+
+        return atom_create_legend(phase="idle")
     return "ESC"
 
 
@@ -71,4 +80,5 @@ def mode_display_name(mode: DeckMode | str) -> str:
         DeckMode.MOLECULE_LAB: "Molecule Lab",
         DeckMode.OBSERVATION_LAB: "Observation Lab",
         DeckMode.SETTINGS: "Settings",
+        DeckMode.ATOM_CREATE: "Atom Create",
     }.get(kind, str(kind))

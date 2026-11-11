@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 import customtkinter as ctk
 
@@ -15,12 +15,25 @@ def build_tab_host(
     on_tab_changed: Callable[[], None],
     last_tab: str | None,
     on_open_tab: Callable[[str], None] | None = None,
+    on_start_live_overlay: Callable[[], None] | None = None,
+    on_open_atom_create: Callable[[], None] | None = None,
+    on_open_composer: Callable[[], None] | None = None,
+    host_automations: Callable[[Any], None] | None = None,
+    host_observation_user: Callable[[Any], None] | None = None,
+    host_observation_ai: Callable[[Any], None] | None = None,
 ) -> tuple[ctk.CTkTabview, str]:
-    """Create the target tab strip and select Info / last tab."""
-
     tabs = ctk.CTkTabview(root, command=on_tab_changed)
     tabs.pack(fill="both", expand=True, padx=8, pady=(4, 0))
-    mount_stub_tabs(tabs, on_open_tab=on_open_tab)
+    mount_stub_tabs(
+        tabs,
+        on_open_tab=on_open_tab,
+        on_start_live_overlay=on_start_live_overlay,
+        on_open_atom_create=on_open_atom_create,
+        on_open_composer=on_open_composer,
+        host_automations=host_automations,
+        host_observation_user=host_observation_user,
+        host_observation_ai=host_observation_ai,
+    )
     selected = normalize_last_tab(last_tab)
     try:
         tabs.set(selected)
