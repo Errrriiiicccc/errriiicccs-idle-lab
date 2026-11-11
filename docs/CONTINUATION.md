@@ -7,30 +7,28 @@
 **Redesign:** [pieces/README.md](pieces/README.md) · shell [pieces/shell/](pieces/shell/README.md) · hygiene [pieces/hygiene/CUT-REFINE-KEEP.md](pieces/hygiene/CUT-REFINE-KEEP.md) · [archive/README.md](../archive/README.md)  
 **Target vs code:** [FEATURES.md](FEATURES.md)
 
-## Active focus (2026-11-10)
+## Active focus (2026-11-11)
 
-**Molecule Lab depth + LOL representability** on `main`.
+**Smoke the accordion slice**, then pick the next depth cut — default lean is **Atom Create visual authoring** (queue + drag-place), not more inventory stubs.
 
-→ Idle Lab → Molecule Lab → **Atom**: library + LOL coverage board; seed/run thin `lco_*` wrappers.  
-→ Atom Create on Deck: C adds LOL/click steps; Esc saves only with an event id (no silent save).  
-→ Next polish: Atom Edit reorder, drag-place marks, OCR create, Trial IA (still parked).
+→ Confirm L/M/S leaves + Compose jump + Atom Create accordion feel right.  
+→ Next likely: on-screen create queue / drag-place marks (settled in [pieces/shell/flight-deck.md](pieces/shell/flight-deck.md)).  
+→ Alternates if taste says otherwise: Atom Edit W/S R/F · Observation accordion · Trial polish.
 
 **Chat contract:** [REFRESH-RESTART.md](REFRESH-RESTART.md) — data → Refresh; code → Restart.  
 **Test:** [HARNESS.md](HARNESS.md) · [`lab-context.json`](../lab-context.json).
 
 ## What landed recently
 
-- Shape-first Phases 0–5; Deck Esc immediate + LOL `` ` `` pause/resume; inactive Deck swallows only Activate  
-- CUT demos archived under [`archive/automations/2026-11-10-cut-demos/`](../archive/automations/2026-11-10-cut-demos/REASON.md)  
-- Molecule Lab Atom tab LOL coverage + Atom Create first persist  
+- FD **L/M/S** accordion deepen; Atom Create on Deck uses create keymap; Compose → Molecule jump fixed  
+- Molecule Lab Atom coverage + thin `lco_*` wrappers + Atom Create first persist  
+- Shape-first Phases 0–5; Deck Esc immediate + LOL `` ` `` pause/resume  
+- CUT demos archived under [`archive/automations/2026-11-10-cut-demos/`](../archive/automations/2026-11-10-cut-demos/REASON.md)
 
 ## Soft parked (OK later)
 
-- ML Trial ↔ creator IA polish  
-- Current State detailed schema  
-- In-app AI dispatch  
-- Disk rename pass  
-- Full OCR Atom Create UX · Atom Edit W/S R/F  
+- OCR create · ML Trial ↔ creator IA polish · Current State detailed schema  
+- In-app AI dispatch · Disk rename pass · Observation Lab accordion depth
 
 ## Push rule
 

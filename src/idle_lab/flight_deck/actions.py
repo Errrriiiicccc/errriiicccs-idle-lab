@@ -21,11 +21,18 @@ ACTION_TYPES = frozenset(
         "live_control_console_toggle",  # Persist LCO console on/off + open/close window
         "live_control_console_verbosity",  # Cycle events → results → process
         "molecule_composer_open",  # Context-gated molecule authoring UI
-        # Shape-first Deck top-level (Phase 0 stubs)
+        # Shape-first Deck top-level / accordion leaves
         "open_lol",
         "open_molecule_lab",
+        "open_atom_lab",
         "open_observation_lab",
         "open_settings",
+        "remap_activate_key",
+        "cycle_boot_surface",
+        # Atom Create accordion leaves
+        "atom_add_lco",
+        "atom_add_click",
+        "atom_edit_enter",
         # Legacy aliases → Observation
         "observe_start",
         "observe_shot",
@@ -80,4 +87,9 @@ def normalize_action(raw: dict[str, Any] | None) -> dict[str, Any]:
         title = str(raw.get("title") or "").strip()
         if title:
             out["title"] = title
+    elif kind == "atom_add_lco":
+        action_name = str(raw.get("action") or "").strip().lower()
+        if not action_name:
+            raise ActionError("atom_add_lco requires action")
+        out["action"] = action_name
     return out

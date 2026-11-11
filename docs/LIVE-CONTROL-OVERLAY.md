@@ -69,7 +69,7 @@ Amber circles = geometry unsure (mid-scroll / odd gap). Buys still fire — ambe
 
 ## Console (session log)
 
-Flight deck **U → 3** toggles a persisted console preference (`settings.json` → `lco_console_enabled`). The resizable **LCO Console** window opens when Live Control starts (U → 1 / U → 2) and closes when LCO exits. **U → 4** cycles verbosity while the preference is on:
+Flight deck **L → 2** toggles a persisted console preference (`settings.json` → `lco_console_enabled`). The resizable **LCO Console** window opens when Live Control starts (**L → 1**) and closes when LCO exits. **L → 3** cycles verbosity while the preference is on:
 
 | Level | What gets logged |
 | --- | --- |

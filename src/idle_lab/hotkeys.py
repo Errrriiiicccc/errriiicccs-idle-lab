@@ -473,25 +473,10 @@ class InputHooks:
         elif (
             self.state.flight_deck_active
             and (not self.state.lab_visible)
-            and self.state.deck_mode_active
-            and self.state.atom_create_active
-            and not self.state.live_control_active
-            and not self.state.molecule_lab_active
-            and menu_token_from_vk(vk) is not None
-        ):
-            # Atom Create mode owns C/E/W/S/R/F (and ignores other letters).
-            swallow = True
-            token = menu_token_from_vk(vk)
-            if is_up:
-                self._menu_down.discard(vk)
-            elif vk not in self._menu_down:
-                self._menu_down.add(vk)
-                if token is not None:
-                    self.events.put(("atom_create_key", token))
-        elif (
-            self.state.flight_deck_active
-            and (not self.state.lab_visible)
-            and (not self.state.deck_mode_active)
+            and (
+                (not self.state.deck_mode_active)
+                or self.state.atom_create_active
+            )
             and self.state.flight_deck_anchored
             and self.state.flight_deck_expanded
             and not self.state.molecule_lab_active
@@ -502,7 +487,7 @@ class InputHooks:
                 or menu_token_from_vk(vk) is not None
             )
         ):
-            # Accordion only in menu mode — Lab modes abandon letter map.
+            # Accordion in menu mode, and Atom Create (create keymap, same grammar).
             swallow = True
             if is_up:
                 self._menu_down.discard(vk)

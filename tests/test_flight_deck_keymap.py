@@ -81,8 +81,8 @@ class FlightDeckKeymapTests(unittest.TestCase):
 
 
 class FlightDeckAccordionTests(unittest.TestCase):
-    def test_top_level_leaf_map(self) -> None:
-        """Phase 0 Deck: L/M/O/S are top-level leaves (no U/O/C/N/A/M product map)."""
+    def test_lms_accordion_sections(self) -> None:
+        """L/M/S open accordion sections; O stays a leaf. Console lives under L."""
 
         import customtkinter as ctk
 
@@ -102,8 +102,11 @@ class FlightDeckAccordionTests(unittest.TestCase):
             keymap = load_keymap(default_keymap_path(project_root()))
             keys = {node.key.upper() for node in keymap.roots}
             self.assertEqual(keys, {"L", "M", "O", "S"})
-            for node in keymap.roots:
-                self.assertTrue(node.is_leaf, msg=node.label)
+            by_key = {node.key.upper(): node for node in keymap.roots}
+            self.assertFalse(by_key["L"].is_leaf)
+            self.assertFalse(by_key["M"].is_leaf)
+            self.assertTrue(by_key["O"].is_leaf)
+            self.assertFalse(by_key["S"].is_leaf)
             deck.set_keymap(keymap)
             deck.set_shell_phase(
                 ShellPhase.ACTIVE,
@@ -112,14 +115,20 @@ class FlightDeckAccordionTests(unittest.TestCase):
                 anchored=True,
             )
             deck.set_expanded(True)
-            lol = deck.navigate("L")
-            self.assertIsNotNone(lol)
-            assert lol is not None
-            self.assertEqual(lol["type"], "open_lol")
-            settings = deck.navigate("S")
-            self.assertIsNotNone(settings)
-            assert settings is not None
-            self.assertEqual(settings["type"], "open_settings")
+            self.assertIsNone(deck.navigate("L"))
+            start = deck.navigate("1")
+            self.assertIsNotNone(start)
+            assert start is not None
+            self.assertEqual(start["type"], "open_lol")
+            self.assertIsNone(deck.navigate("M"))
+            atom = deck.navigate("2")
+            self.assertIsNotNone(atom)
+            assert atom is not None
+            self.assertEqual(atom["type"], "open_atom_lab")
+            obs = deck.navigate("O")
+            self.assertIsNotNone(obs)
+            assert obs is not None
+            self.assertEqual(obs["type"], "open_observation_lab")
         finally:
             deck.destroy()
             root.destroy()

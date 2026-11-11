@@ -4,14 +4,46 @@
     {
       "key": "L",
       "label": "Live Overlay Lab",
-      "description": "Enter live object-map overlay (Anchor required).",
-      "action": { "type": "open_lol" }
+      "description": "Start live overlay, or tune the LCO console before/while you use it.",
+      "children": [
+        {
+          "key": "1",
+          "label": "Start",
+          "description": "Enter live object-map overlay (Anchor required).",
+          "action": { "type": "open_lol" }
+        },
+        {
+          "key": "2",
+          "label": "Toggle Console (OFF)",
+          "description": "Remembered on/off preference. Window follows Live Overlay sessions.",
+          "action": { "type": "live_control_console_toggle" }
+        },
+        {
+          "key": "3",
+          "label": "Console Verbosity (results)",
+          "description": "Cycle events → results → process. Only while console is ON.",
+          "action": { "type": "live_control_console_verbosity" }
+        }
+      ]
     },
     {
       "key": "M",
       "label": "Molecule Lab",
-      "description": "Open floating Molecule Lab composer.",
-      "action": { "type": "open_molecule_lab" }
+      "description": "Compose molecules or author atoms on Deck.",
+      "children": [
+        {
+          "key": "1",
+          "label": "Molecule Lab",
+          "description": "Open floating Molecule Lab composer.",
+          "action": { "type": "open_molecule_lab" }
+        },
+        {
+          "key": "2",
+          "label": "Atom Lab",
+          "description": "Atom Create on Deck — accordion steps, Esc saves with an id.",
+          "action": { "type": "open_atom_lab" }
+        }
+      ]
     },
     {
       "key": "O",
@@ -22,8 +54,27 @@
     {
       "key": "S",
       "label": "Settings",
-      "description": "Boot preference + Activate key (Restart to apply boot).",
-      "action": { "type": "open_settings" }
+      "description": "Common Deck settings inline; full panel still available.",
+      "children": [
+        {
+          "key": "1",
+          "label": "Open Settings",
+          "description": "Open the Settings float (boot + Activate key).",
+          "action": { "type": "open_settings" }
+        },
+        {
+          "key": "2",
+          "label": "Set Deactivate Key",
+          "description": "Remap Activate / Deactivate. Esc cancels.",
+          "action": { "type": "remap_activate_key" }
+        },
+        {
+          "key": "3",
+          "label": "Boot Preferences (Idle Lab)",
+          "description": "Cycle boot surface: Idle Lab ↔ Flight Deck (applies on Restart).",
+          "action": { "type": "cycle_boot_surface" }
+        }
+      ]
     }
   ]
 }

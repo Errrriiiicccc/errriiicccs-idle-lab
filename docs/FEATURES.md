@@ -38,9 +38,10 @@ No separate Bench, Loops, Missions, or Autoclicker top-level tabs.
 
 ### Flight Deck (target)
 
-- Top-level: **L** Live Overlay Lab · **M** Molecule Lab (float) · **O** Observation Lab (float) · **S** Settings (boot preference for now) · **X** collapse · hold **D** describe · `` ` `` Deactivate.
-- Modes abandon prior hotkeys (LOL/ML float → Esc + `` ` ``; Atom Create → no accordion).
-- Atom Create: **C** place click/drag/key/OCR · **E** edit (**W/S** select, **R/F** reorder) · save on exit · shared overlay primitives with Live Overlay Lab.
+- Top-level accordion: **L** / **M** / **O** / **S** · **X** collapse · hold **D** describe · `` ` `` Deactivate.
+- Prefer nested leaves over flat enter — e.g. **L** Start + console toggles; **M** Molecule vs Atom Lab; **S** common settings inline.
+- Modes abandon prior hotkeys when a Lab owns the surface (LOL / ML float / Settings). **Atom Create** keeps accordion grammar with a create keymap.
+- Atom Create: accordion step sections · **E** edit stub · save on exit (needs event id) · shared overlay primitives with Live Overlay Lab.
 
 ### Sense / state / hygiene (target)
 
@@ -68,9 +69,9 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 
 ### Flight Deck
 
-- Inactive → Activate `` ` ``; letter map **L/M/O/S** ([`automations/flight_deck.json`](../automations/flight_deck.json)).
-- **L** → Live Overlay Lab live enter (Anchor required); **M** → floating Molecule Lab composer; **O** → Observation entry float; **S** → Settings.
-- Atom Create is a distinct Deck mode (C/E stubs; no silent save).
+- Inactive → Activate `` ` ``; accordion **L/M/O/S** ([`automations/flight_deck.json`](../automations/flight_deck.json)).
+- **L** → Start · Toggle Console · Console Verbosity; **M** → Molecule Lab float · Atom Lab (create accordion); **O** → Observation entry float; **S** → Open Settings · Set Deactivate Key · Boot Preferences.
+- Atom Create keeps FD accordion grammar (Buys/Tabs/Scroll/Utility/Click); Esc saves only with an event id.
 - Live overlay: object map, hold D describe, Esc exit. [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md), [OBJECT-MAP.md](OBJECT-MAP.md).
 
 ### Idle Lab Labs
@@ -100,7 +101,7 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 
 ### Still not finished (honest stubs / parked)
 
-- Atom Create persist/save path + drag-place paint  
+- Atom Create visual queue + drag-place paint · Atom Edit reorder · OCR create  
 - Trial ↔ creator IA polish · Current State deep schema · package rename · in-app AI dispatch  
 - Process injection / stealth / in-process LLM  
 - Fully finished Tower buy-priority product loop · C5–C9  

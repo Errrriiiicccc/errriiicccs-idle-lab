@@ -20,26 +20,26 @@
 | **LOL** | Esc + `` ` `` (+ overlay needs) |
 | **Molecule Lab** floating window | Esc + `` ` `` |
 | **Observation Lab** floating window | Esc + `` ` `` (assumed same pattern) |
-| **Atom Create/Edit** | No accordion — creator chords below |
+| **Atom Create/Edit** | Accordion create keymap (same grammar); Esc save/exit |
 | Generic run | Deactivate + queue/status + console + mode-unique keys |
 
 ### Lightweight / floating Labs
 
 **Keep.** Experienced users open ML / OL (etc.) as floating windows from Deck without Idle Lab click overhead. Esc → Deck.
 
-### Top-level letter map (settled)
+### Top-level letter map (settled direction — deepen accordion)
 
 | Key | Action |
 | --- | --- |
-| **L** | LOL |
-| **M** | Molecule Lab (floating) — atoms / trials / molecules live here |
-| **O** | Observation Lab (floating) |
-| **S** | Settings |
+| **L** | Accordion: Start · Toggle Console · Console Verbosity |
+| **M** | Accordion: Molecule Lab (float) · Atom Lab (Atom Create) |
+| **O** | Observation Lab (floating) — accordion depth later |
+| **S** | Accordion: Open Settings · Set Deactivate Key · Boot Preferences |
 | **X** | Collapse menu |
 | hold **D** | Describe |
 | `` ` `` | Deactivate |
 
-Menu letters are abandoned when a mode starts (so **S** = Settings in menu, but **S** = next event in Atom Edit — OK).
+Menu letters are abandoned when a Lab mode owns the surface. **Atom Create** swaps in a create keymap but keeps accordion navigation.
 
 ---
 

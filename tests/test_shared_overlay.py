@@ -29,13 +29,25 @@ class SharedOverlayTests(unittest.TestCase):
 
     def test_atom_create_no_fake_save(self) -> None:
         text = atom_create_prompt(phase=AtomCreatePhase.CREATE)
-        self.assertIn("save if path set", text.lower())
+        self.assertIn("accordion", text.lower())
+        self.assertIn("no silent save", text.lower())
         idle = atom_create_prompt(phase=AtomCreatePhase.IDLE)
         self.assertIn("no silent save", idle.lower())
 
     def test_atom_create_mode_abandons_menu(self) -> None:
         self.assertTrue(mode_abandons_menu(DeckMode.ATOM_CREATE))
         self.assertEqual(mode_display_name(DeckMode.ATOM_CREATE), "Atom Create")
+
+    def test_atom_create_keymap_is_accordion(self) -> None:
+        from idle_lab.shell.atom_create import build_atom_create_keymap
+
+        keymap = build_atom_create_keymap(step_count=2)
+        keys = {n.key.upper() for n in keymap.roots}
+        self.assertEqual(keys, {"B", "T", "S", "U", "K", "E"})
+        buys = next(n for n in keymap.roots if n.key.upper() == "B")
+        self.assertFalse(buys.is_leaf)
+        self.assertIn("2 step", buys.label)
+        self.assertEqual(buys.children[0].action["type"], "atom_add_lco")
 
     def test_shared_console_fanout(self) -> None:
         console = SharedConsole(maxlen=10)

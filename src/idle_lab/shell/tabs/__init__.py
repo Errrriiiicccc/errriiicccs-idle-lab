@@ -48,6 +48,7 @@ def mount_stub_tabs(
     host_automations: Callable[[Any], None] | None = None,
     host_atom_pane: Callable[[Any], None] | None = None,
     on_goto_molecule_tab: Callable[[], None] | None = None,
+    on_register_molecule_lab_root: Callable[[Any], None] | None = None,
     host_observation_user: Callable[[Any], None] | None = None,
     host_observation_ai: Callable[[Any], None] | None = None,
 ) -> dict[str, object]:
@@ -70,6 +71,7 @@ def mount_stub_tabs(
                 host_automations=host_automations,
                 host_atom_pane=host_atom_pane,
                 on_goto_molecule_tab=on_goto_molecule_tab,
+                on_register_root=on_register_molecule_lab_root,
             )
         else:
             frames[name] = build_observation_lab_tab(

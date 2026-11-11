@@ -66,7 +66,7 @@ from idle_lab.shell.atom_create import (
     AtomCreatePhase,
     AtomDraft,
     atom_create_legend,
-    atom_create_prompt,
+    build_atom_create_keymap,
     draft_step_from_token,
     save_atom_draft,
 )
@@ -281,6 +281,7 @@ class App(ctk.CTk):
         self.current = self.store.presets[0] if self.store.presets else None
         self._reload_taxonomy()
         self._sync_lco_console_deck_labels()
+        self._sync_settings_deck_labels()
         self._refresh_screen_map_catalog()
         # Lab X → exclusive Flight Deck (deactivated). Quit is Esc peel on the deck.
         self.protocol("WM_DELETE_WINDOW", self._withdraw_idle_lab_to_deck)
@@ -342,6 +343,7 @@ class App(ctk.CTk):
             host_automations=self._host_molecule_automations,
             host_atom_pane=self._host_molecule_atom_pane,
             on_goto_molecule_tab=self._goto_molecule_subtab,
+            on_register_molecule_lab_root=self._register_molecule_lab_root,
             host_observation_user=self._host_observation_user,
             host_observation_ai=self._host_observation_ai,
         )
@@ -868,10 +870,16 @@ class App(ctk.CTk):
         deck_path = default_keymap_path(project_root())
         try:
             self._flight_deck_keymap = load_keymap(deck_path)
-            self.flight_deck.set_keymap(self._flight_deck_keymap)
+            if self._deck_mode is DeckMode.ATOM_CREATE:
+                self._install_atom_create_keymap()
+            else:
+                self.flight_deck.set_keymap(self._flight_deck_keymap)
+                self._sync_lco_console_deck_labels()
+                self._sync_settings_deck_labels()
         except (KeymapError, OSError) as exc:
             self._flight_deck_keymap = None
-            self.flight_deck.set_keymap(None)
+            if self._deck_mode is not DeckMode.ATOM_CREATE:
+                self.flight_deck.set_keymap(None)
             self._status(f"Flight deck catalog: {exc}", "warn")
 
     def _flight_deck_expand_vk_for_anchor(self) -> int:
@@ -1569,75 +1577,80 @@ class App(ctk.CTk):
         self._ensure_deck_only_surface()
         if self._shell_phase is ShellPhase.INACTIVE:
             self._activate_flight_deck()
-        self._atom_create_phase = AtomCreatePhase.IDLE
+        self._atom_create_phase = AtomCreatePhase.CREATE
         self._atom_draft = AtomDraft()
         self._enter_deck_mode(DeckMode.ATOM_CREATE)
         self._status(
-            "Atom Create — C to add LOL/click steps; Esc asks for id then saves (no silent save).",
+            "Atom Create — accordion like Deck menu; Esc asks for id then saves (no silent save).",
             "info",
         )
+
+    def _install_atom_create_keymap(self) -> None:
+        keymap = build_atom_create_keymap(step_count=len(self._atom_draft.steps))
+        self.flight_deck.set_deck_lab_mode(False)
+        self.flight_deck.set_keymap(keymap)
+        try:
+            self.flight_deck.set_expanded(True)
+        except Exception:
+            pass
+        self._status(
+            f"Atom Create · {len(self._atom_draft.steps)} step(s) · Esc = save/exit · {atom_create_legend(phase=self._atom_create_phase)}",
+            "info",
+        )
+
+    def _restore_menu_keymap(self) -> None:
+        keymap = getattr(self, "_flight_deck_keymap", None)
+        if keymap is None:
+            return
+        try:
+            self.flight_deck.set_keymap(keymap)
+        except Exception:
+            pass
+        self._sync_lco_console_deck_labels()
+        self._sync_settings_deck_labels()
 
     def _refresh_atom_create_chrome(self) -> None:
         if self._deck_mode is not DeckMode.ATOM_CREATE:
             return
-        key = vk_label(self._flight_deck_expand_vk_for_anchor())
-        self.flight_deck.set_deck_lab_mode(
-            True,
-            prompt=atom_create_prompt(phase=self._atom_create_phase, activate_key=key),
-            legend=atom_create_legend(phase=self._atom_create_phase),
+        self._install_atom_create_keymap()
+
+    def _atom_add_lco_step(self, action: str) -> None:
+        try:
+            self._atom_draft.add_lco(action)
+        except ValueError as exc:
+            self._status(str(exc), "error")
+            return
+        self._atom_create_phase = AtomCreatePhase.CREATE
+        self._refresh_atom_create_chrome()
+        self._status(
+            f"Added lco:{action} ({len(self._atom_draft.steps)} step(s)).",
+            "ok",
+        )
+
+    def _atom_add_click_step(self) -> None:
+        self._atom_draft.add_click()
+        self._atom_create_phase = AtomCreatePhase.CREATE
+        self._refresh_atom_create_chrome()
+        self._status(
+            f"Added click center ({len(self._atom_draft.steps)} step(s)).",
+            "ok",
         )
 
     def _handle_atom_create_key(self, token: str) -> None:
-        """C/E enter phases; create-mode keys append lco/click steps — save only with id."""
+        """Legacy flat-key path — accordion dispatch is preferred."""
 
         key = str(token or "").strip().upper()
         if not key:
             return
-        if key == "C" and self._atom_create_phase is AtomCreatePhase.IDLE:
-            self._atom_create_phase = AtomCreatePhase.CREATE
-            if not self._atom_draft.steps:
-                self._atom_draft = AtomDraft()
-            self._refresh_atom_create_chrome()
-            self._status(
-                "Atom Create: LOL keys add steps · K = center click · Esc = save (needs id).",
-                "info",
-            )
+        step = draft_step_from_token(key)
+        if step is None:
+            self._status(f"Atom Create: {key} not a step key.", "info")
             return
-        if key == "E" and self._atom_create_phase is not AtomCreatePhase.CREATE:
-            self._atom_create_phase = AtomCreatePhase.EDIT
-            self._refresh_atom_create_chrome()
-            self._status(
-                "Atom Edit: W/S select · R/F reorder stubs. Save on Esc if id set.",
-                "warn",
-            )
-            return
-        if self._atom_create_phase is AtomCreatePhase.CREATE:
-            step = draft_step_from_token(key)
-            if step is None:
-                self._status(f"Atom Create: {key} not a step key.", "info")
-                return
-            kind, payload = step
-            try:
-                if kind == "lco":
-                    self._atom_draft.add_lco(payload)
-                    self._status(
-                        f"Added lco:{payload} ({len(self._atom_draft.steps)} step(s)).",
-                        "ok",
-                    )
-                else:
-                    self._atom_draft.add_click()
-                    self._status(
-                        f"Added click center ({len(self._atom_draft.steps)} step(s)).",
-                        "ok",
-                    )
-            except ValueError as exc:
-                self._status(str(exc), "error")
-            return
-        if self._atom_create_phase is AtomCreatePhase.EDIT and key in {"W", "S", "R", "F"}:
-            labels = {"W": "prev", "S": "next", "R": "reorder up", "F": "reorder down"}
-            self._status(f"Atom Edit {labels[key]} — not wired yet.", "warn")
-            return
-        self._status(f"Atom Create: {key} ignored in this phase.", "info")
+        kind, payload = step
+        if kind == "lco":
+            self._atom_add_lco_step(payload)
+        else:
+            self._atom_add_click_step()
 
     def _try_save_atom_draft(self) -> bool:
         """Prompt for event id and persist. Returns True if saved or nothing to save."""
@@ -1711,14 +1724,15 @@ class App(ctk.CTk):
         except Exception:
             pass
 
-    def _host_molecule_atom_pane(self, parent) -> None:
-        from idle_lab.shell.tabs.molecule_lab import AtomLabPane
+    def _register_molecule_lab_root(self, root) -> None:
+        self._molecule_lab_root = root
 
-        # Walk up to Molecule Lab root so Compose molecules can switch sub-tabs.
-        try:
-            self._molecule_lab_root = parent.master.master.master
-        except Exception:
-            self._molecule_lab_root = None
+    def _host_molecule_atom_pane(self, parent) -> None:
+        from idle_lab.shell.tabs.molecule_lab import AtomLabPane, find_ml_root
+
+        found = find_ml_root(parent)
+        if found is not None:
+            self._molecule_lab_root = found
         if self.atom_lab_pane is not None:
             try:
                 self.atom_lab_pane.destroy()
@@ -1736,7 +1750,7 @@ class App(ctk.CTk):
         self.atom_lab_pane.pack(fill="both", expand=True)
 
     def _goto_molecule_subtab(self) -> None:
-        from idle_lab.shell.tabs.molecule_lab import select_molecule_subtab
+        from idle_lab.shell.tabs.molecule_lab import select_ml_subtab
 
         if not self._is_lab_visible():
             self._show_idle_lab_surface()
@@ -1747,9 +1761,12 @@ class App(ctk.CTk):
         self._current_tab = "Molecule Lab"
         self.settings.last_tab = "Molecule Lab"
         self._save_settings()
-        if self._molecule_lab_root is not None:
-            select_molecule_subtab(self._molecule_lab_root)
-        self._status("Molecule Lab → Molecule (compose / run).", "ok")
+        target = self._molecule_lab_root or self.atom_lab_pane
+        ok = bool(target is not None and select_ml_subtab(target, "Molecule"))
+        if ok:
+            self._status("Molecule Lab → Molecule (compose / run).", "ok")
+        else:
+            self._status("Molecule Lab → Molecule jump failed (sub-tab not found).", "warn")
 
     def _atom_library_rows(self):
         from idle_lab.automations.lol_coverage import classify_library
@@ -1876,9 +1893,21 @@ class App(ctk.CTk):
         key = vk_label(self._flight_deck_expand_vk_for_anchor())
         prompt = mode_prompt(mode, activate_key=key)
         legend = mode_legend(mode)
+        self.hooks.state.deck_mode_active = True
+
+        if mode is DeckMode.ATOM_CREATE:
+            # Keep real FD accordion chrome with a create keymap (Esc still peels).
+            if not self._atom_draft.steps:
+                self._atom_draft = AtomDraft()
+            self._atom_create_phase = AtomCreatePhase.CREATE
+            self._install_atom_create_keymap()
+            self.hooks.state.atom_create_active = True
+            self._sync_shell_hook_flags()
+            self._status(f"Deck mode: {mode_display_name(mode)}.", "info")
+            return
+
         self.flight_deck.collapse_menu()
         self.flight_deck.set_deck_lab_mode(True, prompt=prompt, legend=legend)
-        self.hooks.state.deck_mode_active = True
         self._sync_shell_hook_flags()
 
         if mode is DeckMode.MOLECULE_LAB:
@@ -1895,9 +1924,6 @@ class App(ctk.CTk):
             pass
         elif mode is DeckMode.SETTINGS:
             self._open_settings_float()
-        elif mode is DeckMode.ATOM_CREATE:
-            self._atom_create_phase = AtomCreatePhase.IDLE
-            self._refresh_atom_create_chrome()
         self._status(f"Deck mode: {mode_display_name(mode)}.", "info")
 
     def _exit_deck_mode(self, *, quiet: bool = False) -> None:
@@ -1913,6 +1939,7 @@ class App(ctk.CTk):
             pass
         self.hooks.state.deck_mode_active = False
         self.hooks.state.atom_create_active = False
+        self._restore_menu_keymap()
         if self._shell_phase is ShellPhase.ACTIVE and self._is_anchored() and not self._is_lab_visible():
             try:
                 self.flight_deck.set_expanded(True)
@@ -2018,6 +2045,7 @@ class App(ctk.CTk):
             self._status(f"Expand key → {vk_label(vk)} (global default).", "ok")
         self._save_settings()
         self._sync_flight_deck_expand_vk()
+        self._sync_settings_deck_labels()
 
     def _dispatch_flight_deck_action(self, action: dict) -> None:
         kind = str(action.get("type") or "")
@@ -2033,11 +2061,24 @@ class App(ctk.CTk):
             elif kind == "open_molecule_lab":
                 self._enter_deck_mode(DeckMode.MOLECULE_LAB)
                 self._open_molecule_composer()
+            elif kind == "open_atom_lab":
+                self._open_atom_create_from_lab()
             elif kind == "open_observation_lab":
                 self._enter_deck_mode(DeckMode.OBSERVATION_LAB)
                 # Floating Observation Lab skeleton already opens; panel is Idle Lab-native.
             elif kind == "open_settings":
                 self._enter_deck_mode(DeckMode.SETTINGS)
+            elif kind == "remap_activate_key":
+                self._begin_flight_deck_remap()
+            elif kind == "cycle_boot_surface":
+                self._cycle_boot_surface()
+            elif kind == "atom_add_lco":
+                self._atom_add_lco_step(str(action.get("action") or ""))
+            elif kind == "atom_add_click":
+                self._atom_add_click_step()
+            elif kind == "atom_edit_enter":
+                self._atom_create_phase = AtomCreatePhase.EDIT
+                self._status("Atom Edit — reorder/select not wired yet.", "warn")
             elif kind == "play_preset":
                 self._ensure_deck_only_surface()
                 self._flight_deck_play_preset(str(action["preset"]), path=path)
@@ -2128,8 +2169,10 @@ class App(ctk.CTk):
             self._lco_console_window = None
 
     def _sync_lco_console_deck_labels(self) -> None:
-        """Keep U→3 / U→4 labels honest about ON/OFF and verbosity."""
+        """Keep L→2 / L→3 labels honest about ON/OFF and verbosity."""
 
+        if self._deck_mode is DeckMode.ATOM_CREATE:
+            return
         keymap = getattr(self, "_flight_deck_keymap", None)
         if keymap is None:
             return
@@ -2138,14 +2181,14 @@ class App(ctk.CTk):
         enabled = bool(self.settings.lco_console_enabled)
         verbosity = str(self.settings.lco_console_verbosity or "results")
         for root in keymap.roots:
-            if normalize_menu_key(root.key) != "U":
+            if normalize_menu_key(root.key) != "L":
                 continue
             for child in root.children:
                 key = normalize_menu_key(child.key)
-                if key == "3":
+                if key == "2":
                     state = "ON" if enabled else "OFF"
-                    child.label = f"Toggle LCO Console ({state})"
-                elif key == "4":
+                    child.label = f"Toggle Console ({state})"
+                elif key == "3":
                     child.label = f"Console Verbosity ({verbosity})"
             break
         if getattr(self, "flight_deck", None) is not None:
@@ -2153,6 +2196,44 @@ class App(ctk.CTk):
                 self.flight_deck.set_keymap(keymap)
             except Exception:
                 pass
+
+    def _sync_settings_deck_labels(self) -> None:
+        """Keep S→2 / S→3 labels current for Activate key + boot surface."""
+
+        if self._deck_mode is DeckMode.ATOM_CREATE:
+            return
+        keymap = getattr(self, "_flight_deck_keymap", None)
+        if keymap is None:
+            return
+        from idle_lab.flight_deck.keys import normalize_menu_key
+
+        boot = normalize_boot_surface(self.settings.boot_surface)
+        boot_label = "Idle Lab" if boot == BOOT_IDLE_LAB else "Flight Deck"
+        key_label = vk_label(int(self.settings.flight_deck_expand_vk or DEFAULT_EXPAND_VK))
+        for root in keymap.roots:
+            if normalize_menu_key(root.key) != "S":
+                continue
+            for child in root.children:
+                key = normalize_menu_key(child.key)
+                if key == "2":
+                    child.label = f"Set Deactivate Key ({key_label})"
+                elif key == "3":
+                    child.label = f"Boot Preferences ({boot_label})"
+            break
+        if getattr(self, "flight_deck", None) is not None:
+            try:
+                self.flight_deck.set_keymap(keymap)
+            except Exception:
+                pass
+
+    def _cycle_boot_surface(self) -> None:
+        current = normalize_boot_surface(self.settings.boot_surface)
+        nxt = BOOT_FLIGHT_DECK if current == BOOT_IDLE_LAB else BOOT_IDLE_LAB
+        self.settings.boot_surface = nxt
+        self._save_settings()
+        self._sync_settings_deck_labels()
+        label = "Idle Lab" if nxt == BOOT_IDLE_LAB else "Flight Deck"
+        self._status(f"Boot Preferences → {label} (applies on Restart).", "ok")
 
     def _persist_lco_console_settings(self) -> None:
         self.settings.lco_console_enabled = bool(self.live_control.console.enabled)
@@ -2238,7 +2319,7 @@ class App(ctk.CTk):
         """Flight-deck U→4: cycle events → results → process."""
 
         if not self.settings.lco_console_enabled:
-            self._status("Toggle LCO Console (OFF) — enable with U→3 before changing verbosity.", "warn")
+            self._status("Toggle Console (OFF) — enable with L→2 before changing verbosity.", "warn")
             return
         level = self.live_control.console.cycle_verbosity()
         self._persist_lco_console_settings()

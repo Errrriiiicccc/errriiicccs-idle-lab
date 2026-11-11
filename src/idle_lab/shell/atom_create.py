@@ -1,4 +1,4 @@
-"""Atom Create / Edit Deck mode — first real persist for lco + click."""
+"""Atom Create / Edit Deck mode — accordion step authoring + persist for lco/click."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from idle_lab.flight_deck.keymap import FlightDeckKeymap, KeymapNode
 from idle_lab.live_control.playbook import ACTUATION_ACTIONS
 
 
@@ -57,35 +58,95 @@ class AtomDraft:
 def atom_create_prompt(*, phase: AtomCreatePhase | str, activate_key: str = "`") -> str:
     key = (activate_key or "`").strip() or "`"
     kind = phase if isinstance(phase, AtomCreatePhase) else AtomCreatePhase(str(phase))
-    if kind is AtomCreatePhase.CREATE:
-        return (
-            "Atom Create\n"
-            "1–6 = buy slot · Q/W/E = tab · R/F scroll · T/G fling · C claim · B refresh · V stat\n"
-            "K = add click at center · Esc = save if path set, else warn + exit\n"
-            f"{key} = Deactivate"
-        )
     if kind is AtomCreatePhase.EDIT:
         return (
             "Atom Edit (skeleton)\n"
-            "W/S = prev/next · R/F = reorder · event chords later\n"
-            "Esc = leave edit (save if path set)\n"
+            "Accordion leaves stubbed — Esc leaves edit\n"
             f"{key} = Deactivate"
         )
     return (
-        "Atom Create mode\n"
-        "C = create · E = edit · Esc = back to menu\n"
-        "Save on exit only when event id is set (no silent save)\n"
+        "Atom Create — same accordion grammar as Deck menu\n"
+        "B Buys · T Tabs · S Scroll · U Utility · K click · E edit stub\n"
+        "Esc = save if path set (needs event id), else warn + exit · no silent save\n"
         f"{key} = Deactivate"
     )
 
 
 def atom_create_legend(*, phase: AtomCreatePhase | str) -> str:
     kind = phase if isinstance(phase, AtomCreatePhase) else AtomCreatePhase(str(phase))
-    if kind is AtomCreatePhase.CREATE:
-        return "ATOM CREATE · KEYS ADD STEPS · ESC"
     if kind is AtomCreatePhase.EDIT:
-        return "ATOM EDIT · W/S R/F · ESC"
-    return "ATOM CREATE · C / E · ESC"
+        return "ATOM EDIT · ESC"
+    return "ATOM CREATE · ACCORDION · ESC = SAVE/EXIT"
+
+
+def build_atom_create_keymap(*, step_count: int = 0) -> FlightDeckKeymap:
+    """FD-style accordion for Atom Create — letters open sections, digits add steps."""
+
+    n = max(0, int(step_count))
+    suffix = f" · {n} step(s)" if n else ""
+
+    def leaf(key: str, label: str, action: dict[str, Any], *, description: str = "") -> KeymapNode:
+        return KeymapNode(key=key, label=label, description=description, action=action)
+
+    roots = [
+        KeymapNode(
+            key="B",
+            label=f"Buys{suffix}",
+            description="Add a buy-slot LOL step.",
+            children=[
+                leaf("1", "Buy 1", {"type": "atom_add_lco", "action": "buy_1"}),
+                leaf("2", "Buy 2", {"type": "atom_add_lco", "action": "buy_2"}),
+                leaf("3", "Buy 3", {"type": "atom_add_lco", "action": "buy_3"}),
+                leaf("4", "Buy 4", {"type": "atom_add_lco", "action": "buy_4"}),
+                leaf("5", "Buy 5", {"type": "atom_add_lco", "action": "buy_5"}),
+                leaf("6", "Buy 6", {"type": "atom_add_lco", "action": "buy_6"}),
+            ],
+        ),
+        KeymapNode(
+            key="T",
+            label="Tabs",
+            description="Add a workshop-tab LOL step.",
+            children=[
+                leaf("1", "Attack", {"type": "atom_add_lco", "action": "tab_attack"}),
+                leaf("2", "Defense", {"type": "atom_add_lco", "action": "tab_defense"}),
+                leaf("3", "Utility", {"type": "atom_add_lco", "action": "tab_utility"}),
+            ],
+        ),
+        KeymapNode(
+            key="S",
+            label="Scroll",
+            description="Add scroll / fling LOL steps.",
+            children=[
+                leaf("1", "Scroll up", {"type": "atom_add_lco", "action": "scroll_up"}),
+                leaf("2", "Scroll down", {"type": "atom_add_lco", "action": "scroll_down"}),
+                leaf("3", "Fling up", {"type": "atom_add_lco", "action": "fling_up"}),
+                leaf("4", "Fling down", {"type": "atom_add_lco", "action": "fling_down"}),
+            ],
+        ),
+        KeymapNode(
+            key="U",
+            label="Utility",
+            description="Claim / refresh / stat collect.",
+            children=[
+                leaf("1", "Claim gem", {"type": "atom_add_lco", "action": "claim_gem"}),
+                leaf("2", "Refresh", {"type": "atom_add_lco", "action": "refresh"}),
+                leaf("3", "Stat collect", {"type": "atom_add_lco", "action": "stat_collect"}),
+            ],
+        ),
+        leaf(
+            "K",
+            "Click center",
+            {"type": "atom_add_click"},
+            description="Add a normalized center click (drag-place later).",
+        ),
+        leaf(
+            "E",
+            "Edit (stub)",
+            {"type": "atom_edit_enter"},
+            description="Reorder / select not wired yet.",
+        ),
+    ]
+    return FlightDeckKeymap(version=1, roots=roots)
 
 
 _TOKEN_TO_LCO = {
@@ -109,7 +170,7 @@ _TOKEN_TO_LCO = {
 
 
 def draft_step_from_token(token: str) -> tuple[str, str] | None:
-    """Return (kind, payload) for create-mode keys. kind is lco|click."""
+    """Legacy flat-key helper (tests / fallback). Prefer accordion leaves."""
 
     key = str(token or "").strip().upper()
     if key == "K":

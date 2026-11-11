@@ -7,6 +7,44 @@ from typing import Any, Callable
 import customtkinter as ctk
 
 
+def find_ml_root(widget) -> Any | None:
+    """Walk ancestors for the Molecule Lab root that owns `_ml_tabs`."""
+
+    cur = widget
+    for _ in range(16):
+        if cur is None:
+            return None
+        if getattr(cur, "_ml_tabs", None) is not None:
+            return cur
+        cur = getattr(cur, "master", None)
+    return None
+
+
+def select_ml_subtab(root_or_descendant, name: str) -> bool:
+    """Switch Atom / Molecule / Trial. Accepts ML root or any descendant."""
+
+    root = root_or_descendant
+    tabs = getattr(root, "_ml_tabs", None)
+    if tabs is None:
+        root = find_ml_root(root_or_descendant)
+        tabs = getattr(root, "_ml_tabs", None) if root is not None else None
+    if tabs is None:
+        return False
+    try:
+        tabs.set(str(name))
+        return True
+    except Exception:
+        return False
+
+
+def select_molecule_subtab(root) -> None:
+    select_ml_subtab(root, "Molecule")
+
+
+def select_atom_subtab(root) -> None:
+    select_ml_subtab(root, "Atom")
+
+
 def build_molecule_lab_tab(
     parent,
     *,
@@ -15,11 +53,17 @@ def build_molecule_lab_tab(
     host_automations=None,
     host_atom_pane=None,
     on_goto_molecule_tab: Callable[[], None] | None = None,
+    on_register_root: Callable[[Any], None] | None = None,
 ):
     """host_automations / host_atom_pane: App callbacks that pack into parent frames."""
 
     root = ctk.CTkFrame(parent, fg_color="transparent")
     root.pack(fill="both", expand=True)
+    if on_register_root is not None:
+        try:
+            on_register_root(root)
+        except Exception:
+            pass
 
     header = ctk.CTkFrame(root, fg_color="transparent")
     header.pack(fill="x", padx=12, pady=(12, 4))
@@ -124,16 +168,6 @@ def build_molecule_lab_tab(
         anchor="w",
     ).pack(anchor="w", pady=(8, 0))
     return root
-
-
-def select_molecule_subtab(root) -> None:
-    tabs = getattr(root, "_ml_tabs", None)
-    if tabs is None:
-        return
-    try:
-        tabs.set("Molecule")
-    except Exception:
-        pass
 
 
 class AtomLabPane(ctk.CTkFrame):

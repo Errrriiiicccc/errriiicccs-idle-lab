@@ -49,7 +49,7 @@ def mode_prompt(mode: DeckMode | str, *, activate_key: str = "`") -> str:
     if kind is DeckMode.ATOM_CREATE:
         from idle_lab.shell.atom_create import atom_create_prompt
 
-        return atom_create_prompt(phase="idle", activate_key=key)
+        return atom_create_prompt(phase="create", activate_key=key)
     return ""
 
 
