@@ -1,0 +1,20 @@
+{
+  "id": "lco_fling_up",
+  "title": "LOL \u00b7 Fling Up",
+  "version": 1,
+  "enabled": false,
+  "priority": 50,
+  "timing": {
+    "type": "interval",
+    "every_ms": 60000
+  },
+  "description": "Thin Live Overlay Lab wrapper: one `lco` step (fling_up).",
+  "notes": "Seeded for Molecule Lab LOL coverage. enabled:false \u2014 Start selected runs once.",
+  "actions": [
+    {
+      "type": "lco",
+      "action": "fling_up",
+      "description": "Playbook actuation fling_up."
+    }
+  ]
+}

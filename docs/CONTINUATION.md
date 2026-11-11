@@ -9,19 +9,20 @@
 
 ## Active focus (2026-11-10)
 
-**Shape-first Phases 0–5 complete** on branch `shape-first-shell`.
+**Molecule Lab depth + LOL representability** on `main`.
 
-→ Next: click-test the Labs end-to-end, then pick a parked slice (Atom Create persist, Trial polish, Current State, rename pass) — or merge when Eric is ready.
+→ Idle Lab → Molecule Lab → **Atom**: library + LOL coverage board; seed/run thin `lco_*` wrappers.  
+→ Atom Create on Deck: C adds LOL/click steps; Esc saves only with an event id (no silent save).  
+→ Next polish: Atom Edit reorder, drag-place marks, OCR create, Trial IA (still parked).
 
 **Chat contract:** [REFRESH-RESTART.md](REFRESH-RESTART.md) — data → Refresh; code → Restart.  
 **Test:** [HARNESS.md](HARNESS.md) · [`lab-context.json`](../lab-context.json).
 
-## What landed
+## What landed recently
 
-- Exclusive Idle Lab ↔ Flight Deck; Deactivate = Stop all; Info + Labs tabs  
-- Deck **L/M/O/S**; shared overlay + Atom Create stubs (no silent save)  
-- Molecule Lab embed/float; Observation Lab User + AI mission; Mark / Start-all / Add feedback cut  
-- CUT demos → [`archive/automations/2026-11-10-cut-demos/`](../archive/automations/2026-11-10-cut-demos/REASON.md)
+- Shape-first Phases 0–5; Deck Esc immediate + LOL `` ` `` pause/resume; inactive Deck swallows only Activate  
+- CUT demos archived under [`archive/automations/2026-11-10-cut-demos/`](../archive/automations/2026-11-10-cut-demos/REASON.md)  
+- Molecule Lab Atom tab LOL coverage + Atom Create first persist  
 
 ## Soft parked (OK later)
 
@@ -29,8 +30,7 @@
 - Current State detailed schema  
 - In-app AI dispatch  
 - Disk rename pass  
-- Esc peel / post-observe Deck chrome minutiae  
-- Atom Create real persist path + drag paint  
+- Full OCR Atom Create UX · Atom Edit W/S R/F  
 
 ## Push rule
 

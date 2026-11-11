@@ -79,7 +79,7 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 | --- | --- |
 | **Info** | Nested outline + tab links |
 | **Live Overlay Lab** | Map list + Start live → Deck |
-| **Molecule Lab** | Atom Create entry · Automations panel (Start-all cut) · floating composer · Trial parked |
+| **Molecule Lab** | Atom library + LOL coverage · Atom Create save (lco/click) · Automations panel (Start-all cut) · floating composer · Trial parked |
 | **Observation Lab** | **User** capture/review (date groups; Mark + rename-on-stop cut) · **AI mission** (Add feedback cut) |
 
 ### Engines still callable

@@ -1,0 +1,20 @@
+{
+  "id": "lco_buy_5",
+  "title": "LOL \u00b7 Buy 5",
+  "version": 1,
+  "enabled": false,
+  "priority": 50,
+  "timing": {
+    "type": "interval",
+    "every_ms": 60000
+  },
+  "description": "Thin Live Overlay Lab wrapper: one `lco` step (buy_5).",
+  "notes": "Seeded for Molecule Lab LOL coverage. enabled:false \u2014 Start selected runs once.",
+  "actions": [
+    {
+      "type": "lco",
+      "action": "buy_5",
+      "description": "Playbook actuation buy_5."
+    }
+  ]
+}

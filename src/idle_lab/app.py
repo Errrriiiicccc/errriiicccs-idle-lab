@@ -62,7 +62,14 @@ from idle_lab.shell.deck_mode import (
     mode_legend,
     mode_prompt,
 )
-from idle_lab.shell.atom_create import AtomCreatePhase, atom_create_legend, atom_create_prompt
+from idle_lab.shell.atom_create import (
+    AtomCreatePhase,
+    AtomDraft,
+    atom_create_legend,
+    atom_create_prompt,
+    draft_step_from_token,
+    save_atom_draft,
+)
 from idle_lab.shell.console import SharedConsole
 from idle_lab.shell.floating import FloatingLabWindow
 from idle_lab.shell.idle_lab_window import build_tab_host
@@ -186,6 +193,7 @@ class App(ctk.CTk):
         self._resume_handle = False
         self._deck_mode = DeckMode.MENU
         self._atom_create_phase = AtomCreatePhase.IDLE
+        self._atom_draft = AtomDraft()
         self._shared_console = SharedConsole()
         self._floating_lab: FloatingLabWindow | None = None
         self._settings_window = None
@@ -317,6 +325,8 @@ class App(ctk.CTk):
 
         # Target tab strip. Info is nested docs; Labs stay stubs until later phases.
         self.auto_panel = None
+        self.atom_lab_pane = None
+        self._molecule_lab_root = None
         self.screen_map_panel = None
         self.ai_batch_panel = None
         self.body = None
@@ -330,6 +340,8 @@ class App(ctk.CTk):
             on_open_atom_create=self._open_atom_create_from_lab,
             on_open_composer=self._open_molecule_composer,
             host_automations=self._host_molecule_automations,
+            host_atom_pane=self._host_molecule_atom_pane,
+            on_goto_molecule_tab=self._goto_molecule_subtab,
             host_observation_user=self._host_observation_user,
             host_observation_ai=self._host_observation_ai,
         )
@@ -1558,10 +1570,11 @@ class App(ctk.CTk):
         if self._shell_phase is ShellPhase.INACTIVE:
             self._activate_flight_deck()
         self._atom_create_phase = AtomCreatePhase.IDLE
+        self._atom_draft = AtomDraft()
         self._enter_deck_mode(DeckMode.ATOM_CREATE)
         self._status(
-            "Atom Create — not wired for save yet (needs persist path). C/E stubs on Deck.",
-            "warn",
+            "Atom Create — C to add LOL/click steps; Esc asks for id then saves (no silent save).",
+            "info",
         )
 
     def _refresh_atom_create_chrome(self) -> None:
@@ -1575,32 +1588,85 @@ class App(ctk.CTk):
         )
 
     def _handle_atom_create_key(self, token: str) -> None:
-        """C/E/W/S/R/F stubs — never claim a silent save."""
+        """C/E enter phases; create-mode keys append lco/click steps — save only with id."""
 
         key = str(token or "").strip().upper()
         if not key:
             return
-        if key == "C":
+        if key == "C" and self._atom_create_phase is AtomCreatePhase.IDLE:
             self._atom_create_phase = AtomCreatePhase.CREATE
+            if not self._atom_draft.steps:
+                self._atom_draft = AtomDraft()
             self._refresh_atom_create_chrome()
             self._status(
-                "Atom Create: place chords stub — drag indicator later. Save needs persist path.",
-                "warn",
+                "Atom Create: LOL keys add steps · K = center click · Esc = save (needs id).",
+                "info",
             )
             return
-        if key == "E":
+        if key == "E" and self._atom_create_phase is not AtomCreatePhase.CREATE:
             self._atom_create_phase = AtomCreatePhase.EDIT
             self._refresh_atom_create_chrome()
             self._status(
-                "Atom Edit: W/S select · R/F reorder stubs. Save needs persist path.",
+                "Atom Edit: W/S select · R/F reorder stubs. Save on Esc if id set.",
                 "warn",
             )
+            return
+        if self._atom_create_phase is AtomCreatePhase.CREATE:
+            step = draft_step_from_token(key)
+            if step is None:
+                self._status(f"Atom Create: {key} not a step key.", "info")
+                return
+            kind, payload = step
+            try:
+                if kind == "lco":
+                    self._atom_draft.add_lco(payload)
+                    self._status(
+                        f"Added lco:{payload} ({len(self._atom_draft.steps)} step(s)).",
+                        "ok",
+                    )
+                else:
+                    self._atom_draft.add_click()
+                    self._status(
+                        f"Added click center ({len(self._atom_draft.steps)} step(s)).",
+                        "ok",
+                    )
+            except ValueError as exc:
+                self._status(str(exc), "error")
             return
         if self._atom_create_phase is AtomCreatePhase.EDIT and key in {"W", "S", "R", "F"}:
             labels = {"W": "prev", "S": "next", "R": "reorder up", "F": "reorder down"}
             self._status(f"Atom Edit {labels[key]} — not wired yet.", "warn")
             return
-        self._status(f"Atom Create: {key} ignored in this phase (stub).", "info")
+        self._status(f"Atom Create: {key} ignored in this phase.", "info")
+
+    def _try_save_atom_draft(self) -> bool:
+        """Prompt for event id and persist. Returns True if saved or nothing to save."""
+
+        draft = self._atom_draft
+        if not draft.steps:
+            return True
+        name = self._ask_name("Save atom — event id", draft.event_id or "atom_new")
+        if not name:
+            self._status(
+                "Atom not saved — needs persist path (event id). Draft discarded.",
+                "warn",
+            )
+            return False
+        draft.event_id = name
+        draft.title = name.replace("_", " ")
+        try:
+            path = save_atom_draft(project_root() / "automations" / "events", draft)
+        except ValueError as exc:
+            self._status(f"Atom save blocked: {exc}", "warn")
+            return False
+        except OSError as exc:
+            self._status(f"Atom save failed: {exc}", "error")
+            return False
+        draft.clear()
+        self._reload_automations()
+        self._status(f"Atom saved: {path.name}", "ok")
+        self._shared_console.append(f"Atom Create saved {path.name}", "ok")
+        return True
 
     def _host_molecule_automations(self, parent) -> None:
         if self.auto_panel is not None:
@@ -1626,10 +1692,112 @@ class App(ctk.CTk):
             scroll=self.scroll_memory,
         )
         self.auto_panel.pack(fill="both", expand=True)
+        # Shared console → docked ML console (one stream with LOL logs).
+        try:
+            self._shared_console.unsubscribe(self._fanout_shared_console_to_panel)
+        except Exception:
+            pass
+        self._shared_console.subscribe(self._fanout_shared_console_to_panel)
         try:
             self._reload_taxonomy()
         except Exception:
             pass
+
+    def _fanout_shared_console_to_panel(self, line) -> None:
+        if self.auto_panel is None:
+            return
+        try:
+            self.auto_panel.append_console(line.message, line.level)
+        except Exception:
+            pass
+
+    def _host_molecule_atom_pane(self, parent) -> None:
+        from idle_lab.shell.tabs.molecule_lab import AtomLabPane
+
+        # Walk up to Molecule Lab root so Compose molecules can switch sub-tabs.
+        try:
+            self._molecule_lab_root = parent.master.master.master
+        except Exception:
+            self._molecule_lab_root = None
+        if self.atom_lab_pane is not None:
+            try:
+                self.atom_lab_pane.destroy()
+            except Exception:
+                pass
+        self.atom_lab_pane = AtomLabPane(
+            parent,
+            get_library_rows=self._atom_library_rows,
+            get_coverage_rows=self._lol_coverage_rows,
+            on_refresh=self._reload_automations,
+            on_seed_missing=self._seed_lol_wrappers,
+            on_run_atom=self._run_atom_once_by_id,
+            on_create_stub=self._create_lol_stub_atom,
+        )
+        self.atom_lab_pane.pack(fill="both", expand=True)
+
+    def _goto_molecule_subtab(self) -> None:
+        from idle_lab.shell.tabs.molecule_lab import select_molecule_subtab
+
+        if not self._is_lab_visible():
+            self._show_idle_lab_surface()
+        try:
+            self.tabs.set("Molecule Lab")
+        except Exception:
+            pass
+        self._current_tab = "Molecule Lab"
+        self.settings.last_tab = "Molecule Lab"
+        self._save_settings()
+        if self._molecule_lab_root is not None:
+            select_molecule_subtab(self._molecule_lab_root)
+        self._status("Molecule Lab → Molecule (compose / run).", "ok")
+
+    def _atom_library_rows(self):
+        from idle_lab.automations.lol_coverage import classify_library
+
+        return classify_library(self.auto_store)
+
+    def _lol_coverage_rows(self):
+        from idle_lab.automations.lol_coverage import build_coverage_rows
+
+        return build_coverage_rows(self.auto_store)
+
+    def _seed_lol_wrappers(self) -> None:
+        from idle_lab.automations.lol_coverage import seed_missing_wrappers
+
+        events_dir = project_root() / "automations" / "events"
+        written = seed_missing_wrappers(self.auto_store, events_dir)
+        self._reload_automations()
+        if written:
+            names = ", ".join(p.stem for p in written)
+            self._status(f"Seeded LOL wrappers: {names}", "ok")
+            self._shared_console.append(f"Seeded LOL wrappers: {names}", "ok")
+        else:
+            self._status("LOL coverage already complete — nothing to seed.", "info")
+        if self.atom_lab_pane is not None:
+            try:
+                self.atom_lab_pane.refresh()
+            except Exception:
+                pass
+
+    def _create_lol_stub_atom(self, actuation: str) -> None:
+        from idle_lab.automations.lol_coverage import write_stub_atom
+
+        path = write_stub_atom(project_root() / "automations" / "events", actuation)
+        self._reload_automations()
+        self._status(f"Created stub atom {path.name}", "ok")
+        self._shared_console.append(f"Created stub atom {path.name}", "ok")
+        if self.atom_lab_pane is not None:
+            try:
+                self.atom_lab_pane.refresh()
+            except Exception:
+                pass
+
+    def _run_atom_once_by_id(self, event_id: str) -> None:
+        event = self.auto_store.events.get(event_id)
+        if event is None:
+            self._status(f"Atom not found: {event_id}", "error")
+            return
+        self._start_automations_selection(event, None)
 
     def _host_observation_user(self, parent) -> None:
         self.screen_map_panel = ScreenMapPanel(
@@ -1733,6 +1901,9 @@ class App(ctk.CTk):
         self._status(f"Deck mode: {mode_display_name(mode)}.", "info")
 
     def _exit_deck_mode(self, *, quiet: bool = False) -> None:
+        leaving = self._deck_mode
+        if leaving is DeckMode.ATOM_CREATE:
+            self._try_save_atom_draft()
         self._close_floating_lab()
         self._deck_mode = DeckMode.MENU
         self._atom_create_phase = AtomCreatePhase.IDLE
@@ -1741,6 +1912,7 @@ class App(ctk.CTk):
         except Exception:
             pass
         self.hooks.state.deck_mode_active = False
+        self.hooks.state.atom_create_active = False
         if self._shell_phase is ShellPhase.ACTIVE and self._is_anchored() and not self._is_lab_visible():
             try:
                 self.flight_deck.set_expanded(True)
@@ -1923,11 +2095,7 @@ class App(ctk.CTk):
             self._shared_console.append(message, level)
         except Exception:
             pass
-        if self.auto_panel is not None:
-            try:
-                self.auto_panel.append_console(message, level if level in {"ok", "warn", "error", "run", "info"} else "info")
-            except Exception:
-                pass
+        # Molecule Lab panel receives lines via SharedConsole subscription (no double-append).
 
     def _live_control_legend_changed(self, show_descriptors: bool) -> None:
         if getattr(self, "flight_deck", None) is None:
@@ -4031,6 +4199,11 @@ class App(ctk.CTk):
             if not errors:
                 self.auto_panel.append_console("Automations + taxonomy reloaded.", "ok")
         self.auto_runtime.reload_schedule()
+        if self.atom_lab_pane is not None:
+            try:
+                self.atom_lab_pane.refresh()
+            except Exception:
+                pass
         if errors:
             self._status("Skipped automation files: " + "; ".join(errors), "error")
         else:

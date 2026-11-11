@@ -29,8 +29,9 @@ class SharedOverlayTests(unittest.TestCase):
 
     def test_atom_create_no_fake_save(self) -> None:
         text = atom_create_prompt(phase=AtomCreatePhase.CREATE)
-        self.assertIn("not wired", text.lower())
-        self.assertIn("persist", text.lower())
+        self.assertIn("save if path set", text.lower())
+        idle = atom_create_prompt(phase=AtomCreatePhase.IDLE)
+        self.assertIn("no silent save", idle.lower())
 
     def test_atom_create_mode_abandons_menu(self) -> None:
         self.assertTrue(mode_abandons_menu(DeckMode.ATOM_CREATE))

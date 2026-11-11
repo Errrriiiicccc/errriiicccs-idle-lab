@@ -1,0 +1,20 @@
+{
+  "id": "lco_refresh",
+  "title": "LOL \u00b7 Refresh",
+  "version": 1,
+  "enabled": false,
+  "priority": 50,
+  "timing": {
+    "type": "interval",
+    "every_ms": 60000
+  },
+  "description": "Thin Live Overlay Lab wrapper: one `lco` step (refresh).",
+  "notes": "Seeded for Molecule Lab LOL coverage. enabled:false \u2014 Start selected runs once.",
+  "actions": [
+    {
+      "type": "lco",
+      "action": "refresh",
+      "description": "Playbook actuation refresh."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "lco_scroll_down",
+  "title": "LOL \u00b7 Scroll Down",
+  "version": 1,
+  "enabled": false,
+  "priority": 50,
+  "timing": {
+    "type": "interval",
+    "every_ms": 60000
+  },
+  "description": "Thin Live Overlay Lab wrapper: one `lco` step (scroll_down).",
+  "notes": "Seeded for Molecule Lab LOL coverage. enabled:false \u2014 Start selected runs once.",
+  "actions": [
+    {
+      "type": "lco",
+      "action": "scroll_down",
+      "description": "Playbook actuation scroll_down."
+    }
+  ]
+}
