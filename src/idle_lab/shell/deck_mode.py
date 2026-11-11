@@ -25,19 +25,19 @@ def mode_prompt(mode: DeckMode | str, *, activate_key: str = "`") -> str:
     if kind is DeckMode.LOL:
         return (
             "Live Overlay Lab\n"
-            f"Esc = exit live → Deck menu · {key} = Deactivate\n"
+            f"Esc = exit → Deck menu · {key} = pause / resume\n"
             "Hold D = describe · Anchor required"
         )
     if kind is DeckMode.MOLECULE_LAB:
         return (
             "Molecule Lab (floating composer)\n"
-            f"Esc = close composer → Deck menu · {key} = Deactivate\n"
+            f"Esc = stop run or close → Deck menu · {key} = Deactivate\n"
             "Type freely — deck letter map paused"
         )
     if kind is DeckMode.OBSERVATION_LAB:
         return (
             "Observation Lab\n"
-            f"Esc = close float → Deck menu · {key} = Deactivate\n"
+            f"Esc = stop capture or close → Deck menu · {key} = Deactivate\n"
             "Full User + AI mission panes live in Idle Lab"
         )
     if kind is DeckMode.SETTINGS:

@@ -508,7 +508,7 @@ class LiveControlController:
                 self._notify_legend()
             self.console.event("paused")
             self.console.flush(reason="pause")
-            self._log("Live Control paused — marks inert. ` resumes · Esc exits.", "warn")
+            self._log("Live Overlay paused — marks inert. ` resumes · Esc exits to Flight Deck.", "warn")
             self._repaint("Paused")
         else:
             self.cancel_event.clear()

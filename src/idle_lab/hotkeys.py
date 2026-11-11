@@ -285,15 +285,8 @@ class InputHooks:
                     self._esc_down = True
                     self.events.put(("escape",))
                 return 1
-            if self.state.molecule_lab_close_confirm and vk == VK_RETURN:
-                if is_up:
-                    self._enter_down = False
-                elif not self._enter_down:
-                    self._enter_down = True
-                    self.events.put(("shell_enter",))
-                return 1
             return self._next(self._kb_hook, n_code, w_param, l_param)
-        # While LCO is armed, Activate key = full deactivate (stop all + idle deck).
+        # While LCO is armed, Activate key = pause / resume (stay in Live Overlay Lab).
         # Do not require expand_armed/open — LCO ownership alone is enough.
         if self.state.live_control_active and vk == int(self.state.flight_deck_expand_vk):
             swallow = True
@@ -301,7 +294,6 @@ class InputHooks:
                 self._expand_down = False
             elif not self._expand_down:
                 self._expand_down = True
-                self.state.live_control_cancel.set()
                 self.events.put(("flight_deck_activate",))
             return 1
         if (
@@ -352,8 +344,7 @@ class InputHooks:
             if self.state.title_dialog_open:
                 pass
             else:
-                # Inactive deck does not own Esc — only Activate does —
-                # except post-Deactivate resume handle (Esc → Idle Lab).
+                # Inactive deck owns only Activate — Esc passes through to other apps.
                 armed = (
                     self.state.anchor_armed
                     or self.state.recording
@@ -367,7 +358,6 @@ class InputHooks:
                     or self.state.flight_deck_remap
                     or self.state.quit_confirm
                     or self.state.flight_deck_active
-                    or self.state.resume_handle
                     or self.state.deck_mode_active
                 )
                 if is_up:
@@ -394,14 +384,6 @@ class InputHooks:
                 self._expand_down = True
                 self.events.put(("flight_deck_activate",))
         elif self.state.quit_confirm and vk == VK_RETURN and not self.state.molecule_lab_active:
-            swallow = True
-            if is_up:
-                self._enter_down = False
-            elif not self._enter_down:
-                self._enter_down = True
-                self.events.put(("shell_enter",))
-        elif self.state.molecule_lab_close_confirm and vk == VK_RETURN:
-            # Esc peel confirm for closing Molecule Lab — only Enter we keep.
             swallow = True
             if is_up:
                 self._enter_down = False
@@ -475,16 +457,13 @@ class InputHooks:
                 self._shell_key_down.add(vk)
                 self.events.put(("shell_i",))
         elif (
-            (
-                self.state.flight_deck_active
-                or self.state.resume_handle
-            )
+            self.state.flight_deck_active
             and (not self.state.lab_visible)
             and vk == VK_R
             and not self.state.molecule_lab_active
             and not self.state.live_control_active
         ):
-            # Restart while deck is active, or restart-wipe stub on resume handle.
+            # Restart only while Deck is active — inactive Deck must not eat R.
             swallow = True
             if is_up:
                 self._shell_key_down.discard(vk)

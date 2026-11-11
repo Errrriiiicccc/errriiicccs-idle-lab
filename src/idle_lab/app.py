@@ -1109,18 +1109,17 @@ class App(ctk.CTk):
         self._update_flight_deck_lab_button()
 
     def _deactivate_flight_deck(self) -> None:
-        """Deactivate = Stop all; deck stays up with resume handle stub."""
+        """Deactivate = pause/stop runners; deck stays up with resume handle."""
 
         if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             self._cancel_close_confirm()
             return
-        # Clear LCO arm even if enter() never finished (hook flag alone).
+        # Live Overlay Lab: ` pauses in place — handled by toggle, not here.
         self.hooks.state.live_control_cancel.set()
         self.hooks.state.live_control_active = False
         self.hooks.state.live_control_paused = False
         self.hooks.state.live_control_toggle_token = None
         self._exit_deck_mode(quiet=True)
-        # Deactivate is the single stop: runners + LCO / Observation / …
         self._stop_all()
         try:
             self.flight_deck.set_live_control_active(False)
@@ -1130,12 +1129,27 @@ class App(ctk.CTk):
         self._ensure_deck_only_surface()
         self._enter_inactive(resume=True)
 
+    def _pause_or_resume_live_overlay(self) -> None:
+        """Activate key while Live Overlay Lab is armed: pause ↔ resume (stay in LOL)."""
+
+        if not self.live_control.active:
+            return
+        self.live_control.toggle_pause()
+        self._sync_shell_hook_flags()
+        try:
+            self.flight_deck.set_live_control_paused(bool(self.live_control.paused))
+        except Exception:
+            pass
+
     def _flight_deck_toggle_activate(self) -> None:
         if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             return
-        # LCO armed (even mid-boot) always means deactivate — never re-activate.
-        if self.live_control.active or self.hooks.state.live_control_active:
-            self._deactivate_flight_deck()
+        # Live Overlay Lab: ` = pause / resume — never kick back to inactive FD.
+        if self.live_control.active or (
+            self.hooks.state.live_control_active and self._deck_mode is DeckMode.LOL
+        ):
+            if self.live_control.active:
+                self._pause_or_resume_live_overlay()
             return
         if self._shell_phase is ShellPhase.INACTIVE:
             self._activate_flight_deck()
@@ -1371,9 +1385,6 @@ class App(ctk.CTk):
         if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             self._confirm_close_flight_deck()
             return
-        if getattr(self, "_molecule_lab_close_confirm", False) and self._molecule_lab_is_open():
-            self._confirm_close_molecule_lab()
-            return
         if self._shell_phase is not ShellPhase.ACTIVE or self._is_anchored():
             return
         self._refresh_boot_candidate()
@@ -1394,12 +1405,70 @@ class App(ctk.CTk):
         self._show_idle_lab_surface()
 
     def _handle_shell_r(self) -> None:
-        if self._resume_handle:
-            self._status("Restart-wipe — not wired (Phase 0 stub).", "warn")
-            return
+        # Inactive Deck owns only Activate — never swallow R there.
         if self._shell_phase is not ShellPhase.ACTIVE:
             return
         self._restart_lab()
+
+    def _lab_runners_active(self) -> bool:
+        return bool(
+            self.auto_runtime.is_running
+            or self.auto_runtime.collection_running
+            or self.ai_batch_runner.is_running
+            or (self.walkthrough is not None and self.walkthrough.active)
+            or self.observation.active
+            or self.screen_map.active
+            or self.player.is_active
+        )
+
+    def _molecule_lab_runners_active(self) -> bool:
+        return bool(
+            self.auto_runtime.is_running
+            or self.auto_runtime.collection_running
+            or (self.walkthrough is not None and self.walkthrough.active)
+            or self.player.is_active
+        )
+
+    def _observation_runners_active(self) -> bool:
+        return bool(
+            self.observation.active
+            or self.screen_map.active
+            or self.ai_batch_runner.is_running
+        )
+
+    def _stop_lab_runners(self) -> None:
+        """Esc while a Lab is open: stop the run, keep the Lab."""
+
+        stopped: list[str] = []
+        if self.player.is_active:
+            self.player.stop()
+            stopped.append("playback")
+        if self.ai_batch_runner.is_running:
+            self.ai_batch_runner.stop()
+            stopped.append("AI mission")
+            if self.ai_batch_panel is not None:
+                try:
+                    self.ai_batch_panel.set_run_message("Runner: stop requested…", level="warn")
+                except Exception:
+                    pass
+        if self.auto_runtime.is_running or self.auto_runtime.collection_running:
+            self.auto_runtime.stop()
+            stopped.append("molecules")
+        if self.walkthrough is not None and self.walkthrough.active:
+            self._stop_collection_walkthrough()
+            stopped.append("walkthrough")
+        if self.observation.active or self.screen_map.active:
+            try:
+                self._stop_observation(reason="escape", prompt_rename=False)
+                stopped.append("observation")
+            except Exception:
+                pass
+        self._update_activity()
+        self._sync_shell_hook_flags()
+        if stopped:
+            self._status("Stopped: " + ", ".join(stopped) + " — Lab stays open.", "warn")
+        else:
+            self._status("Nothing running.", "info")
 
     def _handle_shell_escape(self) -> None:
         rebinding = bool(
@@ -1411,7 +1480,8 @@ class App(ctk.CTk):
             live_control_active=bool(self.live_control.active),
             live_control_rebinding=rebinding,
             molecule_lab_active=self._molecule_lab_is_open(),
-            molecule_lab_close_confirm=bool(getattr(self, "_molecule_lab_close_confirm", False)),
+            molecule_lab_running=self._molecule_lab_runners_active(),
+            observation_running=self._observation_runners_active(),
             remap_active=bool(self.hooks.state.flight_deck_remap),
             deck_active=self._shell_phase is ShellPhase.ACTIVE,
             deck_expanded=bool(self.flight_deck.expanded),
@@ -1423,12 +1493,15 @@ class App(ctk.CTk):
             self.live_control.cancel_molecule_rebind()
         elif action is EscAction.EXIT_LIVE_CONTROL:
             self._exit_live_control(reason="escape")
-        elif action is EscAction.ENTER_MOLECULE_LAB_CLOSE:
-            self._enter_molecule_lab_close_confirm()
-        elif action is EscAction.CANCEL_MOLECULE_LAB_CLOSE:
-            self._cancel_molecule_lab_close_confirm()
+            if self._deck_mode is DeckMode.LOL:
+                self._exit_deck_mode(quiet=True)
+            self._status("Live Overlay Lab closed — Flight Deck.", "info")
+        elif action is EscAction.STOP_LAB_RUNNERS:
+            self._stop_lab_runners()
         elif action is EscAction.CLOSE_MOLECULE_LAB:
             self._confirm_close_molecule_lab()
+            if self._deck_mode is DeckMode.MOLECULE_LAB:
+                self._exit_deck_mode(quiet=True)
         elif action is EscAction.EXIT_DECK_MODE:
             self._exit_deck_mode()
         elif action is EscAction.CANCEL_REMAP:
@@ -2208,20 +2281,9 @@ class App(ctk.CTk):
             pass
         self._sync_shell_hook_flags()
 
-    def _enter_molecule_lab_close_confirm(self) -> None:
-        if not self._molecule_lab_is_open():
-            return
-        self._set_molecule_lab_deck_mode(active=True, close_confirm=True)
-        self._status("Close Molecule Lab? Enter = yes · Esc = stay", "warn")
-
-    def _cancel_molecule_lab_close_confirm(self) -> None:
-        if not self._molecule_lab_is_open():
-            self._set_molecule_lab_deck_mode(active=False)
-            return
-        self._set_molecule_lab_deck_mode(active=True, close_confirm=False)
-        self._status("Molecule Lab stays open.", "info")
-
     def _confirm_close_molecule_lab(self) -> None:
+        """Immediate close — no Esc confirm peel."""
+
         win = getattr(self, "_molecule_composer", None)
         self._molecule_composer = None
         self._set_molecule_lab_deck_mode(active=False)

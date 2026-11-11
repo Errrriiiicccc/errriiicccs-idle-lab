@@ -275,8 +275,13 @@ class FlightDeckWindow(ctk.CTkToplevel):
                 text=f"Activate Flight Deck [{key}]",
                 state="normal",
             )
+        elif self._live_control_active:
+            label = "Resume" if self._lco_paused else "Pause"
+            self.activate_button.configure(
+                text=f"{label} Live Overlay [{key}]",
+                state="normal",
+            )
         else:
-            # Always available — Deactivate stops runners / exits LCO / idles the deck.
             self.activate_button.configure(
                 text=f"Deactivate [{key}]",
                 state="normal",
@@ -284,9 +289,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
 
     def _sync_close_button_label(self) -> None:
         if self._live_control_active:
-            self.close_button.configure(text="Exit LCO [Esc]")
-        elif self._molecule_lab_close_confirm:
-            self.close_button.configure(text="Stay [Esc]")
+            self.close_button.configure(text="Exit LOL [Esc]")
         elif self._molecule_lab_active:
             self.close_button.configure(text="Close Lab [Esc]")
         elif self._deck_lab_mode:
@@ -301,14 +304,13 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self.close_button.configure(text="Close [Esc]")
 
     def set_molecule_lab_active(self, active: bool, *, close_confirm: bool = False) -> None:
-        """Swap accordion for Molecule Lab Esc/Enter chrome."""
+        """Swap accordion for Molecule Lab Esc chrome (no confirm peel)."""
 
+        _ = close_confirm
         self._molecule_lab_active = bool(active)
-        self._molecule_lab_close_confirm = bool(active and close_confirm)
+        self._molecule_lab_close_confirm = False
         if self._molecule_lab_active:
             self._open_menu_key = None
-        else:
-            self._molecule_lab_close_confirm = False
         self._render_chrome()
 
     def set_deck_lab_mode(self, active: bool, *, prompt: str = "", legend: str = "ESC") -> None:
@@ -351,6 +353,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
 
         self._lco_paused = bool(paused)
         if self._live_control_active:
+            self._sync_activate_button_label()
             self._render_menu()
             self._fit_live_control_size()
 

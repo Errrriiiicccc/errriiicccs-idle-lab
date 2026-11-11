@@ -18,9 +18,8 @@ class EscAction(str, Enum):
     CANCEL_LCO_REBIND = "cancel_lco_rebind"
     CANCEL_REMAP = "cancel_remap"
     CANCEL_CLOSE = "cancel_close"
-    CANCEL_MOLECULE_LAB_CLOSE = "cancel_molecule_lab_close"
-    ENTER_MOLECULE_LAB_CLOSE = "enter_molecule_lab_close"
     CLOSE_MOLECULE_LAB = "close_molecule_lab"
+    STOP_LAB_RUNNERS = "stop_lab_runners"
     EXIT_DECK_MODE = "exit_deck_mode"
     CLOSE_SECTION = "close_section"
     COLLAPSE_MENU = "collapse_menu"
@@ -35,7 +34,8 @@ def resolve_escape(
     live_control_active: bool = False,
     live_control_rebinding: bool = False,
     molecule_lab_active: bool = False,
-    molecule_lab_close_confirm: bool = False,
+    molecule_lab_running: bool = False,
+    observation_running: bool = False,
     remap_active: bool = False,
     deck_active: bool = False,
     deck_expanded: bool = False,
@@ -45,21 +45,27 @@ def resolve_escape(
 ) -> EscAction:
     """Map Esc. Deactivate is never Esc — that is the Activate key only.
 
-    Inactive: Esc ignored unless post-Deactivate resume handle → Idle Lab.
-    Deck Lab mode (LOL / floating ML / OL / Settings): Esc exits mode → menu.
-    Active: peel menu, then close-confirm (not deactivate).
-    Close confirm: Esc cancels.
+    Immediate peel (no confirms) except root Flight Deck → close-confirm.
+    Lab with a runner: Esc stops the runner, Lab stays open.
+    Lab idle: Esc closes Lab / mode → Flight Deck menu.
     """
+
+    _ = resume_handle  # Inactive Esc is pass-through; resume is Activate-only.
 
     # LCO owns Esc while armed — even if Molecule Lab is also open underneath.
     if live_control_active and live_control_rebinding:
         return EscAction.CANCEL_LCO_REBIND
     if live_control_active:
         return EscAction.EXIT_LIVE_CONTROL
-    if molecule_lab_close_confirm:
-        return EscAction.CANCEL_MOLECULE_LAB_CLOSE
+
+    if molecule_lab_active and molecule_lab_running:
+        return EscAction.STOP_LAB_RUNNERS
     if molecule_lab_active:
-        return EscAction.ENTER_MOLECULE_LAB_CLOSE
+        return EscAction.CLOSE_MOLECULE_LAB
+
+    if deck_mode_active and observation_running:
+        return EscAction.STOP_LAB_RUNNERS
+
     if remap_active:
         return EscAction.CANCEL_REMAP
 
@@ -67,18 +73,15 @@ def resolve_escape(
     if phase_norm is ShellPhase.CLOSE_CONFIRM:
         return EscAction.CANCEL_CLOSE
     if phase_norm is ShellPhase.INACTIVE or not deck_active:
-        if resume_handle:
-            return EscAction.OPEN_IDLE_LAB
         return EscAction.NONE
 
-    # Floating / LOL / Settings modes abandon accordion — Esc returns to menu.
+    # Floating / LOL / Settings / Atom Create — Esc returns to menu immediately.
     if deck_mode_active:
         return EscAction.EXIT_DECK_MODE
 
-    # Anchored active keeps the hotkey accordion open as the main surface — that is
-    # not a peel layer. Only an open letter-section peels; otherwise Esc = close.
     if open_menu:
         return EscAction.CLOSE_SECTION
+    # Only confirmation left: closing the Flight Deck itself.
     return EscAction.ENTER_CLOSE_CONFIRM
 
 
@@ -95,7 +98,8 @@ def inactive_prompt(*, activate_key: str) -> str:
 def live_control_legend_hint(*, show_descriptors: bool = False, paused: bool = False) -> str:
     """Bold flight-deck headline while LCO is on — hold D for descriptors."""
 
-    _ = paused
+    if paused:
+        return "PAUSED · ` = RESUME · ESC = EXIT"
     if show_descriptors:
         return "HOLDING D = DESCRIBE"
     return "HOLD D = DESCRIBE"
@@ -104,32 +108,34 @@ def live_control_legend_hint(*, show_descriptors: bool = False, paused: bool = F
 def live_control_active_prompt(*, paused: bool = False, activate_key: str = "`") -> str:
     """Flight-deck body while Live Control Overlay owns the keys."""
 
-    _ = paused
     key = (activate_key or "`").strip() or "`"
+    if paused:
+        return (
+            "Live Overlay Lab paused\n"
+            f"{key} = resume · Esc = exit to Flight Deck"
+        )
     return (
-        "LCO is active\n"
+        "Live Overlay Lab is active\n"
         "Clicks show hotkeys · scroll / stat / refresh show icons\n"
         "Hold D to describe · drag Lab molecules · click mark to rebind\n"
-        f"{key} = deactivate (stops all + idle deck) · Esc = exit LCO only"
+        f"{key} = pause · Esc = exit to Flight Deck"
     )
 
 
 def molecule_lab_active_prompt(*, close_confirm: bool = False) -> str:
     """Flight-deck body while Molecule Lab owns Esc (deck hotkeys paused)."""
 
-    if close_confirm:
-        return "Close Molecule Lab?\nEnter = yes · Esc = stay"
+    _ = close_confirm
     return (
         "Molecule Lab is open\n"
         "Deck hotkeys paused — type in Lab text boxes\n"
-        "Esc = close · Enter confirms close"
+        "Esc = stop run (if any) or close Lab"
     )
 
 
 def molecule_lab_legend_hint(*, close_confirm: bool = False) -> str:
-    if close_confirm:
-        return "ENTER = CLOSE LAB"
-    return "ESC = CLOSE LAB"
+    _ = close_confirm
+    return "ESC = STOP / CLOSE"
 
 
 def active_unanchored_prompt(

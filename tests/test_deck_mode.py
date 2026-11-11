@@ -28,12 +28,12 @@ class DeckModeTests(unittest.TestCase):
         self.assertTrue(mode_abandons_menu(DeckMode.OBSERVATION_LAB))
         self.assertTrue(mode_abandons_menu(DeckMode.SETTINGS))
 
-    def test_mode_prompt_is_honest_stub(self) -> None:
+    def test_mode_prompt_names_pause_and_esc(self) -> None:
         text = mode_prompt(DeckMode.LOL, activate_key="`")
-        self.assertIn("not wired", text.lower())
         self.assertIn("Esc", text)
         self.assertIn("`", text)
-        self.assertIn("Deactivate", text)
+        self.assertIn("pause", text.lower())
+        self.assertIn("Live Overlay Lab", text)
 
     def test_escape_exits_deck_mode(self) -> None:
         self.assertEqual(

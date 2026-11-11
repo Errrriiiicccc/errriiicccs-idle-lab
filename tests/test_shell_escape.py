@@ -24,14 +24,15 @@ class ResolveEscapeTests(unittest.TestCase):
             EscAction.NONE,
         )
 
-    def test_inactive_resume_opens_idle_lab(self) -> None:
+    def test_inactive_resume_does_not_steal_esc(self) -> None:
+        # Inactive Deck listens only to Activate — Esc passes through.
         self.assertEqual(
             resolve_escape(
                 phase=ShellPhase.INACTIVE,
                 deck_active=False,
                 resume_handle=True,
             ),
-            EscAction.OPEN_IDLE_LAB,
+            EscAction.NONE,
         )
 
     def test_live_control_wins(self) -> None:
@@ -55,23 +56,37 @@ class ResolveEscapeTests(unittest.TestCase):
             EscAction.CANCEL_LCO_REBIND,
         )
 
-    def test_molecule_lab_owns_esc(self) -> None:
+    def test_molecule_lab_running_stops_not_close(self) -> None:
         self.assertEqual(
             resolve_escape(
                 phase=ShellPhase.ACTIVE,
                 molecule_lab_active=True,
+                molecule_lab_running=True,
                 deck_active=True,
             ),
-            EscAction.ENTER_MOLECULE_LAB_CLOSE,
+            EscAction.STOP_LAB_RUNNERS,
         )
+
+    def test_molecule_lab_idle_closes_immediately(self) -> None:
         self.assertEqual(
             resolve_escape(
                 phase=ShellPhase.ACTIVE,
                 molecule_lab_active=True,
-                molecule_lab_close_confirm=True,
+                molecule_lab_running=False,
                 deck_active=True,
             ),
-            EscAction.CANCEL_MOLECULE_LAB_CLOSE,
+            EscAction.CLOSE_MOLECULE_LAB,
+        )
+
+    def test_observation_running_stops_before_mode_exit(self) -> None:
+        self.assertEqual(
+            resolve_escape(
+                phase=ShellPhase.ACTIVE,
+                deck_mode_active=True,
+                observation_running=True,
+                deck_active=True,
+            ),
+            EscAction.STOP_LAB_RUNNERS,
         )
 
     def test_lco_esc_beats_molecule_lab(self) -> None:
@@ -82,19 +97,10 @@ class ResolveEscapeTests(unittest.TestCase):
                 phase=ShellPhase.ACTIVE,
                 live_control_active=True,
                 molecule_lab_active=True,
+                molecule_lab_running=True,
                 deck_active=True,
             ),
             EscAction.EXIT_LIVE_CONTROL,
-        )
-        self.assertEqual(
-            resolve_escape(
-                phase=ShellPhase.ACTIVE,
-                live_control_active=True,
-                live_control_rebinding=True,
-                molecule_lab_active=True,
-                deck_active=True,
-            ),
-            EscAction.CANCEL_LCO_REBIND,
         )
 
     def test_close_confirm_cancel(self) -> None:
@@ -110,7 +116,7 @@ class ResolveEscapeTests(unittest.TestCase):
             ),
             EscAction.CLOSE_SECTION,
         )
-        # Root accordion is not a peel layer — Esc goes to close-confirm.
+        # Root accordion — only remaining Esc confirmation (close FD).
         self.assertEqual(
             resolve_escape(
                 phase=ShellPhase.ACTIVE,
@@ -120,17 +126,18 @@ class ResolveEscapeTests(unittest.TestCase):
             ),
             EscAction.ENTER_CLOSE_CONFIRM,
         )
+
+    def test_deck_mode_exits_immediately(self) -> None:
         self.assertEqual(
             resolve_escape(
                 phase=ShellPhase.ACTIVE,
                 deck_active=True,
-                deck_expanded=False,
+                deck_mode_active=True,
             ),
-            EscAction.ENTER_CLOSE_CONFIRM,
+            EscAction.EXIT_DECK_MODE,
         )
 
     def test_esc_never_deactivates(self) -> None:
-        # Deactivate is Activate-key only; Esc goes to close-confirm after peel.
         action = resolve_escape(phase=ShellPhase.ACTIVE, deck_active=True)
         self.assertEqual(action, EscAction.ENTER_CLOSE_CONFIRM)
         self.assertNotEqual(action, EscAction.NONE)
@@ -152,15 +159,6 @@ class PromptTests(unittest.TestCase):
         self.assertIn("R = restart", text)
         self.assertNotIn("deactivate", text.lower())
 
-    def test_active_unanchored_restart_when_lab_open(self) -> None:
-        text = active_unanchored_prompt(
-            last_title=None,
-            candidate_found=False,
-            lab_visible=True,
-        )
-        self.assertIn("R = restart", text)
-        self.assertNotIn("I = open Lab", text)
-
     def test_close_confirm_lab_open(self) -> None:
         text = close_confirm_prompt(lab_visible=True)
         self.assertIn("Close flight deck", text)
@@ -170,33 +168,27 @@ class PromptTests(unittest.TestCase):
         text = close_confirm_prompt(lab_visible=False)
         self.assertIn("Quit Idle Lab", text)
 
-    def test_live_control_active_prompt_is_only_the_three_facts(self) -> None:
+    def test_live_control_active_prompt_pause_resume(self) -> None:
         text = live_control_active_prompt()
-        self.assertIn("LCO is active", text)
-        self.assertIn("Hold D to describe", text)
-        self.assertIn("Esc = exit LCO", text)
-        self.assertIn("deactivate", text.lower())
-        # Accordion leave labels must not leak into the LCO surface.
-        self.assertNotIn("Enter Live Control", text)
-        self.assertNotIn("Exit Live Control", text)
-        self.assertNotIn("Troubleshoot", text)
+        self.assertIn("Live Overlay Lab", text)
+        self.assertIn("pause", text.lower())
+        self.assertIn("Esc = exit", text)
+        paused = live_control_active_prompt(paused=True)
+        self.assertIn("resume", paused.lower())
 
-    def test_live_control_legend_hint_is_bold_d_instruction(self) -> None:
+    def test_live_control_legend_hint(self) -> None:
         self.assertEqual(live_control_legend_hint(), "HOLD D = DESCRIBE")
         self.assertEqual(
             live_control_legend_hint(show_descriptors=True),
             "HOLDING D = DESCRIBE",
         )
-        self.assertEqual(live_control_legend_hint(paused=True), "HOLD D = DESCRIBE")
+        self.assertIn("RESUME", live_control_legend_hint(paused=True))
 
-    def test_molecule_lab_prompt_says_deck_paused_for_typing(self) -> None:
+    def test_molecule_lab_prompt_no_confirm(self) -> None:
         text = molecule_lab_active_prompt()
         self.assertIn("Molecule Lab is open", text)
-        self.assertIn("paused", text.lower())
-        self.assertIn("type", text.lower())
         self.assertIn("Esc", text)
-        confirm = molecule_lab_active_prompt(close_confirm=True)
-        self.assertIn("Enter = yes", confirm)
+        self.assertNotIn("Enter = yes", text)
 
 
 if __name__ == "__main__":
