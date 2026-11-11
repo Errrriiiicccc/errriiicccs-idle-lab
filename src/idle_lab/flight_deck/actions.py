@@ -10,10 +10,10 @@ ACTION_TYPES = frozenset(
         "play_preset",  # one-shot Bench preset by name
         "start_event",  # interval Loops event by id (forces that event for the session)
         "start_collection",  # collection pack by id
-        "start_enabled_loops",  # every file-enabled event
+        "start_enabled_loops",  # every file-enabled event (CUT from Deck catalog)
         "observation_start",  # start Observation session (optional title; default auto)
-        "observation_mark",  # bookmark frame while Observation is active
-        "observation_end",  # stop Observation (+ optional rename prompt in UI)
+        "observation_mark",  # bookmark frame (CUT from Deck catalog)
+        "observation_end",  # stop Observation
         "live_control_enter",  # Live Control Overlay (playbook hit-targets)
         "live_control_enter_troubleshoot",  # Live Control + Observation evidence session
         "live_control_exit",
@@ -21,6 +21,11 @@ ACTION_TYPES = frozenset(
         "live_control_console_toggle",  # Persist LCO console on/off + open/close window
         "live_control_console_verbosity",  # Cycle events → results → process
         "molecule_composer_open",  # Context-gated molecule authoring UI
+        # Shape-first Deck top-level (Phase 0 stubs)
+        "open_lol",
+        "open_molecule_lab",
+        "open_observation_lab",
+        "open_settings",
         # Legacy aliases → Observation
         "observe_start",
         "observe_shot",

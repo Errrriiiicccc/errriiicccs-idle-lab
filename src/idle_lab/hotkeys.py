@@ -97,6 +97,8 @@ class HookFlags:
         self.molecule_lab_active = False
         self.molecule_lab_close_confirm = False
         self.lab_visible = True
+        # Post-Deactivate resume handle — Esc opens Idle Lab while deck is inactive.
+        self.resume_handle = False
         self.our_pid = os.getpid()
 
 
@@ -244,6 +246,26 @@ class InputHooks:
             self.state.flight_deck_remap = False
             self.events.put(("flight_deck_remap_key", vk))
             return 1
+        # Idle Lab surface → no keyboard hotkeys (buttons only). Pass keys through
+        # except Esc while a runner is stoppable (Stop all still reachable via F8 chrome).
+        if (
+            self.state.lab_visible
+            and not self.state.live_control_active
+            and not self.state.molecule_lab_active
+            and not self.state.flight_deck_remap
+        ):
+            if vk == VK_ESCAPE and self.state.stoppable:
+                if is_up:
+                    self._esc_down = False
+                elif not self._esc_down:
+                    self._esc_down = True
+                    swallow = True
+                    self.events.put(("escape",))
+                elif self.state.stoppable:
+                    swallow = True
+                if swallow:
+                    return 1
+            return self._next(self._kb_hook, n_code, w_param, l_param)
         # Molecule Lab needs real typing — but not while Live Control is armed.
         # LCO (incl. molecule marks / rebind) must keep letters+digits; Lab typing
         # resumes when LCO is off or paused.
@@ -326,7 +348,8 @@ class InputHooks:
             if self.state.title_dialog_open:
                 pass
             else:
-                # Inactive deck does not own Esc — only Activate does.
+                # Inactive deck does not own Esc — only Activate does —
+                # except post-Deactivate resume handle (Esc → Idle Lab).
                 armed = (
                     self.state.anchor_armed
                     or self.state.recording
@@ -340,6 +363,7 @@ class InputHooks:
                     or self.state.flight_deck_remap
                     or self.state.quit_confirm
                     or self.state.flight_deck_active
+                    or self.state.resume_handle
                 )
                 if is_up:
                     self._esc_down = False
@@ -446,12 +470,16 @@ class InputHooks:
                 self._shell_key_down.add(vk)
                 self.events.put(("shell_i",))
         elif (
-            self.state.flight_deck_active
+            (
+                self.state.flight_deck_active
+                or self.state.resume_handle
+            )
+            and (not self.state.lab_visible)
             and vk == VK_R
             and not self.state.molecule_lab_active
             and not self.state.live_control_active
         ):
-            # Restart while deck is active (before accordion eats R).
+            # Restart while deck is active, or restart-wipe stub on resume handle.
             swallow = True
             if is_up:
                 self._shell_key_down.discard(vk)
@@ -460,6 +488,7 @@ class InputHooks:
                 self.events.put(("shell_r",))
         elif (
             self.state.flight_deck_active
+            and (not self.state.lab_visible)
             and self.state.flight_deck_anchored
             and self.state.flight_deck_expanded
             and not self.state.molecule_lab_active
@@ -470,7 +499,7 @@ class InputHooks:
                 or menu_token_from_vk(vk) is not None
             )
         ):
-            # Accordion must not fire while LCO is booting/armed — that stuttered U→1.
+            # Accordion only while Deck is the surface (Idle Lab open → no hotkeys).
             swallow = True
             if is_up:
                 self._menu_down.discard(vk)
@@ -479,7 +508,11 @@ class InputHooks:
                 token = menu_token_from_vk(vk)
                 if token is not None:
                     self.events.put(("flight_deck_menu_key", token))
-        elif self.state.walkthrough_active and VK_A <= vk <= VK_Z:
+        elif (
+            self.state.walkthrough_active
+            and (not self.state.lab_visible)
+            and VK_A <= vk <= VK_Z
+        ):
             swallow = True
             if is_up:
                 self._letter_down.discard(vk)
@@ -487,22 +520,22 @@ class InputHooks:
                 self._letter_down.add(vk)
                 letter = chr(vk)
                 self.events.put(("walkthrough_key", letter))
-        elif vk == VK_F6:
+        elif vk == VK_F6 and not self.state.lab_visible:
             swallow = True
             if is_up:
                 self._f6_down = False
             elif not self._f6_down:
                 self._f6_down = True
                 self.events.put(("f6",))
-        elif vk == VK_F7:
+        elif vk == VK_F7 and not self.state.lab_visible:
             swallow = True
             if is_up:
                 self._f7_down = False
             elif not self._f7_down:
                 self._f7_down = True
                 self.events.put(("f7",))
-        elif vk == VK_F8:
-            # Global Stop all — always captured while Idle Lab is open (like F6/F7).
+        elif vk == VK_F8 and not self.state.lab_visible:
+            # Stop all via F8 only on Deck; Idle Lab uses chrome Stop all.
             swallow = True
             if is_up:
                 self._f8_down = False

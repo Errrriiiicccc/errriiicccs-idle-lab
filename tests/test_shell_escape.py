@@ -24,6 +24,16 @@ class ResolveEscapeTests(unittest.TestCase):
             EscAction.NONE,
         )
 
+    def test_inactive_resume_opens_idle_lab(self) -> None:
+        self.assertEqual(
+            resolve_escape(
+                phase=ShellPhase.INACTIVE,
+                deck_active=False,
+                resume_handle=True,
+            ),
+            EscAction.OPEN_IDLE_LAB,
+        )
+
     def test_live_control_wins(self) -> None:
         self.assertEqual(
             resolve_escape(

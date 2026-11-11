@@ -55,6 +55,10 @@ from idle_lab.flight_deck.shell import (
     resolve_escape,
 )
 from idle_lab.flight_deck.window import FlightDeckWindow
+from idle_lab.shell.idle_lab_window import build_tab_host
+from idle_lab.shell.resume import resume_prompt
+from idle_lab.shell.surfaces import SurfaceKind, can_show_idle_lab, ensure_exclusive
+from idle_lab.shell.tabs import normalize_last_tab
 from idle_lab.taxonomy import (
     TaxonomyError,
     default_taxonomy_path,
@@ -162,7 +166,8 @@ class App(ctk.CTk):
         self.scroll_memory = ScrollMemory()
         self.comment_store = CommentStore(root / "lab-comments.json")
         self.comment_store.load()
-        self._current_tab = "Bench"
+        self._current_tab = normalize_last_tab(self.settings.last_tab)
+        self._resume_handle = False
         self.walkthrough: Walkthrough | None = None
         self.guide_overlay: GuideOverlay | None = None
         self.anchor_target = Anchor()
@@ -243,16 +248,13 @@ class App(ctk.CTk):
         self._lab_saved_geometry: str | None = None
         self._sync_flight_deck_expand_vk()
         errors = self.store.load_all()
-        if self.store.presets:
-            self._select(self.store.presets[0])
-        else:
-            self._rebuild_preset_list()
-            self._rebuild_points()
+        # Phase 0: clicker UI is not mounted — keep preset selection in memory only.
+        self.current = self.store.presets[0] if self.store.presets else None
         self._reload_taxonomy()
         self._sync_lco_console_deck_labels()
         self._refresh_screen_map_catalog()
-        # Lab X hides the workbench; full quit is Esc peel → confirm on the deck.
-        self.protocol("WM_DELETE_WINDOW", self._hide_lab)
+        # Lab X → exclusive Flight Deck (deactivated). Quit is Esc peel on the deck.
+        self.protocol("WM_DELETE_WINDOW", self._withdraw_idle_lab_to_deck)
         try:
             self.hooks.start()
         except OSError as exc:
@@ -279,13 +281,12 @@ class App(ctk.CTk):
             self._status(tray_error, "warn")
         else:
             self._status(
-                "Flight deck first. Enter re-anchors · A sets anchor · I / tray opens Lab.",
+                "Idle Lab · Info. Activate deck to use hotkeys. Labs are stubs (not wired).",
                 "info",
             )
-        # Deck-first: hide Lab without withdraw/iconify (both hide Toplevel children
-        # like the flight deck on Windows). Alpha + off-screen keeps a taskbar button.
-        self._lab_visible = False
-        self.after(0, self._start_deck_first_boot)
+        # Shape-first: factory boot shows Idle Lab (Info / last tab); Deck starts deactivated.
+        self._lab_visible = True
+        self.after(0, self._start_idle_lab_boot)
 
     def _build(self) -> None:
         self.status_label = ctk.CTkLabel(self, text="", anchor="w", justify="left", wraplength=980)
@@ -293,77 +294,19 @@ class App(ctk.CTk):
 
         self._build_chrome()
 
-        self.tabs = ctk.CTkTabview(self, command=self._on_tab_changed)
-        self.tabs.pack(fill="both", expand=True, padx=8, pady=(4, 0))
-        bench = self.tabs.add("Bench")
-        observe = self.tabs.add("Observe")
-        missions = self.tabs.add("Missions")
-        loops = self.tabs.add("Loops")
-
-        self.body = ctk.CTkScrollableFrame(bench, fg_color="transparent")
-        self.body.pack(fill="both", expand=True, padx=4, pady=(4, 0))
-        self.scroll_memory.register("clicker.body", self.body)
-        self._build_clicker_body()
-        self.scroll_memory.register("clicker.presets", self.preset_list)
-
-        self.screen_map_panel = ScreenMapPanel(
-            observe,
-            on_start_batch=self._start_observation,
-            on_end_batch=lambda: self._stop_observation(reason="operator", prompt_rename=True),
-            on_mark=self._mark_observation,
-            on_open_folder=self._open_screen_map_folder,
-            on_refresh_catalog=self._refresh_screen_map_catalog,
-            on_view_shot=self._view_screen_map_shot,
-            on_view_batch=self._view_screen_map_batch,
-            on_comment_batch=self._comment_screen_map_batch,
-            on_comment_shot=self._comment_screen_map_shot,
-            comments=self.comment_store,
-            scroll=self.scroll_memory,
+        # Phase 0: target tab strip with stub panes. Legacy Bench/Observe/Missions/Loops
+        # panels stay unwired (engines remain on App for later phases).
+        self.auto_panel = None
+        self.screen_map_panel = None
+        self.ai_batch_panel = None
+        self.body = None
+        self.preset_list = None
+        self.tabs, self._current_tab = build_tab_host(
+            self,
+            on_tab_changed=self._on_tab_changed,
+            last_tab=self.settings.last_tab,
         )
-        self.screen_map_panel.pack(fill="both", expand=True)
-
-        self.ai_batch_panel = AiBatchPanel(
-            missions,
-            store=self.ai_batch_store,
-            scroll=self.scroll_memory,
-            screen_maps_root=self.screen_maps_root,
-            on_reload=self._reload_ai_batches,
-            on_new_batch=self._new_ai_batch,
-            on_open_folder=self._open_ai_batch_folder,
-            on_view_screenshots=self._view_ai_batch_screenshots,
-            on_link_screen_map=self._link_ai_batch_screen_map,
-            on_mark_request=self._mark_ai_request,
-            on_add_feedback=self._add_ai_feedback,
-            on_open_screen_map_batch=self._goto_screen_map_batch,
-            on_snapshot_event=self._snapshot_event_into_ai_batch,
-            on_start_run=self._start_ai_batch_run,
-            on_stop_run=self._stop_ai_batch_run,
-            on_export_packet=self._export_prompt_packet,
-            on_comment_batch=self._comment_mission,
-            on_comment_request=self._comment_mission_request,
-            comments=self.comment_store,
-        )
-        self.ai_batch_panel.pack(fill="both", expand=True)
-
-        self.auto_panel = AutomationsPanel(
-            loops,
-            store=self.auto_store,
-            on_reload=self._reload_automations,
-            on_start=self._start_automations_selection,
-            on_start_all_enabled=self._start_automations_all_enabled,
-            on_stop=self._stop_automations,
-            on_walkthrough=self._start_collection_walkthrough,
-            on_walkthrough_stop=self._stop_collection_walkthrough,
-            on_run_collection=self._start_molecule,
-            on_validate=self._validate_automations,
-            on_dry_run=self._dry_run_selection,
-            on_comment_event=self._comment_event,
-            on_comment_collection=self._comment_collection,
-            comments=self.comment_store,
-            scroll=self.scroll_memory,
-        )
-        self.auto_panel.pack(fill="both", expand=True)
-        self._current_tab = self.tabs.get()
+        self.settings.last_tab = self._current_tab
 
     def _build_chrome(self) -> None:
         """Thin global chrome: brand, compact Anchor, Refresh/Restart/Stop all, activity."""
@@ -453,8 +396,8 @@ class App(ctk.CTk):
         self.anchor_dot.pack(side="left", padx=(6, 0))
         self.flight_deck_button = ctk.CTkButton(
             anchor_row,
-            text="Flight deck",
-            width=96,
+            text="Activate Deck",
+            width=110,
             height=28,
             fg_color="#1E3A4A",
             hover_color="#2A5568",
@@ -654,39 +597,44 @@ class App(ctk.CTk):
         waiting = self._anchor_waiting
         status, _hwnd, _rect, _title = self.anchor_target.snapshot()
         anchored = status in ("ok", "minimized", "closed")
-        self.anchor_button.configure(text="Cancel" if waiting else "Anchor")
-        self.anchor_button.configure(state="disabled" if busy else "normal")
-        if waiting:
-            self.anchor_button.configure(fg_color="#C9A227", hover_color="#E0B93A", text_color="#161616")
-        elif anchored:
-            # Green = window locked in
-            self.anchor_button.configure(
-                fg_color="#2F6B4A",
-                hover_color="#3A855C",
-                text_color="#E8FFF2",
-            )
-        else:
-            self.anchor_button.configure(
-                fg_color=["#3B8ED0", "#1F6AA5"],
-                hover_color=["#36719F", "#144870"],
-                text_color="#DCE4EE",
-            )
+        if getattr(self, "anchor_button", None) is not None:
+            self.anchor_button.configure(text="Cancel" if waiting else "Anchor")
+            self.anchor_button.configure(state="disabled" if busy else "normal")
+            if waiting:
+                self.anchor_button.configure(fg_color="#C9A227", hover_color="#E0B93A", text_color="#161616")
+            elif anchored:
+                self.anchor_button.configure(
+                    fg_color="#2F6B4A",
+                    hover_color="#3A855C",
+                    text_color="#E8FFF2",
+                )
+            else:
+                self.anchor_button.configure(
+                    fg_color=["#3B8ED0", "#1F6AA5"],
+                    hover_color=["#36719F", "#144870"],
+                    text_color="#DCE4EE",
+                )
         clear_ok = anchored and not busy and not waiting
-        self.clear_button.configure(
-            state="normal" if clear_ok else "disabled",
-            text_color="#E25C5C" if clear_ok else "#5A6474",
-        )
-        self.create_button.configure(state="disabled" if busy else "normal")
-        can_edit = self.current is not None and not busy
-        for button in (self.rename_button, self.duplicate_button, self.delete_button, self.export_button):
-            button.configure(state="normal" if can_edit else "disabled")
-        self.start_button.configure(state="disabled" if busy or self.current is None else "normal")
-        self.stop_button.configure(state="normal" if self.player.is_active else "disabled")
-        self.pause_button.configure(state="normal" if self.player.is_active else "disabled")
+        if getattr(self, "clear_button", None) is not None:
+            self.clear_button.configure(
+                state="normal" if clear_ok else "disabled",
+                text_color="#E25C5C" if clear_ok else "#5A6474",
+            )
+        if self._clicker_ui_ready() and getattr(self, "create_button", None) is not None:
+            self.create_button.configure(state="disabled" if busy else "normal")
+            can_edit = self.current is not None and not busy
+            for button in (self.rename_button, self.duplicate_button, self.delete_button, self.export_button):
+                button.configure(state="normal" if can_edit else "disabled")
+            self.start_button.configure(state="disabled" if busy or self.current is None else "normal")
+            self.stop_button.configure(state="normal" if self.player.is_active else "disabled")
+            self.pause_button.configure(state="normal" if self.player.is_active else "disabled")
         self._update_banner()
         self._update_activity()
+        self._update_flight_deck_lab_button()
 
     def _update_banner(self) -> None:
+        if getattr(self, "banner", None) is None:
+            return
         if self.recorder.active:
             label = MODE_LABELS.get(self.recorder.mode, self.recorder.mode)
             self.banner.configure(
@@ -991,13 +939,21 @@ class App(ctk.CTk):
             lab_open and getattr(self, "_molecule_lab_close_confirm", False)
         )
         self.hooks.state.lab_visible = bool(self._lab_visible)
+        self.hooks.state.resume_handle = bool(self._resume_handle) and (not self._lab_visible)
         # Keep Activate armed even when the deck window is withdrawn after Close.
-        self.hooks.state.flight_deck_open = bool(deck_visible)
-        self.hooks.state.flight_deck_expand_armed = True
-        self.hooks.state.flight_deck_active = bool(active and deck_visible)
-        self.hooks.state.flight_deck_anchored = bool(anchored and active and deck_visible)
+        # While Idle Lab is the surface, Activate VK is silent (buttons only).
+        self.hooks.state.flight_deck_open = bool(deck_visible) and (not self._lab_visible)
+        self.hooks.state.flight_deck_expand_armed = not bool(self._lab_visible)
+        self.hooks.state.flight_deck_active = bool(active and deck_visible and not self._lab_visible)
+        self.hooks.state.flight_deck_anchored = bool(
+            anchored and active and deck_visible and not self._lab_visible
+        )
         self.hooks.state.flight_deck_expanded = bool(
-            active and anchored and deck_visible and self.flight_deck.expanded
+            active
+            and anchored
+            and deck_visible
+            and (not self._lab_visible)
+            and self.flight_deck.expanded
         )
 
     def _is_lab_visible(self) -> bool:
@@ -1027,43 +983,65 @@ class App(ctk.CTk):
             lab_visible=self._is_lab_visible(),
         )
 
-    def _start_deck_first_boot(self) -> None:
-        self._hide_lab(quiet=True)
+    def _start_idle_lab_boot(self) -> None:
+        """Factory / fresh → Idle Lab on Info (or last tab); Deck stays deactivated."""
+
+        tab = normalize_last_tab(self.settings.last_tab)
+        try:
+            self.tabs.set(tab)
+        except Exception:
+            tab = "Info"
+            self.tabs.set(tab)
+        self._current_tab = tab
+        self.settings.last_tab = tab
+        self._clear_resume_handle()
+        self._show_idle_lab_surface(quiet=True)
         self.update_idletasks()
         if self._auto_anchor_on_boot:
             self._try_auto_anchor_on_boot()
             return
-        self._enter_inactive()
+        self._shell_phase = ShellPhase.INACTIVE
+        self._sync_shell_hook_flags()
+        self._status(f"Idle Lab · {tab}. Activate Deck for hotkeys.", "info")
 
     def _try_auto_anchor_on_boot(self) -> None:
-        """Restart path: skip Enter and rebind last title when it is still live."""
+        """Restart path: rebind last title while staying on Idle Lab when possible."""
 
         self._refresh_boot_candidate()
         hwnd = self._boot_candidate_hwnd
         if hwnd:
             self._apply_anchor(int(hwnd))
+            self._show_idle_lab_surface(quiet=True)
             return
         if self._boot_offer_title:
-            # Last title remembered but window gone — surface the unanchored prompt.
-            self._activate_flight_deck()
+            # Last title remembered but window gone — Deck surface for re-anchor prompt.
+            self._switch_to_flight_deck_surface(activate=True)
             return
-        self._enter_inactive()
+        self._shell_phase = ShellPhase.INACTIVE
+        self._sync_shell_hook_flags()
 
-    def _enter_inactive(self) -> None:
+    def _enter_inactive(self, *, resume: bool = False) -> None:
         self._shell_phase = ShellPhase.INACTIVE
         key = vk_label(self._flight_deck_expand_vk_for_anchor())
-        prompt = inactive_prompt(activate_key=key)
+        if resume:
+            self._set_resume_handle(True)
+            prompt = resume_prompt(activate_key=key)
+        else:
+            self._clear_resume_handle()
+            prompt = inactive_prompt(activate_key=key)
         self.flight_deck.set_shell_phase(
             ShellPhase.INACTIVE,
             prompt=prompt,
             lab_visible=self._is_lab_visible(),
-            anchored=False,
+            anchored=self._is_anchored(),
         )
         self._show_flight_deck(allow_unanchored=True)
         self._sync_shell_hook_flags()
         self._status(prompt, "info")
 
     def _activate_flight_deck(self) -> None:
+        self._clear_resume_handle()
+        self._ensure_deck_only_surface()
         self._shell_phase = ShellPhase.ACTIVE
         anchored = self._is_anchored()
         if anchored:
@@ -1071,7 +1049,7 @@ class App(ctk.CTk):
             self.flight_deck.set_shell_phase(
                 ShellPhase.ACTIVE,
                 prompt="",
-                lab_visible=self._is_lab_visible(),
+                lab_visible=False,
                 anchored=True,
             )
             self.flight_deck.set_expanded(True)
@@ -1083,7 +1061,7 @@ class App(ctk.CTk):
             self.flight_deck.set_shell_phase(
                 ShellPhase.ACTIVE,
                 prompt=prompt,
-                lab_visible=self._is_lab_visible(),
+                lab_visible=False,
                 anchored=False,
             )
             self._show_flight_deck(allow_unanchored=True)
@@ -1096,9 +1074,10 @@ class App(ctk.CTk):
         except Exception:
             pass
         self._sync_shell_hook_flags()
+        self._update_flight_deck_lab_button()
 
     def _deactivate_flight_deck(self) -> None:
-        """Idle companion: stop every runner, exit LCO, deck stays visible (Activate only)."""
+        """Deactivate = Stop all; deck stays up with resume handle stub."""
 
         if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
             self._cancel_close_confirm()
@@ -1108,15 +1087,15 @@ class App(ctk.CTk):
         self.hooks.state.live_control_active = False
         self.hooks.state.live_control_paused = False
         self.hooks.state.live_control_toggle_token = None
-        # Deactivate is the single stop: Loops / Missions / Bench / Observe / LCO / …
+        # Deactivate is the single stop: runners + LCO / Observation / …
         self._stop_all()
         try:
             self.flight_deck.set_live_control_active(False)
         except Exception:
             pass
         self.flight_deck.collapse_menu()
-        self._enter_inactive()
-        self._status("Flight deck idle — everything stopped. Activate to listen again.", "info")
+        self._ensure_deck_only_surface()
+        self._enter_inactive(resume=True)
 
     def _flight_deck_toggle_activate(self) -> None:
         if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
@@ -1129,6 +1108,64 @@ class App(ctk.CTk):
             self._activate_flight_deck()
             return
         self._deactivate_flight_deck()
+
+    def _set_resume_handle(self, active: bool) -> None:
+        self._resume_handle = bool(active)
+        self.hooks.state.resume_handle = bool(active)
+
+    def _clear_resume_handle(self) -> None:
+        self._set_resume_handle(False)
+
+    def _anything_running(self) -> bool:
+        return bool(
+            self.hooks.state.stoppable
+            or self.hooks.state.recording
+            or self.hooks.state.playback
+            or self.hooks.state.observation_active
+            or self.hooks.state.walkthrough_active
+            or self.hooks.state.live_control_active
+            or self.live_control.active
+            or self.auto_runtime.is_running
+            or self.auto_runtime.collection_running
+            or self.ai_batch_runner.is_running
+            or self.player.is_active
+            or self.recorder.active
+        )
+
+    def _ensure_deck_only_surface(self) -> None:
+        """Hard rule: never show Idle Lab with Flight Deck; running → Deck only."""
+
+        surface = ensure_exclusive(
+            want=SurfaceKind.FLIGHT_DECK,
+            anything_running=self._anything_running(),
+        )
+        _ = surface
+        if self._is_lab_visible():
+            self._hide_lab(quiet=True)
+
+    def _show_idle_lab_surface(self, *, quiet: bool = False) -> None:
+        """Exclusive Idle Lab: hide Deck, show Lab (refused while anything is running)."""
+
+        if not can_show_idle_lab(anything_running=self._anything_running()):
+            self._status("Something is running — Flight Deck only until Deactivate.", "warn")
+            self._ensure_deck_only_surface()
+            return
+        self._clear_resume_handle()
+        self._hide_flight_deck(user_hidden=False)
+        self._shell_phase = ShellPhase.INACTIVE
+        self._show_lab_window(quiet=quiet)
+        self._sync_shell_hook_flags()
+        self._update_flight_deck_lab_button()
+
+    def _switch_to_flight_deck_surface(self, *, activate: bool = False) -> None:
+        """Idle Lab chrome → Deck. Deck starts deactivated unless activate=True."""
+
+        self._ensure_deck_only_surface()
+        if activate:
+            self._activate_flight_deck()
+            return
+        self._enter_inactive(resume=False)
+        self._update_flight_deck_lab_button()
 
     def _leave_boot_into_deck(self, *, status: str, rect) -> None:
         """After a successful anchor while active: show hotkey deck."""
@@ -1222,14 +1259,13 @@ class App(ctk.CTk):
             )
 
     def _show_lab(self) -> None:
-        # Remember whether the deck should stay up — lifting the Lab parent on
-        # Windows often unmaps the flight-deck Toplevel as a side effect.
-        keep_deck = (
-            self._shell_phase in {ShellPhase.INACTIVE, ShellPhase.CLOSE_CONFIRM}
-            or self._flight_deck_is_visible()
-            or not self.settings.flight_deck_user_hidden
-        )
-        # Orphan before Lab maps/lifts so ownership cannot drag the deck under.
+        """Tray / Esc resume / I → exclusive Idle Lab surface."""
+
+        self._show_idle_lab_surface(quiet=False)
+
+    def _show_lab_window(self, *, quiet: bool = False) -> None:
+        """Map Idle Lab HWND (alpha/geometry). Caller enforces exclusivity."""
+
         try:
             self.flight_deck._orphan_from_owner()
         except Exception:
@@ -1256,39 +1292,9 @@ class App(ctk.CTk):
             pass
         self._lab_visible = True
         self.flight_deck.set_lab_visible(True)
-        if self._shell_phase is ShellPhase.ACTIVE and not self._is_anchored():
-            prompt = self._active_unanchored_prompt_text()
-            self.flight_deck.set_shell_phase(
-                ShellPhase.ACTIVE,
-                prompt=prompt,
-                lab_visible=True,
-                anchored=False,
-            )
         self._sync_shell_hook_flags()
-        if keep_deck:
-            # Parent lift can still race the orphan; re-show deck on the next ticks.
-            self.after(0, self._reassert_flight_deck_after_lab_show)
-            self.after(50, self._reassert_flight_deck_after_lab_show)
-            self.after(200, self._reassert_flight_deck_after_lab_show)
-        self._status("Lab open.", "ok")
-
-    def _reassert_flight_deck_after_lab_show(self) -> None:
-        if self._shell_phase is ShellPhase.INACTIVE:
-            self._show_flight_deck(allow_unanchored=True)
-        elif self._shell_phase is ShellPhase.CLOSE_CONFIRM:
-            self._show_flight_deck(allow_unanchored=True)
-        elif not self.settings.flight_deck_user_hidden:
-            status, _hwnd, _rect, _title = self.anchor_target.snapshot()
-            if status in ("ok", "minimized", "closed"):
-                self._show_flight_deck()
-            elif self._shell_phase is ShellPhase.ACTIVE:
-                self._show_flight_deck(allow_unanchored=True)
-        try:
-            self.flight_deck._orphan_from_owner()
-            self.flight_deck.lift()
-            self.flight_deck.attributes("-topmost", True)
-        except Exception:
-            pass
+        if not quiet:
+            self._status(f"Idle Lab · {self._current_tab}.", "ok")
 
     def _enter_close_confirm(self) -> None:
         self._shell_phase = ShellPhase.CLOSE_CONFIRM
@@ -1350,13 +1356,14 @@ class App(ctk.CTk):
         self._toggle_anchor_mode()
 
     def _handle_shell_i(self) -> None:
-        if self._shell_phase is not ShellPhase.ACTIVE:
-            return
         if self._is_lab_visible():
             return
-        self._show_lab()
+        self._show_idle_lab_surface()
 
     def _handle_shell_r(self) -> None:
+        if self._resume_handle:
+            self._status("Restart-wipe — not wired (Phase 0 stub).", "warn")
+            return
         if self._shell_phase is not ShellPhase.ACTIVE:
             return
         self._restart_lab()
@@ -1376,6 +1383,7 @@ class App(ctk.CTk):
             deck_active=self._shell_phase is ShellPhase.ACTIVE,
             deck_expanded=bool(self.flight_deck.expanded),
             open_menu=bool(self.flight_deck.open_menu_key),
+            resume_handle=bool(self._resume_handle),
         )
         if action is EscAction.CANCEL_LCO_REBIND:
             self.live_control.cancel_molecule_rebind()
@@ -1400,16 +1408,29 @@ class App(ctk.CTk):
             self._sync_shell_hook_flags()
         elif action is EscAction.ENTER_CLOSE_CONFIRM:
             self._enter_close_confirm()
+        elif action is EscAction.OPEN_IDLE_LAB:
+            self._show_idle_lab_surface()
+
+    def _withdraw_idle_lab_to_deck(self) -> None:
+        """Window X / hide — exclusive Deck (deactivated), not both surfaces."""
+
+        self._switch_to_flight_deck_surface(activate=False)
 
     def _toggle_flight_deck_from_lab(self) -> None:
-        # Lab button: activate if inactive, deactivate if active.
+        # Chrome: leave Idle Lab for Deck (deactivated). Hotkey ` activates listening.
+        if self._is_lab_visible():
+            self._switch_to_flight_deck_surface(activate=False)
+            return
         self._flight_deck_toggle_activate()
 
     def _update_flight_deck_lab_button(self) -> None:
         if getattr(self, "flight_deck_button", None) is None:
             return
+        if self._is_lab_visible():
+            self.flight_deck_button.configure(text="Activate Deck")
+            return
         active = self._shell_phase is ShellPhase.ACTIVE
-        self.flight_deck_button.configure(text="Deactivate deck" if active else "Activate deck")
+        self.flight_deck_button.configure(text="Deactivate" if active else "Activate")
 
     def _begin_flight_deck_remap(self) -> None:
         status, _hwnd, _rect, _title = self.anchor_target.snapshot()
@@ -1438,24 +1459,38 @@ class App(ctk.CTk):
         kind = str(action.get("type") or "")
         path = str(action.get("_path") or action.get("_label") or kind)
         try:
-            if kind == "play_preset":
+            if kind == "open_lol":
+                self._status("LOL — not wired (Phase 0 stub).", "warn")
+            elif kind == "open_molecule_lab":
+                self._status("Molecule Lab — not wired (Phase 0 stub).", "warn")
+            elif kind == "open_observation_lab":
+                self._status("Observation Lab — not wired (Phase 0 stub).", "warn")
+            elif kind == "open_settings":
+                self._status("Settings — not wired (boot preference later).", "warn")
+            elif kind == "play_preset":
+                self._ensure_deck_only_surface()
                 self._flight_deck_play_preset(str(action["preset"]), path=path)
             elif kind == "start_event":
+                self._ensure_deck_only_surface()
                 self._flight_deck_start_event(str(action["event"]), path=path)
             elif kind == "start_collection":
+                self._ensure_deck_only_surface()
                 self._flight_deck_start_collection(str(action["collection"]), path=path)
             elif kind == "start_enabled_loops":
-                self._start_automations_all_enabled()
+                self._status("Start all enabled — cut from Flight Deck.", "warn")
             elif kind in {"observation_start", "observe_start"}:
+                self._ensure_deck_only_surface()
                 title = str(action.get("title") or "").strip() or None
                 self._start_observation(title=title)
             elif kind in {"observation_mark", "observe_shot"}:
-                self._mark_observation()
+                self._status("Mark — cut from Flight Deck.", "warn")
             elif kind in {"observation_end", "observe_end"}:
-                self._stop_observation(reason="operator", prompt_rename=True)
+                self._stop_observation(reason="operator", prompt_rename=False)
             elif kind == "live_control_enter":
+                self._ensure_deck_only_surface()
                 self._enter_live_control()
             elif kind == "live_control_enter_troubleshoot":
+                self._ensure_deck_only_surface()
                 self._enter_live_control_troubleshoot()
             elif kind == "live_control_exit":
                 self._exit_live_control(reason="operator")
@@ -1463,13 +1498,14 @@ class App(ctk.CTk):
                 if self.live_control.active:
                     self._exit_live_control(reason="toggle")
                 else:
+                    self._ensure_deck_only_surface()
                     self._enter_live_control()
             elif kind == "live_control_console_toggle":
                 self._toggle_lco_console_setting()
             elif kind == "live_control_console_verbosity":
                 self._cycle_lco_console_verbosity()
             elif kind == "molecule_composer_open":
-                self._open_molecule_composer()
+                self._status("Molecule Lab composer — not wired from Deck yet (stub).", "warn")
             else:
                 self._status(f"Flight deck: unknown action type “{kind}”.", "error")
         except Exception as exc:
@@ -2161,7 +2197,13 @@ class App(ctk.CTk):
             return
         self.store.save(self.current)
 
+    def _clicker_ui_ready(self) -> bool:
+        return self.preset_list is not None and getattr(self, "points_list", None) is not None
+
     def _rebuild_preset_list(self) -> None:
+        if not self._clicker_ui_ready():
+            return
+
         def rebuild() -> None:
             for child in self.preset_list.winfo_children():
                 child.destroy()
@@ -2193,16 +2235,22 @@ class App(ctk.CTk):
         previous = self._current_tab
         self.scroll_memory.remember_prefix(self._tab_scroll_prefix(previous))
         self._current_tab = self.tabs.get()
+        self.settings.last_tab = normalize_last_tab(self._current_tab)
+        self._save_settings()
         prefix = self._tab_scroll_prefix(self._current_tab)
         self.after(80, lambda p=prefix: self.scroll_memory.restore_prefix(p))
 
     def _tab_scroll_prefix(self, tab_name: str) -> str:
         return {
+            "Info": "info.",
+            "LOL": "lol.",
+            "Molecule Lab": "molecule_lab.",
+            "Observation Lab": "observation_lab.",
+            # Legacy mega-tab names
             "Bench": "clicker.",
             "Observe": "screen_map.",
             "Missions": "ai.",
             "Loops": "automations.",
-            # Legacy names (if any old sessions linger)
             "Clicker": "clicker.",
             "Automations": "automations.",
             "Screen Map": "screen_map.",
@@ -2212,9 +2260,11 @@ class App(ctk.CTk):
     def _select(self, preset: Preset) -> None:
         if self.recorder.active:
             return
+        self.current = preset
+        if not self._clicker_ui_ready():
+            return
         self._begin_load()
         try:
-            self.current = preset
             self._rebuild_preset_list()
             self._apply_loop_controls(preset)
             notes = preset.notes.strip()
@@ -2244,6 +2294,8 @@ class App(ctk.CTk):
             self._sync_controls()
 
     def _apply_loop_controls(self, preset: Preset) -> None:
+        if not self._clicker_ui_ready() or getattr(self, "forever_switch", None) is None:
+            return
         forever = preset.loop and preset.loop_count is None
         if forever:
             self.forever_switch.select()
@@ -2280,6 +2332,8 @@ class App(ctk.CTk):
         self._persist_current()
 
     def _rebuild_points(self) -> None:
+        if not self._clicker_ui_ready():
+            return
         self._begin_load()
         try:
             for child in self.points_list.winfo_children():

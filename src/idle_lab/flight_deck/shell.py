@@ -24,6 +24,7 @@ class EscAction(str, Enum):
     CLOSE_SECTION = "close_section"
     COLLAPSE_MENU = "collapse_menu"
     ENTER_CLOSE_CONFIRM = "enter_close_confirm"
+    OPEN_IDLE_LAB = "open_idle_lab"
     NONE = "none"
 
 
@@ -38,10 +39,11 @@ def resolve_escape(
     deck_active: bool = False,
     deck_expanded: bool = False,
     open_menu: bool = False,
+    resume_handle: bool = False,
 ) -> EscAction:
     """Map Esc. Deactivate is never Esc — that is the Activate key only.
 
-    Inactive: Esc ignored.
+    Inactive: Esc ignored unless post-Deactivate resume handle → Idle Lab.
     Active: peel menu, then close-confirm (not deactivate).
     Close confirm: Esc cancels.
     """
@@ -62,6 +64,8 @@ def resolve_escape(
     if phase_norm is ShellPhase.CLOSE_CONFIRM:
         return EscAction.CANCEL_CLOSE
     if phase_norm is ShellPhase.INACTIVE or not deck_active:
+        if resume_handle:
+            return EscAction.OPEN_IDLE_LAB
         return EscAction.NONE
 
     # Anchored active keeps the hotkey accordion open as the main surface — that is

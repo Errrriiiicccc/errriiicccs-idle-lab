@@ -2,184 +2,28 @@
   "version": 1,
   "roots": [
     {
-      "key": "U",
-      "label": "Live Control Overlay",
-      "description": "Keyboard hit-targets on main gameplay — you decide, lab actuates.",
-      "children": [
-        {
-          "key": "1",
-          "label": "Enter Live Control",
-          "description": "Screenshot → classify main gameplay → show object-map overlay. Esc exits.",
-          "action": { "type": "live_control_enter" }
-        },
-        {
-          "key": "2",
-          "label": "Troubleshoot Live Control",
-          "description": "Live Control hotkeys + Observation frames/meta for each action (scroll/buy evidence).",
-          "action": { "type": "live_control_enter_troubleshoot" }
-        },
-        {
-          "key": "3",
-          "label": "Toggle LCO Console (OFF)",
-          "description": "Persists console on/off. When on, entering LCO opens the console window; U→4 cycles verbosity; pause/exit flush runs/lco-console-*/console.log.",
-          "action": { "type": "live_control_console_toggle" }
-        },
-        {
-          "key": "4",
-          "label": "Console Verbosity (results)",
-          "description": "Cycle events → results → process. Only logs while console is ON (U→3).",
-          "action": { "type": "live_control_console_verbosity" }
-        }
-      ]
-    },
-    {
-      "key": "O",
-      "label": "Observe",
-      "description": "Observation session — pointer timeline + Screen Map shots.",
-      "children": [
-        {
-          "key": "1",
-          "label": "Start observation",
-          "description": "Auto-titled session; mouse moves/clicks/scrolls are recorded.",
-          "action": { "type": "observation_start" }
-        },
-        {
-          "key": "2",
-          "label": "Mark",
-          "description": "Bookmark the current screen as a shot in the active observation.",
-          "action": { "type": "observation_mark" }
-        },
-        {
-          "key": "3",
-          "label": "Stop observation",
-          "description": "End the session (Esc also stops). Optional rename prompt.",
-          "action": { "type": "observation_end" }
-        }
-      ]
-    },
-    {
-      "key": "C",
-      "label": "Clicks",
-      "description": "One-shot HUD / preset taps.",
-      "children": [
-        {
-          "key": "1",
-          "label": "Currency toggle",
-          "description": "Flip top HUD balances ↔ /min.",
-          "action": { "type": "play_preset", "preset": "currency toggle" }
-        },
-        {
-          "key": "2",
-          "label": "Gem box",
-          "description": "Single tap on the gem box.",
-          "action": { "type": "play_preset", "preset": "gem box tap" }
-        }
-      ]
-    },
-    {
-      "key": "N",
-      "label": "Nav",
-      "description": "Upgrade tab + list scroll (tab-agnostic).",
-      "children": [
-        {
-          "key": "1",
-          "label": "Ensure Attack",
-          "description": "Open Attack if needed (atom once).",
-          "action": { "type": "start_event", "event": "ensure_attack_tab" }
-        },
-        {
-          "key": "2",
-          "label": "Scroll down 1",
-          "description": "One tile-row down on the open list.",
-          "action": { "type": "start_event", "event": "list_scroll_down_1" }
-        },
-        {
-          "key": "3",
-          "label": "Scroll up 1",
-          "description": "One tile-row up on the open list.",
-          "action": { "type": "start_event", "event": "list_scroll_up_1" }
-        }
-      ]
-    },
-    {
-      "key": "A",
-      "label": "Atoms",
-      "description": "Run-once procedures (no interval wait).",
-      "children": [
-        {
-          "key": "1",
-          "label": "Persistent state",
-          "description": "tool_export snapshot → variables + CSV now.",
-          "action": { "type": "start_event", "event": "stat_collect" }
-        },
-        {
-          "key": "2",
-          "label": "Status + buy",
-          "description": "Panel → gem → Health → Damage (orchestrator).",
-          "action": { "type": "start_event", "event": "endgame_status_buy" }
-        },
-        {
-          "key": "3",
-          "label": "Buy Health",
-          "description": "Defense → Health buy once.",
-          "action": { "type": "start_event", "event": "buy_health" }
-        },
-        {
-          "key": "4",
-          "label": "Buy Damage",
-          "description": "Attack → Damage buy once.",
-          "action": { "type": "start_event", "event": "buy_damage" }
-        },
-        {
-          "key": "5",
-          "label": "Health → Damage → Claim",
-          "description": "Defense/Health → Attack/Damage → park Defense → claim (LCO A pack).",
-          "action": { "type": "start_event", "event": "health_damage_claim" }
-        }
-      ]
+      "key": "L",
+      "label": "LOL",
+      "description": "Live Overlay Lab — stub in Phase 0.",
+      "action": { "type": "open_lol" }
     },
     {
       "key": "M",
-      "label": "Molecules",
-      "description": "Packs — interval pools or once chains.",
-      "children": [
-        {
-          "key": "1",
-          "label": "Endgame phase loop",
-          "description": "Interval: status+buy + stats + b-roll.",
-          "action": { "type": "start_collection", "collection": "endgame_phase_loop" }
-        },
-        {
-          "key": "2",
-          "label": "Stat collecting",
-          "description": "Interval: stat collect + 5-min b-roll.",
-          "action": { "type": "start_collection", "collection": "stat_collecting" }
-        },
-        {
-          "key": "3",
-          "label": "Endgame tier1",
-          "description": "Interval: status+buy + minute stats.",
-          "action": { "type": "start_collection", "collection": "endgame_tier1" }
-        },
-        {
-          "key": "4",
-          "label": "Health then Damage",
-          "description": "Once: buy_health → buy_damage.",
-          "action": { "type": "start_collection", "collection": "health_then_damage" }
-        },
-        {
-          "key": "5",
-          "label": "Start all enabled",
-          "description": "Interval pool: every atom with enabled:true.",
-          "action": { "type": "start_enabled_loops" }
-        },
-        {
-          "key": "6",
-          "label": "Molecule Lab",
-          "description": "Browse/edit molecules by phase — compose buys, nest composites, reorder, add wave/cash gates; saves JSON under automations/.",
-          "action": { "type": "molecule_composer_open" }
-        }
-      ]
+      "label": "Molecule Lab",
+      "description": "Floating Molecule Lab — stub in Phase 0.",
+      "action": { "type": "open_molecule_lab" }
+    },
+    {
+      "key": "O",
+      "label": "Observation Lab",
+      "description": "Floating Observation Lab — stub in Phase 0. Mark cut.",
+      "action": { "type": "open_observation_lab" }
+    },
+    {
+      "key": "S",
+      "label": "Settings",
+      "description": "Boot preference (stub) — Phase 1 wires S.",
+      "action": { "type": "open_settings" }
     }
   ]
 }

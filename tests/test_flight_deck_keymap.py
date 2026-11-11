@@ -81,11 +81,13 @@ class FlightDeckKeymapTests(unittest.TestCase):
 
 
 class FlightDeckAccordionTests(unittest.TestCase):
-    def test_letter_digit_chord(self) -> None:
+    def test_top_level_leaf_map(self) -> None:
+        """Phase 0 Deck: L/M/O/S are top-level leaves (no U/O/C/N/A/M product map)."""
+
         import customtkinter as ctk
 
-        from idle_lab.flight_deck.keys import normalize_menu_key
         from idle_lab.flight_deck.keymap import default_keymap_path, load_keymap
+        from idle_lab.flight_deck.shell import ShellPhase
         from idle_lab.flight_deck.window import FlightDeckWindow
         from idle_lab.presets import project_root
 
@@ -94,24 +96,30 @@ class FlightDeckAccordionTests(unittest.TestCase):
         deck = FlightDeckWindow(
             root,
             on_close=lambda: None,
-            on_expand_toggle=lambda: None,
-            on_pause=lambda: None,
-            on_stop=lambda: None,
+            on_activate_toggle=lambda: None,
         )
         try:
             keymap = load_keymap(default_keymap_path(project_root()))
+            keys = {node.key.upper() for node in keymap.roots}
+            self.assertEqual(keys, {"L", "M", "O", "S"})
+            for node in keymap.roots:
+                self.assertTrue(node.is_leaf, msg=node.label)
             deck.set_keymap(keymap)
+            deck.set_shell_phase(
+                ShellPhase.ACTIVE,
+                prompt="",
+                lab_visible=False,
+                anchored=True,
+            )
             deck.set_expanded(True)
-            self.assertIsNone(deck.navigate("O"))  # open Observe
-            self.assertEqual(normalize_menu_key(deck.open_menu_key or ""), "O")
-            action = deck.navigate("2")
-            self.assertIsNotNone(action)
-            assert action is not None
-            self.assertEqual(action["type"], "observation_mark")
-            self.assertIsNone(deck.navigate("C"))  # switch to Clicks
-            self.assertEqual(normalize_menu_key(deck.open_menu_key or ""), "C")
-            self.assertIsNone(deck.navigate("C"))  # same letter collapses section
-            self.assertIsNone(deck.open_menu_key)
+            lol = deck.navigate("L")
+            self.assertIsNotNone(lol)
+            assert lol is not None
+            self.assertEqual(lol["type"], "open_lol")
+            settings = deck.navigate("S")
+            self.assertIsNotNone(settings)
+            assert settings is not None
+            self.assertEqual(settings["type"], "open_settings")
         finally:
             deck.destroy()
             root.destroy()
@@ -166,6 +174,7 @@ class FlightDeckSettingsTests(unittest.TestCase):
                 flight_deck_geometry="280x120+10+10",
                 flight_deck_user_hidden=True,
                 last_anchor_title="BlueStacks App Player",
+                last_tab="Molecule Lab",
             )
             save_settings(path, settings)
             loaded, err = load_settings(path)
@@ -178,6 +187,7 @@ class FlightDeckSettingsTests(unittest.TestCase):
             self.assertEqual(loaded.flight_deck_geometry, "280x120+10+10")
             self.assertTrue(loaded.flight_deck_user_hidden)
             self.assertEqual(loaded.last_anchor_title, "BlueStacks App Player")
+            self.assertEqual(loaded.last_tab, "Molecule Lab")
 
 
 if __name__ == "__main__":

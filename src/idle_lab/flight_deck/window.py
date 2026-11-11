@@ -424,8 +424,14 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self.toggle_descriptions()
             return None
 
-        # Letter → open/close that top-level menu (only one open at a time).
+        # Letter → open/close that top-level menu, or fire a top-level leaf (L/M/O/S).
         root = self._keymap.child_for_key(self._keymap.roots, token)
+        if root is not None and root.is_leaf:
+            action = dict(root.action or {})
+            action["_label"] = root.label
+            action["_path"] = root.label
+            self._render_menu()
+            return action
         if root is not None and not root.is_leaf:
             root_key = normalize_menu_key(root.key)
             if self._open_menu_key and normalize_menu_key(self._open_menu_key) == root_key:
@@ -740,8 +746,11 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self.menu_list.configure(text="")
             return
         open_node = self.open_menu_node()
+        leaf_only = all(root.is_leaf for root in self._keymap.roots)
         if open_node is not None:
             self.menu_path.configure(text=f"{open_node.label}  ·  letter → menu, digit → run")
+        elif leaf_only:
+            self.menu_path.configure(text="Hotkeys  ·  letter runs · D describe (stub)")
         else:
             self.menu_path.configure(text="Hotkeys  ·  letter opens a menu")
         lines: list[str] = []
@@ -749,13 +758,16 @@ class FlightDeckWindow(ctk.CTkToplevel):
         for root in self._keymap.roots:
             key = display_menu_key(root.key)
             is_open = normalize_menu_key(root.key) == open_norm
-            marker = "▼" if is_open else "▷"
+            if root.is_leaf:
+                marker = "→"
+            else:
+                marker = "▼" if is_open else "▷"
             lines.append(f"  {key:<4} {marker} {root.label}")
-            if self._show_descriptions and not is_open:
+            if self._show_descriptions and (root.is_leaf or not is_open):
                 detail = (root.description or "").strip()
                 if detail:
                     lines.append(f"         {detail}")
-            if not is_open:
+            if root.is_leaf or not is_open:
                 continue
             for child in root.children:
                 ckey = display_menu_key(child.key)
@@ -767,7 +779,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
             lines.append(f"  {BACK_TOKEN:<4} Collapse {open_node.label}")
         else:
             lines.append(f"  {BACK_TOKEN:<4} Collapse menu")
-        desc_state = "on — press D to hide" if self._show_descriptions else "press D to show"
+        desc_state = "on — press D to hide" if self._show_descriptions else "press D to show (hold later)"
         lines.append(f"  {DESCRIBE_TOKEN:<4} Descriptions ({desc_state})")
         self.menu_list.configure(text="\n".join(lines) if lines else "  (empty)")
         self._sync_close_button_label()

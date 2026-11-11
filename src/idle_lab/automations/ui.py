@@ -71,6 +71,7 @@ class AutomationsPanel(ctk.CTkFrame):
         self.stop_button.pack(side="right", padx=(6, 0))
         self.start_button = ctk.CTkButton(toolbar, text="Start selected", width=110, command=self._start_selected)
         self.start_button.pack(side="right", padx=(0, 6))
+        # CUT: Start all enabled — keep attribute for older call sites; do not pack.
         self.start_all_button = ctk.CTkButton(
             toolbar,
             text="Start all enabled",
@@ -79,7 +80,6 @@ class AutomationsPanel(ctk.CTkFrame):
             hover_color="#3A4558",
             command=self._start_all_enabled,
         )
-        self.start_all_button.pack(side="right", padx=(0, 6))
         self.run_pack_button = ctk.CTkButton(
             toolbar,
             text="Run pack",

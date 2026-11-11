@@ -96,6 +96,8 @@ class Settings:
     flight_deck_user_hidden: bool = False
     # Last successful anchor title (HWND does not survive restart).
     last_anchor_title: str | None = None
+    # Idle Lab tab strip — factory default Info; thereafter last selected.
+    last_tab: str = "Info"
     # Live Control Overlay session console (persists across restarts).
     lco_console_enabled: bool = False
     lco_console_verbosity: str = "results"  # events | results | process

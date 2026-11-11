@@ -10,6 +10,7 @@ from idle_lab.humanize import HUMANIZE_LEVELS, normalize_level
 from idle_lab.lab_mode import normalize_lab_mode
 from idle_lab.live_control.console import normalize_verbosity
 from idle_lab.models import Settings
+from idle_lab.shell.tabs import normalize_last_tab
 
 
 def _parse_expand_vk(raw) -> int:
@@ -79,6 +80,7 @@ def load_settings(path: Path) -> tuple[Settings, str | None]:
             last_anchor_title=(
                 str(data.get("last_anchor_title") or "").strip() or None
             ),
+            last_tab=normalize_last_tab(data.get("last_tab")),
             lco_console_enabled=bool(data.get("lco_console_enabled", False)),
             lco_console_verbosity=normalize_verbosity(
                 str(data.get("lco_console_verbosity") or "results")
@@ -107,6 +109,7 @@ def save_settings(path: Path, settings: Settings) -> None:
         "flight_deck_geometry": settings.flight_deck_geometry,
         "flight_deck_user_hidden": bool(settings.flight_deck_user_hidden),
         "last_anchor_title": settings.last_anchor_title,
+        "last_tab": normalize_last_tab(settings.last_tab),
         "lco_console_enabled": bool(settings.lco_console_enabled),
         "lco_console_verbosity": normalize_verbosity(settings.lco_console_verbosity),
         "lco_console_geometry": settings.lco_console_geometry,
