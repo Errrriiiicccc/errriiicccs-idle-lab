@@ -1,8 +1,11 @@
 {
-  "draft_id": "881eb07637",
+  "draft_id": "0ba85a7347",
   "title": "Untitled molecule",
   "requires_tab": "attack",
   "notes": "",
+  "phase": "unfiled",
+  "kind": "buy",
+  "collection_id": "mol_untitled_molecule",
   "steps": [
     {
       "kind": "ensure_tab",
@@ -11,8 +14,60 @@
       "catalog_id": null,
       "catalog_index": null,
       "molecule_id": null,
+      "event_id": null,
       "detail": "Enter this upgrade tab before buys on its list are available."
+    },
+    {
+      "kind": "seek_and_buy",
+      "label": "Range",
+      "tab": "attack",
+      "catalog_id": "buy.attack.5",
+      "catalog_index": 4,
+      "molecule_id": null,
+      "event_id": null,
+      "detail": "page-1: find Range relative to the viewport, correct overshoot via neighbors, then buy. Skip if maxed/unaffordable (stub).",
+      "guards": {
+        "too_far_up": [
+          "Crit Chance",
+          "Crit Factor"
+        ],
+        "too_far_down": [
+          "Dmg/Meter",
+          "Multishot Chance"
+        ]
+      }
+    },
+    {
+      "kind": "event_ref",
+      "label": "Stat collect",
+      "tab": null,
+      "catalog_id": null,
+      "catalog_index": null,
+      "molecule_id": null,
+      "event_id": "stat_collect",
+      "detail": "OCR wave + currencies into runtime variables (sticky until next collect)."
+    },
+    {
+      "kind": "ensure_tab",
+      "label": "Defense [W]",
+      "tab": "defense",
+      "catalog_id": null,
+      "catalog_index": null,
+      "molecule_id": null,
+      "event_id": null,
+      "detail": "Enter this upgrade tab before buys on its list are available.",
+      "condition": {
+        "when_true": "perform",
+        "all": [
+          {
+            "source_step": 2,
+            "field": "wave",
+            "op": "gte",
+            "value": 100.0,
+            "value_hi": null
+          }
+        ]
+      }
     }
-  ],
-  "collection_id": "mol_untitled_molecule"
+  ]
 }

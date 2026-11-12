@@ -10,6 +10,7 @@ Status tags: `open` · `leaning` · `settled` · `parked`
 
 | ID | Status | Question / idea | Notes |
 | --- | --- | --- | --- |
+| D7 | open | **Operator feel** catalog ([shell/FEEL.md](shell/FEEL.md)) + Info **How it talks** | Draft only — lock after Eric reviews in-app |
 | D1 | settled | Keep **Flight Deck** as the hotkey companion | Not renamed to Idle Lab |
 | D2 | settled | Rename LCO → **Live Overlay Lab (LOL)** | Lab nomenclature + atoms/molecules |
 | D3 | settled | Destroy mega tabbed window; rebuild as **Labs** only | Labs: Info, LOL, Molecule (Atom inside), Observation; Autoclicker folded into Atom |

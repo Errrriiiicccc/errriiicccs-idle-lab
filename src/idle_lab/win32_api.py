@@ -40,9 +40,11 @@ WM_LBUTTONDOWN = 0x0201
 WM_LBUTTONUP = 0x0202
 MK_LBUTTON = 0x0001
 INPUT_MOUSE = 0
+INPUT_KEYBOARD = 1
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 MOUSEEVENTF_WHEEL = 0x0800
+KEYEVENTF_KEYUP = 0x0002
 WHEEL_DELTA = 120
 CWP_SKIPINVISIBLE = 0x0001
 CWP_SKIPDISABLED = 0x0002
@@ -503,3 +505,50 @@ def send_mouse_wheel(notches: int) -> None:
     sent = user32.SendInput(1, ctypes.byref(event), ctypes.sizeof(INPUT))
     if sent != 1:
         user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, data & 0xFFFFFFFF, 0)
+
+
+def _vk_for_token(token: str) -> int | None:
+    """Map a simple key token to a virtual-key code (letters, digits, common names)."""
+
+    raw = str(token or "").strip()
+    if not raw:
+        return None
+    named = {
+        "enter": 0x0D,
+        "return": 0x0D,
+        "esc": 0x1B,
+        "escape": 0x1B,
+        "space": 0x20,
+        "tab": 0x09,
+        "backspace": 0x08,
+        "up": 0x26,
+        "down": 0x28,
+        "left": 0x25,
+        "right": 0x27,
+    }
+    lower = raw.lower()
+    if lower in named:
+        return named[lower]
+    if len(raw) == 1:
+        ch = raw.upper()
+        if "A" <= ch <= "Z" or "0" <= ch <= "9":
+            return ord(ch)
+    return None
+
+
+def send_key_token(token: str) -> bool:
+    """Send a single key down/up via SendInput. Returns False if token unknown."""
+
+    vk = _vk_for_token(token)
+    if vk is None:
+        return False
+    down = INPUT()
+    down.type = INPUT_KEYBOARD
+    down.union.ki.wVk = vk
+    up = INPUT()
+    up.type = INPUT_KEYBOARD
+    up.union.ki.wVk = vk
+    up.union.ki.dwFlags = KEYEVENTF_KEYUP
+    sent = user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(INPUT))
+    sent += user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(INPUT))
+    return sent == 2

@@ -122,10 +122,15 @@ class FlightDeckAccordionTests(unittest.TestCase):
             assert start is not None
             self.assertEqual(start["type"], "open_lol")
             self.assertIsNone(deck.navigate("M"))
-            atom = deck.navigate("2")
-            self.assertIsNotNone(atom)
-            assert atom is not None
-            self.assertEqual(atom["type"], "open_atom_lab")
+            atom_lab = deck.navigate("2")
+            self.assertIsNotNone(atom_lab)
+            assert atom_lab is not None
+            self.assertEqual(atom_lab["type"], "open_atom_lab")
+            # Section stays open after a leaf — 3 is still under M.
+            create = deck.navigate("3")
+            self.assertIsNotNone(create)
+            assert create is not None
+            self.assertEqual(create["type"], "open_atom_create")
             obs = deck.navigate("O")
             self.assertIsNotNone(obs)
             assert obs is not None

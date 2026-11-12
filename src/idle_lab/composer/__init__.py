@@ -14,7 +14,7 @@ from idle_lab.composer.model import (
     build_palette,
     outputs_for_step,
 )
-from idle_lab.composer.window import MoleculeComposerWindow, MoleculeLabWindow
+from idle_lab.composer.window import MoleculeComposerPane, MoleculeComposerWindow, MoleculeLabWindow
 
 __all__ = [
     "CapabilityCatalog",
@@ -24,6 +24,7 @@ __all__ = [
     "ConditionLeaf",
     "DraftStep",
     "ExportResult",
+    "MoleculeComposerPane",
     "MoleculeComposerWindow",
     "MoleculeLabWindow",
     "PaletteItem",

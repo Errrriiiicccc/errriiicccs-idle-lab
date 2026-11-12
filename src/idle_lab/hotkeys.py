@@ -101,8 +101,10 @@ class HookFlags:
         self.resume_handle = False
         # True while Deck has abandoned menu letters (LOL / floating Lab / Settings).
         self.deck_mode_active = False
-        # Atom Create is a distinct Deck mode that owns C/E/W/S/R/F.
+        # Atom Create is a distinct Deck mode that owns B/P/E/W/S/R/F.
         self.atom_create_active = False
+        # Next key becomes an Atom Create keyboard step (do not route to accordion).
+        self.atom_key_capture = False
         self.our_pid = os.getpid()
 
 
@@ -448,8 +450,10 @@ class InputHooks:
             and vk == VK_R
             and not self.state.molecule_lab_active
             and not self.state.live_control_active
+            and not self.state.atom_create_active
+            and not self.state.title_dialog_open
         ):
-            # Restart only while Deck is active — inactive Deck must not eat R.
+            # Restart only while Deck is active — never steal R from Atom Edit reorder.
             swallow = True
             if is_up:
                 self._shell_key_down.discard(vk)
@@ -457,8 +461,29 @@ class InputHooks:
                 self._shell_key_down.add(vk)
                 self.events.put(("shell_r",))
         elif (
+            self.state.atom_create_active
+            and self.state.atom_key_capture
+            and (not self.state.lab_visible)
+            and not self.state.title_dialog_open
+            and (
+                (VK_A <= vk <= VK_Z)
+                or (VK_0 <= vk <= VK_9)
+                or menu_token_from_vk(vk) is not None
+            )
+        ):
+            # Capture one key into the Atom Create queue (Esc cancels via escape path).
+            swallow = True
+            if is_up:
+                self._menu_down.discard(vk)
+            elif vk not in self._menu_down:
+                self._menu_down.add(vk)
+                token = menu_token_from_vk(vk)
+                if token is not None:
+                    self.events.put(("atom_key_captured", token))
+        elif (
             self.state.flight_deck_active
             and (not self.state.lab_visible)
+            and not self.state.title_dialog_open
             and (
                 (not self.state.deck_mode_active)
                 or self.state.atom_create_active
@@ -467,6 +492,7 @@ class InputHooks:
             and self.state.flight_deck_expanded
             and not self.state.molecule_lab_active
             and not self.state.live_control_active
+            and not self.state.atom_key_capture
             and (
                 (VK_A <= vk <= VK_Z)
                 or (VK_0 <= vk <= VK_9)

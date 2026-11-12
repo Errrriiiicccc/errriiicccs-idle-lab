@@ -27,39 +27,40 @@ Creating a basic atomic loop is too hard today. Observation alone shouldn’t be
 
 ### Enter
 
-From Molecule Lab (Idle Lab or floating from Deck **M**) → Atom create/edit → **Atom Create mode** on Deck (no accordion). Esc exit **entry-dependent** (like LOL). Save on exit.
+From Idle Lab Atom tab or Deck **M→3 Create Atom** → **Atom Create** on Deck with FD accordion + on-screen queue. **M→2 Atom Lab** is the lightweight library/coverage float (not Create). Esc from Create asks to save then returns to Atom Lab; `` ` `` pauses Deck only (Create stays). Edit peels to Create first.
 
-### C — Create (click path locked; others parallel)
+### Create (Basic Gesture + Playbook rewrite)
 
-1. **C** → queue UI (e.g. `1: Single Click`) + centered **#** click indicator on game.  
-2. **Mouse drag** indicator to target.
+1. **B Basic Gesture** expands (FD accordion) → **1** Click / **2** Drag / **3** Key / **4** OCR.  
+2. Dedicated **Atom queue** window (separate from Deck) is the script; place glyphs on the game.  
+3. **P** rewrites the Deck menu to Tower playbook (**B/T/S/U**); **Esc** returns to Create.  
+4. **E Edit** → W/S select (queue + glyph highlight) · R/F reorder.
 
-| Key path | Event | Glyph |
-| --- | --- | --- |
+| Type | Glyph |
+| --- | --- |
 | Click | Circle + queue # |
-| Drag | Two circles, same #, arrow |
-| Keyboard | Keyboard queue box + `N: Key` rows |
-| OCR | Region + #; needs-review warn |
-
-Exact C→digit map still fine; primary click UX is drag-place, not digit-arm.
+| Drag | Two handles (`Na`/`Nb`) |
+| Keyboard | Queue `key:…` (press to capture) |
+| OCR | Region + #; needs-review |
 
 ### E — Edit
 
-- **E** → queue **focus** (highlight starts at first event); marks show selection.  
-- **R** / **F** — move event up / down in queue.  
-- **W** / **S** — previous / next event.  
-- Event-specific chords (single/spam, …).  
-- **Esc** — leave edit mode (still in creator until outer Esc/exit).
+- **E** → edit accordion; queue highlights selection; click marks show selection.  
+- **W** / **S** — previous / next step.  
+- **R** / **F** — move selected step up / down.  
+- Event-specific chords (single/spam, …) still later.  
+- **Esc** — leave edit → Create (outer Esc from Create saves/exits).
 
-#### Click edits
+#### Click / keyboard edits (state-on-leaf)
 
-- Single / Spam  
-- If Spam: Interval (e.g. 10ms); Timing **or** Click #; then Time to hold-spam **or** # of clicks  
+- **Mode: Single|Spam** — press to toggle  
+- When Spam: **Spam: Clicks|Timed** — press to toggle  
+  - Clicks → **Click Amount: N** (press → type, min 1)  
+  - Timed → **Duration: Nms** (press → type, min 10)  
+  - **Interval: Nms** (press → type, min 10)  
+- Leaving Edit snaps timed duration to the last click time (`(n-1)×interval`) so leftover ms cannot invent a phantom click  
+- Key also has Recapture key  
 
-#### Keyboard edits
-
-- Key  
-- Single / Spam (same spam timing model as click)  
 
 #### Drag edits
 
@@ -116,9 +117,9 @@ Goal: **simple loops first**, then molecules from those atoms — not “only Ob
 
 Old **Bench** saved **click macros** as `presets/*.json` (timed click lists) — parallel to atoms, not the same files. Open whether we **migrate** those presets into atoms later, or leave them until a rename pass. Not blocking Atom Create design.
 
-## Trial + creators (parked — revisit later)
+## Trial + creators (wired — polish later)
 
-Trialing atoms/molecules belongs **inside Molecule Lab**, cohesive with Atom creator and Molecule creator — easy to understand as one Lab. Exact IA (tabs/modes/labels) **revisit later**; don’t block Flight Deck.
+**Atom** = library / Create. **Molecule** = in-tab composer (+ Pop out). **Trial** = browse / Start / Dry-run / Walkthrough. Deeper OCR edit fields and key-capture-without-dialog can wait.
 
 ## Still open / parked
 

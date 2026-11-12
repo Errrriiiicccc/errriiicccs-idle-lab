@@ -67,9 +67,13 @@ from idle_lab.shell.atom_create import (
     AtomDraft,
     atom_create_legend,
     build_atom_create_keymap,
+    build_atom_edit_keymap,
+    build_atom_playbook_keymap,
     draft_step_from_token,
     save_atom_draft,
+    step_label,
 )
+from idle_lab.shell.atom_create_overlay import AtomCreateOverlay
 from idle_lab.shell.console import SharedConsole
 from idle_lab.shell.floating import FloatingLabWindow
 from idle_lab.shell.idle_lab_window import build_tab_host
@@ -94,7 +98,7 @@ from idle_lab.image_viewer import open_image_viewer
 from idle_lab.lab_mode import SuperviseGate, humanize_level_tooltip, normalize_lab_mode
 from idle_lab.lab_watch import dir_fingerprint
 from idle_lab.launch_flags import restart_command
-from idle_lab.models import ClickPoint, Preset, normalized_to_screen, screen_to_normalized
+from idle_lab.models import ClickPoint, Preset, Rect, normalized_to_screen, screen_to_normalized
 from idle_lab.live_control import LiveControlController, LiveControlError
 from idle_lab.live_control.overlay import LiveControlOverlay
 from idle_lab.single_instance import release as release_single_instance
@@ -194,6 +198,9 @@ class App(ctk.CTk):
         self._deck_mode = DeckMode.MENU
         self._atom_create_phase = AtomCreatePhase.IDLE
         self._atom_draft = AtomDraft()
+        self._atom_create_overlay: AtomCreateOverlay | None = None
+        self._atom_key_capture = False
+        self._atom_lab_float_pane = None
         self._shared_console = SharedConsole()
         self._floating_lab: FloatingLabWindow | None = None
         self._settings_window = None
@@ -343,9 +350,11 @@ class App(ctk.CTk):
             on_start_live_overlay=self._start_live_overlay_from_lab,
             on_open_atom_create=self._open_atom_create_from_lab,
             on_open_composer=self._open_molecule_composer,
-            host_automations=self._host_molecule_automations,
+            host_automations=self._host_trial_automations,
+            host_composer=self._host_molecule_composer_pane,
             host_atom_pane=self._host_molecule_atom_pane,
             on_goto_molecule_tab=self._goto_molecule_subtab,
+            on_goto_trial_tab=self._goto_trial_subtab,
             on_register_molecule_lab_root=self._register_molecule_lab_root,
             host_observation_user=self._host_observation_user,
             host_observation_ai=self._host_observation_ai,
@@ -1192,10 +1201,68 @@ class App(ctk.CTk):
             if self.live_control.active:
                 self._pause_or_resume_live_overlay()
             return
+        # Atom Create: ` pauses Deck listening only — draft + overlay stay.
+        if self._deck_mode is DeckMode.ATOM_CREATE:
+            if self._shell_phase is ShellPhase.INACTIVE:
+                self._resume_atom_create_deck()
+            else:
+                self._pause_atom_create_deck()
+            return
         if self._shell_phase is ShellPhase.INACTIVE:
             self._activate_flight_deck()
             return
         self._deactivate_flight_deck()
+
+    def _pause_atom_create_deck(self) -> None:
+        """Deactivate while Atom Create is open — pause FD, keep create session."""
+
+        key = vk_label(self._flight_deck_expand_vk_for_anchor())
+        self.flight_deck.collapse_menu()
+        try:
+            self.flight_deck.set_deck_lab_mode(
+                True,
+                prompt=(
+                    "Atom Create paused\n"
+                    f"{key} = resume Create · Esc = save → Atom Lab\n"
+                    "Draft and queue marks stay."
+                ),
+                legend=f"{key} = RESUME · ESC → ATOM LAB",
+            )
+        except Exception:
+            pass
+        self._shell_phase = ShellPhase.INACTIVE
+        self._set_resume_handle(True)
+        self.flight_deck.set_shell_phase(
+            ShellPhase.INACTIVE,
+            prompt=f"Atom Create paused · {key} = resume",
+            lab_visible=False,
+            anchored=self._is_anchored(),
+        )
+        self._show_flight_deck(allow_unanchored=True)
+        self.hooks.state.deck_mode_active = True
+        self.hooks.state.atom_create_active = True
+        self._sync_shell_hook_flags()
+        # Keep deck_mode_active true so Esc still peels Create while paused.
+        self.hooks.state.deck_mode_active = True
+        self.hooks.state.atom_create_active = True
+        self._status(f"Atom Create paused — {key} resumes; Esc saves → Atom Lab.", "warn")
+
+    def _resume_atom_create_deck(self) -> None:
+        """Activate again into Atom Create (after ` pause)."""
+
+        self._activate_flight_deck()
+        if self._deck_mode is not DeckMode.ATOM_CREATE:
+            self._deck_mode = DeckMode.ATOM_CREATE
+        self._atom_create_phase = (
+            self._atom_create_phase
+            if self._atom_create_phase is not AtomCreatePhase.IDLE
+            else AtomCreatePhase.CREATE
+        )
+        self._install_atom_create_keymap()
+        self.hooks.state.atom_create_active = True
+        self.hooks.state.deck_mode_active = True
+        self._sync_shell_hook_flags()
+        self._status("Atom Create resumed.", "ok")
 
     def _set_resume_handle(self, active: bool) -> None:
         self._resume_handle = bool(active)
@@ -1514,6 +1581,19 @@ class App(ctk.CTk):
             self._status("Nothing running.", "info")
 
     def _handle_shell_escape(self) -> None:
+        # Atom Create owns Esc even while ` paused the Deck (INACTIVE).
+        if self._deck_mode is DeckMode.ATOM_CREATE:
+            if self._atom_key_capture:
+                self._cancel_atom_key_capture()
+                return
+            if self._atom_create_phase is AtomCreatePhase.EDIT:
+                self._atom_edit_exit()
+                return
+            if self._atom_create_phase is AtomCreatePhase.PLAYBOOK:
+                self._atom_playbook_exit()
+                return
+            self._exit_atom_create_to_atom_lab()
+            return
         rebinding = bool(
             getattr(self.live_control, "molecule_bridge", None) is not None
             and getattr(self.live_control.molecule_bridge, "rebinding", False)
@@ -1597,27 +1677,233 @@ class App(ctk.CTk):
             self._status(f"Live Overlay Lab: {exc}", "error")
 
     def _open_atom_create_from_lab(self) -> None:
+        """Idle Lab / Atom Lab button → Create Atom on Deck (same as M→3)."""
+
+        self._open_atom_create_from_deck()
+
+    def _open_atom_create_from_deck(self) -> None:
         self._ensure_deck_only_surface()
         if self._shell_phase is ShellPhase.INACTIVE:
             self._activate_flight_deck()
+        # Leaving Atom Lab float for Create — close the float, keep create session.
+        self._close_atom_lab_float(quiet=True)
         self._atom_create_phase = AtomCreatePhase.CREATE
         self._atom_draft = AtomDraft()
         self._enter_deck_mode(DeckMode.ATOM_CREATE)
         self._status(
-            "Atom Create — accordion like Deck menu; Esc asks for id then saves (no silent save).",
+            "Create Atom — accordion + queue; Esc saves → Atom Lab; ` pauses Deck only.",
             "info",
         )
 
+    def _open_atom_lab_from_deck(self) -> None:
+        """M→2 — lightweight Molecule Lab focused on Atom (library + coverage)."""
+
+        self._ensure_deck_only_surface()
+        if self._shell_phase is ShellPhase.INACTIVE:
+            self._activate_flight_deck()
+        self._hide_atom_create_overlay()
+        self._enter_deck_mode(DeckMode.ATOM_LAB)
+        self._open_atom_lab_float()
+        self._status("Atom Lab — library + LOL coverage. Create Atom via M→3 or button.", "ok")
+
+    def _open_atom_lab_float(self) -> None:
+        self._close_floating_lab()
+        win = ctk.CTkToplevel(self)
+        win.title("Idle Lab · Atom Lab")
+        win.geometry("780x520")
+        win.minsize(560, 400)
+        win.attributes("-topmost", True)
+        win.protocol("WM_DELETE_WINDOW", self._exit_deck_mode)
+
+        header = ctk.CTkFrame(win, fg_color="transparent")
+        header.pack(fill="x", padx=12, pady=(12, 4))
+        ctk.CTkLabel(
+            header,
+            text="Atom Lab",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            anchor="w",
+        ).pack(side="left")
+        ctk.CTkButton(
+            header,
+            text="Create Atom (Deck)",
+            width=150,
+            command=self._open_atom_create_from_deck,
+        ).pack(side="right")
+        ctk.CTkLabel(
+            win,
+            text="Lightweight Molecule Lab · Atom tab — Esc closes to Flight Deck",
+            text_color="#7E8796",
+            anchor="w",
+        ).pack(fill="x", padx=12, pady=(0, 6))
+
+        host = ctk.CTkFrame(win, fg_color="transparent")
+        host.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        from idle_lab.shell.tabs.molecule_lab import AtomLabPane
+
+        pane = AtomLabPane(
+            host,
+            get_library_rows=self._atom_library_rows,
+            get_coverage_rows=self._lol_coverage_rows,
+            on_refresh=self._reload_automations,
+            on_seed_missing=self._seed_lol_wrappers,
+            on_run_atom=self._run_atom_once_by_id,
+            on_create_stub=self._create_lol_stub_atom,
+        )
+        pane.pack(fill="both", expand=True)
+        self._floating_lab = win
+        self._atom_lab_float_pane = pane
+        try:
+            win.lift()
+            win.focus_force()
+        except Exception:
+            pass
+
+    def _close_atom_lab_float(self, *, quiet: bool = False) -> None:
+        _ = quiet
+        self._atom_lab_float_pane = None
+        self._close_floating_lab()
+
+    def _exit_atom_create_to_atom_lab(self) -> None:
+        """Esc from Create: ask to save, then return to Atom Lab (not bare Deck menu)."""
+
+        self._try_save_atom_draft()
+        self._hide_atom_create_overlay()
+        self._atom_create_phase = AtomCreatePhase.IDLE
+        self._atom_key_capture = False
+        self.hooks.state.atom_key_capture = False
+        self.hooks.state.atom_create_active = False
+        try:
+            self.flight_deck.set_deck_lab_mode(False)
+        except Exception:
+            pass
+        # Ensure Deck is active for Atom Lab float chrome.
+        if self._shell_phase is ShellPhase.INACTIVE:
+            self._activate_flight_deck()
+        self._deck_mode = DeckMode.MENU
+        self._restore_menu_keymap()
+        self._open_atom_lab_from_deck()
+        self._status("Returned to Atom Lab.", "ok")
+
+    def _ensure_atom_create_overlay(self) -> AtomCreateOverlay:
+        if self._atom_create_overlay is None:
+            self._atom_create_overlay = AtomCreateOverlay(
+                self,
+                on_click_moved=self._atom_click_mark_moved,
+                on_click_released=self._atom_click_mark_released,
+                on_drag_moved=self._atom_drag_mark_moved,
+                on_drag_released=self._atom_drag_mark_released,
+                on_ocr_changed=self._atom_ocr_mark_changed,
+            )
+        return self._atom_create_overlay
+
+    def _atom_anchor_rect(self):
+        status, _hwnd, rect, _title = self.anchor_target.snapshot()
+        if status == "ok" and rect is not None:
+            return rect
+        return None
+
+    def _atom_create_avoid_rect(self):
+        """Flight Deck screen rect so the Atom queue does not cover it."""
+
+        try:
+            deck = self.flight_deck
+            if deck is None or not deck.winfo_viewable():
+                return None
+            deck.update_idletasks()
+            left = int(deck.winfo_rootx())
+            top = int(deck.winfo_rooty())
+            width = max(1, int(deck.winfo_width()))
+            height = max(1, int(deck.winfo_height()))
+            return Rect(left=left, top=top, right=left + width, bottom=top + height)
+        except Exception:
+            return None
+
+    def _sync_atom_create_overlay(self) -> None:
+        if self._deck_mode is not DeckMode.ATOM_CREATE:
+            return
+        overlay = self._ensure_atom_create_overlay()
+        show_details = False
+        try:
+            show_details = bool(getattr(self.flight_deck, "_show_descriptions", False))
+        except Exception:
+            show_details = False
+        overlay.sync(
+            steps=list(self._atom_draft.steps),
+            selected_index=int(self._atom_draft.selected_index),
+            phase=self._atom_create_phase.value,
+            anchor=self._atom_anchor_rect(),
+            avoid=self._atom_create_avoid_rect(),
+            show_details=show_details,
+        )
+
+    def _hide_atom_create_overlay(self) -> None:
+        overlay = self._atom_create_overlay
+        if overlay is None:
+            return
+        try:
+            overlay.hide()
+        except Exception:
+            pass
+
+    def _atom_click_mark_moved(self, step_index: int, nx: float, ny: float) -> None:
+        self._atom_draft.set_click_norm(step_index, nx=nx, ny=ny)
+        self._atom_draft.selected_index = step_index
+
+    def _atom_click_mark_released(self, step_index: int, nx: float, ny: float) -> None:
+        self._atom_draft.set_click_norm(step_index, nx=nx, ny=ny)
+        self._atom_draft.selected_index = step_index
+        self._sync_atom_create_overlay()
+        self._status(f"Click {step_index + 1} → ({nx:.2f},{ny:.2f})", "ok")
+
+    def _atom_drag_mark_moved(self, step_index: int, which: str, nx: float, ny: float) -> None:
+        self._atom_draft.set_drag_norm(step_index, which=which, nx=nx, ny=ny)
+        self._atom_draft.selected_index = step_index
+
+    def _atom_drag_mark_released(self, step_index: int, which: str, nx: float, ny: float) -> None:
+        self._atom_draft.set_drag_norm(step_index, which=which, nx=nx, ny=ny)
+        self._atom_draft.selected_index = step_index
+        self._sync_atom_create_overlay()
+        tip = "end" if str(which).lower() in ("end", "1", "b") else "start"
+        self._status(f"Drag {step_index + 1} {tip} → ({nx:.2f},{ny:.2f})", "ok")
+
+    def _atom_ocr_mark_changed(
+        self, step_index: int, nx: float, ny: float, nw: float, nh: float
+    ) -> None:
+        self._atom_draft.set_ocr_norm(step_index, nx=nx, ny=ny, nw=nw, nh=nh)
+        self._atom_draft.selected_index = step_index
+
     def _install_atom_create_keymap(self) -> None:
-        keymap = build_atom_create_keymap(step_count=len(self._atom_draft.steps))
+        if self._atom_key_capture:
+            # Capture owns the Deck prompt — no accordion until a key lands.
+            self.flight_deck.set_deck_lab_mode(
+                True,
+                prompt="Creating Key Event — press the key for this step (Esc cancels)",
+                legend="KEY CAPTURE",
+            )
+            self._sync_atom_create_overlay()
+            return
+        selected = None
+        if self._atom_draft.steps and 0 <= self._atom_draft.selected_index < len(self._atom_draft.steps):
+            selected = self._atom_draft.steps[self._atom_draft.selected_index]
+        if self._atom_create_phase is AtomCreatePhase.EDIT:
+            keymap = build_atom_edit_keymap(
+                step_count=len(self._atom_draft.steps),
+                selected_index=self._atom_draft.selected_index,
+                selected_step=selected,
+            )
+        elif self._atom_create_phase is AtomCreatePhase.PLAYBOOK:
+            keymap = build_atom_playbook_keymap(step_count=len(self._atom_draft.steps))
+        else:
+            keymap = build_atom_create_keymap(step_count=len(self._atom_draft.steps))
         self.flight_deck.set_deck_lab_mode(False)
         self.flight_deck.set_keymap(keymap)
         try:
             self.flight_deck.set_expanded(True)
         except Exception:
             pass
+        self._sync_atom_create_overlay()
         self._status(
-            f"Atom Create · {len(self._atom_draft.steps)} step(s) · Esc = save/exit · {atom_create_legend(phase=self._atom_create_phase)}",
+            f"Atom Create · {len(self._atom_draft.steps)} step(s) · {atom_create_legend(phase=self._atom_create_phase)}",
             "info",
         )
 
@@ -1643,21 +1929,302 @@ class App(ctk.CTk):
         except ValueError as exc:
             self._status(str(exc), "error")
             return
-        self._atom_create_phase = AtomCreatePhase.CREATE
+        # Stay in Playbook menu if that's where the leaf came from.
+        if self._atom_create_phase is not AtomCreatePhase.PLAYBOOK:
+            self._atom_create_phase = AtomCreatePhase.CREATE
         self._refresh_atom_create_chrome()
         self._status(
             f"Added lco:{action} ({len(self._atom_draft.steps)} step(s)).",
             "ok",
         )
 
+    def _atom_playbook_enter(self) -> None:
+        self._atom_key_capture = False
+        self.hooks.state.atom_key_capture = False
+        self._atom_create_phase = AtomCreatePhase.PLAYBOOK
+        self._refresh_atom_create_chrome()
+        self._status("Playbook (Tower) — Esc returns to Create.", "ok")
+
+    def _atom_playbook_exit(self) -> None:
+        self._atom_create_phase = AtomCreatePhase.CREATE
+        self._refresh_atom_create_chrome()
+        self._status("Atom Create — back from Playbook.", "info")
+
     def _atom_add_click_step(self) -> None:
         self._atom_draft.add_click()
         self._atom_create_phase = AtomCreatePhase.CREATE
         self._refresh_atom_create_chrome()
         self._status(
-            f"Added click center ({len(self._atom_draft.steps)} step(s)).",
+            f"Added click mark {self._atom_draft.selected_index + 1} — drag it on the game.",
             "ok",
         )
+
+    def _atom_add_drag_step(self) -> None:
+        self._atom_draft.add_drag()
+        self._atom_create_phase = AtomCreatePhase.CREATE
+        self._refresh_atom_create_chrome()
+        self._status(
+            f"Added drag {self._atom_draft.selected_index + 1} — place start (a) and end (b).",
+            "ok",
+        )
+
+    def _atom_add_key_step(self) -> None:
+        """Queue a pending key:? step, then wait for the physical key."""
+
+        self._atom_create_phase = AtomCreatePhase.CREATE
+        self._atom_draft.add_key("?", pending=True)
+        self._atom_key_capture = True
+        self.hooks.state.atom_key_capture = True
+        self._refresh_atom_create_chrome()
+        self._status("Creating Key Event — press the key (Esc cancels).", "warn")
+
+    def _cancel_atom_key_capture(self) -> None:
+        self._atom_key_capture = False
+        self.hooks.state.atom_key_capture = False
+        steps = self._atom_draft.steps
+        if steps:
+            i = self._atom_draft.selected_index
+            if 0 <= i < len(steps) and steps[i].get("type") == "key" and steps[i].get("pending"):
+                if self._atom_create_phase is AtomCreatePhase.EDIT:
+                    # Recapture cancelled — leave the step, clear pending flag.
+                    steps[i]["pending"] = False
+                    if str(steps[i].get("key") or "?") == "?":
+                        steps[i]["key"] = "a"
+                        steps[i]["description"] = "Send key 'a' (Atom Create)."
+                else:
+                    self._atom_draft.remove_selected()
+        self._status("Key capture cancelled.", "info")
+        self._refresh_atom_create_chrome()
+
+    def _atom_key_captured(self, token: str) -> None:
+        self._atom_key_capture = False
+        self.hooks.state.atom_key_capture = False
+        raw = str(token or "").strip()
+        if not raw:
+            self._status("Key capture got an empty token.", "warn")
+            self._refresh_atom_create_chrome()
+            return
+        key = raw if len(raw) > 1 else raw.lower()
+        if raw.upper() == "SPACE":
+            key = "space"
+        key = key[:32]
+        steps = self._atom_draft.steps
+        i = self._atom_draft.selected_index
+        if steps and 0 <= i < len(steps) and steps[i].get("type") == "key" and steps[i].get("pending"):
+            self._atom_draft.set_key(i, key)
+        else:
+            self._atom_draft.add_key(key)
+        self._atom_create_phase = AtomCreatePhase.CREATE
+        self._refresh_atom_create_chrome()
+        self._status(f"Key confirmed · key:{key}", "ok")
+
+    def _atom_add_ocr_step(self) -> None:
+        self._atom_draft.add_ocr()
+        self._atom_create_phase = AtomCreatePhase.CREATE
+        self._refresh_atom_create_chrome()
+        self._status(
+            f"Added OCR region {self._atom_draft.selected_index + 1} — drag/resize on game (needs review).",
+            "ok",
+        )
+
+    def _atom_edit_enter(self) -> None:
+        if not self._atom_draft.steps:
+            self._status("Atom Edit — add a step first.", "warn")
+            return
+        self._atom_create_phase = AtomCreatePhase.EDIT
+        self._atom_draft.selected_index = max(
+            0, min(len(self._atom_draft.steps) - 1, self._atom_draft.selected_index)
+        )
+        self._refresh_atom_create_chrome()
+        self._status(
+            f"Atom Edit · step {self._atom_draft.selected_index + 1}/{len(self._atom_draft.steps)} · Esc = Create",
+            "ok",
+        )
+
+    def _atom_edit_exit(self) -> None:
+        snapped = self._atom_draft.snap_timed_spam_fields()
+        self._atom_create_phase = AtomCreatePhase.CREATE
+        self._refresh_atom_create_chrome()
+        if snapped:
+            self._status(
+                f"Atom Create — timed spam duration snapped on {len(snapped)} step(s).",
+                "ok",
+            )
+        else:
+            self._status("Atom Create — back from Edit.", "info")
+
+    def _ask_int(self, title: str, initial: int, *, minimum: int) -> int | None:
+        raw = self._ask_name(title, str(int(initial)))
+        if raw is None:
+            return None
+        text = str(raw).strip().lower().replace("ms", "").strip()
+        try:
+            value = int(float(text))
+        except ValueError:
+            self._status(f"Need a whole number (got {raw!r}).", "warn")
+            return None
+        return max(int(minimum), value)
+
+    def _atom_edit_prev(self) -> None:
+        i = self._atom_draft.select_delta(-1)
+        self._refresh_atom_create_chrome()
+        self._sync_atom_create_overlay()
+        label = step_label(self._atom_draft.steps[i]) if self._atom_draft.steps else "?"
+        self._status(f"Edit ▶ {i + 1}/{len(self._atom_draft.steps)} · {label}", "info")
+
+    def _atom_edit_next(self) -> None:
+        i = self._atom_draft.select_delta(1)
+        self._refresh_atom_create_chrome()
+        self._sync_atom_create_overlay()
+        label = step_label(self._atom_draft.steps[i]) if self._atom_draft.steps else "?"
+        self._status(f"Edit ▶ {i + 1}/{len(self._atom_draft.steps)} · {label}", "info")
+
+    def _atom_edit_move_up(self) -> None:
+        i = self._atom_draft.move_selected(-1)
+        self._refresh_atom_create_chrome()
+        self._sync_atom_create_overlay()
+        self._status(f"Moved step to {i + 1}", "ok")
+
+    def _atom_edit_move_down(self) -> None:
+        i = self._atom_draft.move_selected(1)
+        self._refresh_atom_create_chrome()
+        self._sync_atom_create_overlay()
+        self._status(f"Moved step to {i + 1}", "ok")
+
+    def _atom_edit_remove(self) -> None:
+        before = len(self._atom_draft.steps)
+        self._atom_draft.remove_selected()
+        if not self._atom_draft.steps:
+            self._atom_create_phase = AtomCreatePhase.CREATE
+            self._refresh_atom_create_chrome()
+            self._status("Removed last step — back to Create.", "warn")
+            return
+        removed = before - len(self._atom_draft.steps)
+        self._refresh_atom_create_chrome()
+        self._sync_atom_create_overlay()
+        self._status(f"Removed {removed} step · now {len(self._atom_draft.steps)}.", "ok")
+
+    def _atom_edit_toggle_mode(self) -> None:
+        i = self._atom_draft.selected_index
+        mode = self._atom_draft.toggle_fire_mode(i)
+        self._refresh_atom_create_chrome()
+        self._status(f"Step {i + 1} Mode: {mode.capitalize()}", "ok")
+
+    def _atom_edit_toggle_spam_by(self) -> None:
+        i = self._atom_draft.selected_index
+        spam_by = self._atom_draft.toggle_spam_by(i)
+        label = "Clicks" if spam_by == "clicks" else "Timed"
+        self._refresh_atom_create_chrome()
+        self._status(f"Step {i + 1} Spam: {label}", "ok")
+
+    def _atom_edit_ask_click_amount(self) -> None:
+        i = self._atom_draft.selected_index
+        steps = self._atom_draft.steps
+        if not steps or str(steps[i].get("type")) not in {"click", "key"}:
+            return
+        current = int(steps[i].get("click_amount") or 5)
+        value = self._ask_int("Click Amount (min 1)", current, minimum=1)
+        if value is None:
+            self._refresh_atom_create_chrome()
+            return
+        self._atom_draft.set_click_amount(i, value)
+        self._refresh_atom_create_chrome()
+        self._status(f"Click Amount: {value}", "ok")
+
+    def _atom_edit_ask_duration(self) -> None:
+        i = self._atom_draft.selected_index
+        steps = self._atom_draft.steps
+        if not steps or str(steps[i].get("type")) not in {"click", "key"}:
+            return
+        current = int(steps[i].get("duration_ms") or 1000)
+        value = self._ask_int("Duration ms (min 10)", current, minimum=10)
+        if value is None:
+            self._refresh_atom_create_chrome()
+            return
+        self._atom_draft.set_spam_duration_ms(i, value)
+        self._refresh_atom_create_chrome()
+        self._status(f"Duration: {value}ms", "ok")
+
+    def _atom_edit_ask_interval(self) -> None:
+        i = self._atom_draft.selected_index
+        steps = self._atom_draft.steps
+        if not steps or str(steps[i].get("type")) not in {"click", "key"}:
+            return
+        current = int(steps[i].get("interval_ms") or 50)
+        value = self._ask_int("Interval ms (min 10)", current, minimum=10)
+        if value is None:
+            self._refresh_atom_create_chrome()
+            return
+        self._atom_draft.set_spam_interval_ms(i, value)
+        self._refresh_atom_create_chrome()
+        self._status(f"Interval: {value}ms", "ok")
+
+    def _atom_edit_recapture_key(self) -> None:
+        i = self._atom_draft.selected_index
+        steps = self._atom_draft.steps
+        if not steps or str(steps[i].get("type")) != "key":
+            self._status("Select a key step to recapture.", "warn")
+            return
+        steps[i]["pending"] = True
+        steps[i]["key"] = "?"
+        steps[i]["description"] = "Key capture pending — press a key."
+        self._atom_key_capture = True
+        self.hooks.state.atom_key_capture = True
+        self._refresh_atom_create_chrome()
+        self._status("Creating Key Event — press the key (Esc cancels).", "warn")
+
+    def _atom_edit_drag_cycle_speed(self) -> None:
+        i = self._atom_draft.selected_index
+        steps = self._atom_draft.steps
+        if not steps or str(steps[i].get("type")) != "drag":
+            return
+        order = ("slow", "medium", "fast")
+        cur = str(steps[i].get("speed") or "medium").lower()
+        nxt = order[(order.index(cur) + 1) % len(order)] if cur in order else "medium"
+        self._atom_draft.set_drag_speed(i, nxt)
+        self._refresh_atom_create_chrome()
+        self._status(f"Speed: {nxt.capitalize()}", "ok")
+
+    def _atom_edit_drag_toggle_pause(self) -> None:
+        i = self._atom_draft.selected_index
+        steps = self._atom_draft.steps
+        if not steps or str(steps[i].get("type")) != "drag":
+            return
+        enabled = not bool(steps[i].get("pause_end"))
+        self._atom_draft.set_drag_pause_end(i, enabled=enabled)
+        self._refresh_atom_create_chrome()
+        self._status(f"Pause end: {'On' if enabled else 'Off'}", "ok")
+
+    def _atom_edit_ocr_cycle_kind(self) -> None:
+        i = self._atom_draft.selected_index
+        steps = self._atom_draft.steps
+        if not steps or str(steps[i].get("type")) != "ocr":
+            return
+        order = ("text", "color", "shape")
+        cur = str(steps[i].get("ocr_kind") or "text").lower()
+        nxt = order[(order.index(cur) + 1) % len(order)] if cur in order else "text"
+        self._atom_draft.set_ocr_kind(i, nxt)
+        if nxt == "color" and not str(steps[i].get("color_hex") or "").strip():
+            self._atom_edit_ocr_color()
+            return
+        self._refresh_atom_create_chrome()
+        self._status(f"Kind: {nxt.capitalize()}", "ok")
+
+    def _atom_edit_ocr_color(self) -> None:
+        i = self._atom_draft.selected_index
+        steps = self._atom_draft.steps
+        if not steps or str(steps[i].get("type")) != "ocr":
+            self._status("Select an OCR step to pick a color.", "warn")
+            return
+        current = str(steps[i].get("color_hex") or "#00FF00")
+        picked = self._ask_name("OCR color (#RRGGBB)", current)
+        if not picked:
+            self._status("Color pick cancelled.", "info")
+            self._refresh_atom_create_chrome()
+            return
+        self._atom_draft.set_ocr_color(i, picked)
+        self._refresh_atom_create_chrome()
+        self._status(f"OCR color → {steps[i].get('color_hex')}", "ok")
 
     def _handle_atom_create_key(self, token: str) -> None:
         """Legacy flat-key path — accordion dispatch is preferred."""
@@ -1704,7 +2271,9 @@ class App(ctk.CTk):
         self._shared_console.append(f"Atom Create saved {path.name}", "ok")
         return True
 
-    def _host_molecule_automations(self, parent) -> None:
+    def _host_trial_automations(self, parent) -> None:
+        """Trial tab — browse / Start / Dry-run / Walkthrough (was Molecule tab)."""
+
         if self.auto_panel is not None:
             try:
                 self.auto_panel.pack_forget()
@@ -1726,9 +2295,10 @@ class App(ctk.CTk):
             on_comment_collection=self._comment_collection,
             comments=self.comment_store,
             scroll=self.scroll_memory,
+            default_mode="Molecules",
+            title="Trial — run / dry-run / walkthrough",
         )
         self.auto_panel.pack(fill="both", expand=True)
-        # Shared console → docked ML console (one stream with LOL logs).
         try:
             self._shared_console.unsubscribe(self._fanout_shared_console_to_panel)
         except Exception:
@@ -1738,6 +2308,40 @@ class App(ctk.CTk):
             self._reload_taxonomy()
         except Exception:
             pass
+
+    def _host_molecule_composer_pane(self, parent) -> None:
+        """Molecule tab — flowing composer embedded (float still via Pop out)."""
+
+        from idle_lab.composer.window import MoleculeComposerPane
+
+        existing = getattr(self, "_molecule_composer_pane", None)
+        if existing is not None:
+            try:
+                existing.destroy()
+            except Exception:
+                pass
+            self._molecule_composer_pane = None
+
+        def _on_exported(collection_id: str) -> None:
+            self._reload_automations()
+            if self.live_control.active:
+                self.live_control.refresh_molecule_marks()
+            self._status(f"Composer saved “{collection_id}”.", "ok")
+
+        def _on_lco_toggle() -> None:
+            if self.live_control.active:
+                self.live_control.refresh_molecule_marks()
+
+        self._molecule_composer_pane = MoleculeComposerPane(
+            parent,
+            automations_root=project_root() / "automations",
+            project_root_path=project_root(),
+            on_exported=_on_exported,
+            on_status=lambda msg, level="info": self._status(msg, level),
+            on_lco_changed=_on_lco_toggle,
+            heading="Molecule composer",
+        )
+        self._molecule_composer_pane.pack(fill="both", expand=True)
 
     def _fanout_shared_console_to_panel(self, line) -> None:
         if self.auto_panel is None:
@@ -1771,6 +2375,18 @@ class App(ctk.CTk):
             on_create_stub=self._create_lol_stub_atom,
         )
         self.atom_lab_pane.pack(fill="both", expand=True)
+
+    def _goto_trial_subtab(self) -> None:
+        from idle_lab.shell.tabs.molecule_lab import select_ml_subtab
+
+        if not self._is_lab_visible():
+            self._show_lab()
+        if self._molecule_lab_root is None:
+            self._goto_lab_tab("Molecule Lab")
+        if select_ml_subtab(self._molecule_lab_root, "Trial"):
+            self._status("Molecule Lab → Trial", "ok")
+        else:
+            self._status("Could not open Trial tab.", "warn")
 
     def _goto_molecule_subtab(self) -> None:
         from idle_lab.shell.tabs.molecule_lab import select_ml_subtab
@@ -1919,7 +2535,7 @@ class App(ctk.CTk):
         self.hooks.state.deck_mode_active = True
 
         if mode is DeckMode.ATOM_CREATE:
-            # Keep real FD accordion chrome with a create keymap (Esc still peels).
+            # Keep real FD accordion chrome with a create keymap (Esc → Atom Lab).
             if not self._atom_draft.steps:
                 self._atom_draft = AtomDraft()
             self._atom_create_phase = AtomCreatePhase.CREATE
@@ -1935,6 +2551,9 @@ class App(ctk.CTk):
 
         if mode is DeckMode.MOLECULE_LAB:
             # Floating composer opened by caller / Deck M dispatch.
+            pass
+        elif mode is DeckMode.ATOM_LAB:
+            # Float opened by _open_atom_lab_from_deck.
             pass
         elif mode is DeckMode.OBSERVATION_LAB:
             self._open_floating_lab(
@@ -1952,10 +2571,15 @@ class App(ctk.CTk):
     def _exit_deck_mode(self, *, quiet: bool = False) -> None:
         leaving = self._deck_mode
         if leaving is DeckMode.ATOM_CREATE:
+            # Prefer Esc path (_exit_atom_create_to_atom_lab). This is Deactivate/other.
             self._try_save_atom_draft()
+            self._hide_atom_create_overlay()
+        self._atom_lab_float_pane = None
         self._close_floating_lab()
         self._deck_mode = DeckMode.MENU
         self._atom_create_phase = AtomCreatePhase.IDLE
+        self._atom_key_capture = False
+        self.hooks.state.atom_key_capture = False
         try:
             self.flight_deck.set_deck_lab_mode(False)
         except Exception:
@@ -2089,7 +2713,9 @@ class App(ctk.CTk):
                 self._enter_deck_mode(DeckMode.MOLECULE_LAB)
                 self._open_molecule_composer()
             elif kind == "open_atom_lab":
-                self._open_atom_create_from_lab()
+                self._open_atom_lab_from_deck()
+            elif kind == "open_atom_create":
+                self._open_atom_create_from_deck()
             elif kind == "open_observation_lab":
                 self._enter_deck_mode(DeckMode.OBSERVATION_LAB)
                 # Floating Observation Lab skeleton already opens; panel is Idle Lab-native.
@@ -2107,9 +2733,48 @@ class App(ctk.CTk):
                 self._atom_add_lco_step(str(action.get("action") or ""))
             elif kind == "atom_add_click":
                 self._atom_add_click_step()
+            elif kind == "atom_add_drag":
+                self._atom_add_drag_step()
+            elif kind == "atom_add_key":
+                self._atom_add_key_step()
+            elif kind == "atom_add_ocr":
+                self._atom_add_ocr_step()
+            elif kind == "atom_playbook_enter":
+                self._atom_playbook_enter()
             elif kind == "atom_edit_enter":
-                self._atom_create_phase = AtomCreatePhase.EDIT
-                self._status("Atom Edit — reorder/select not wired yet.", "warn")
+                self._atom_edit_enter()
+            elif kind == "atom_edit_exit":
+                self._atom_edit_exit()
+            elif kind == "atom_edit_prev":
+                self._atom_edit_prev()
+            elif kind == "atom_edit_next":
+                self._atom_edit_next()
+            elif kind == "atom_edit_move_up":
+                self._atom_edit_move_up()
+            elif kind == "atom_edit_move_down":
+                self._atom_edit_move_down()
+            elif kind == "atom_edit_remove":
+                self._atom_edit_remove()
+            elif kind == "atom_edit_toggle_mode":
+                self._atom_edit_toggle_mode()
+            elif kind == "atom_edit_toggle_spam_by":
+                self._atom_edit_toggle_spam_by()
+            elif kind == "atom_edit_ask_click_amount":
+                self._atom_edit_ask_click_amount()
+            elif kind == "atom_edit_ask_duration":
+                self._atom_edit_ask_duration()
+            elif kind == "atom_edit_ask_interval":
+                self._atom_edit_ask_interval()
+            elif kind == "atom_edit_recapture_key":
+                self._atom_edit_recapture_key()
+            elif kind == "atom_edit_drag_cycle_speed":
+                self._atom_edit_drag_cycle_speed()
+            elif kind == "atom_edit_drag_toggle_pause":
+                self._atom_edit_drag_toggle_pause()
+            elif kind == "atom_edit_ocr_cycle_kind":
+                self._atom_edit_ocr_cycle_kind()
+            elif kind == "atom_edit_ocr_color":
+                self._atom_edit_ocr_color()
             elif kind == "play_preset":
                 self._ensure_deck_only_surface()
                 self._flight_deck_play_preset(str(action["preset"]), path=path)
@@ -3123,31 +3788,44 @@ class App(ctk.CTk):
 
     def _ask_name(self, title: str, initial: str) -> str | None:
         result: dict[str, str | None] = {"value": None}
-        dialog = self._modal(title, 380, 160)
-        ctk.CTkLabel(dialog, text="Name").pack(anchor="w", padx=16, pady=(16, 6))
-        entry = ctk.CTkEntry(dialog, width=340)
-        entry.pack(padx=16)
-        entry.insert(0, initial)
-        entry.select_range(0, "end")
+        # Pass keys through the LL hook so the entry can type (Atom Create / Deck).
+        prev_dialog = bool(self.hooks.state.title_dialog_open)
+        self.hooks.state.title_dialog_open = True
+        dialog = self._modal(title, 380, 160, keep_topmost=True)
+        try:
+            # Orphan from withdrawn Lab owner so Win32 focus can land in the entry.
+            try:
+                dialog.update_idletasks()
+                hwnd = win32_api.widget_hwnd(dialog)
+                win32_api.clear_window_owner(hwnd)
+            except Exception:
+                pass
+            ctk.CTkLabel(dialog, text="Name").pack(anchor="w", padx=16, pady=(16, 6))
+            entry = ctk.CTkEntry(dialog, width=340)
+            entry.pack(padx=16)
+            entry.insert(0, initial)
+            entry.select_range(0, "end")
 
-        def ok(_event=None) -> None:
-            text = entry.get().strip()
-            if not text:
-                return
-            result["value"] = text
-            dialog.destroy()
+            def ok(_event=None) -> None:
+                text = entry.get().strip()
+                if not text:
+                    return
+                result["value"] = text
+                dialog.destroy()
 
-        def cancel(_event=None) -> None:
-            dialog.destroy()
+            def cancel(_event=None) -> None:
+                dialog.destroy()
 
-        buttons = ctk.CTkFrame(dialog, fg_color="transparent")
-        buttons.pack(fill="x", padx=16, pady=16)
-        ctk.CTkButton(buttons, text="Cancel", width=90, command=cancel).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(buttons, text="Save", width=90, command=ok).pack(side="right")
-        entry.bind("<Return>", ok)
-        dialog.bind("<Escape>", cancel)
-        self._arm_dialog_focus(dialog, entry)
-        self.wait_window(dialog)
+            buttons = ctk.CTkFrame(dialog, fg_color="transparent")
+            buttons.pack(fill="x", padx=16, pady=16)
+            ctk.CTkButton(buttons, text="Cancel", width=90, command=cancel).pack(side="right", padx=(8, 0))
+            ctk.CTkButton(buttons, text="Save", width=90, command=ok).pack(side="right")
+            entry.bind("<Return>", ok)
+            dialog.bind("<Escape>", cancel)
+            self._arm_dialog_focus(dialog, entry)
+            self.wait_window(dialog)
+        finally:
+            self.hooks.state.title_dialog_open = prev_dialog
         return result["value"]
 
     def _ask_new_preset(self) -> tuple[str, str] | None:
@@ -3508,11 +4186,17 @@ class App(ctk.CTk):
                     if self._shell_phase is ShellPhase.ACTIVE and self._is_anchored():
                         action = self.flight_deck.navigate(str(event[1]))
                         self._sync_shell_hook_flags()
+                        if self._deck_mode is DeckMode.ATOM_CREATE:
+                            # D toggle / accordion open — refresh queue details placement.
+                            self._sync_atom_create_overlay()
                         if action is not None:
                             self._dispatch_flight_deck_action(action)
                 elif kind == "atom_create_key":
                     if self._deck_mode is DeckMode.ATOM_CREATE:
                         self._handle_atom_create_key(str(event[1]))
+                elif kind == "atom_key_captured":
+                    if self._deck_mode is DeckMode.ATOM_CREATE and self._atom_key_capture:
+                        self._atom_key_captured(str(event[1]))
                 elif kind == "flight_deck_remap_key":
                     self._apply_flight_deck_remap(int(event[1]))
                 elif kind == "f6":

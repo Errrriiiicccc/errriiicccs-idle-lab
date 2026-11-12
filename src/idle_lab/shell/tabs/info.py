@@ -1,4 +1,4 @@
-"""Info tab — nested accordion docs with Lab jump links."""
+"""Info tab — feel specimen tray + nested docs."""
 
 from __future__ import annotations
 
@@ -6,21 +6,25 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from idle_lab.shell.feel_tray import build_feel_tray
 from idle_lab.shell.info_content import INFO_OUTLINE, InfoSection
 
 
 def build_info_tab(parent, *, on_open_tab: Callable[[str], None] | None = None):
     outer = ctk.CTkScrollableFrame(parent, fg_color="transparent")
     outer.pack(fill="both", expand=True, padx=8, pady=8)
+
+    build_feel_tray(outer)
+
     ctk.CTkLabel(
         outer,
-        text="Info",
-        font=ctk.CTkFont(size=22, weight="bold"),
+        text="More (optional depth)",
+        font=ctk.CTkFont(size=16, weight="bold"),
         anchor="w",
-    ).pack(anchor="w", padx=8, pady=(4, 2))
+    ).pack(anchor="w", padx=8, pady=(16, 2))
     ctk.CTkLabel(
         outer,
-        text="Travel the outline — checklists and links jump to Labs. Live status stays in chrome.",
+        text="Purpose, Labs, running — collapse when you don’t need it. Live status stays in chrome.",
         text_color="#9AA4B2",
         wraplength=720,
         justify="left",
@@ -43,7 +47,8 @@ def _mount_section(
     card.pack(fill="x", padx=8 + depth * 12, pady=4)
 
     body_host = ctk.CTkFrame(card, fg_color="transparent")
-    open_state = {"open": depth == 0}
+    # Depth docs start collapsed — tray is the main act.
+    open_state = {"open": False}
 
     def toggle() -> None:
         open_state["open"] = not open_state["open"]
@@ -58,7 +63,7 @@ def _mount_section(
     header.pack(fill="x", padx=8, pady=6)
     toggle_btn = ctk.CTkButton(
         header,
-        text="▼" if open_state["open"] else "▶",
+        text="▶",
         width=28,
         height=28,
         fg_color="transparent",
@@ -117,7 +122,4 @@ def _mount_section(
     for child in section.children:
         _mount_section(body_host, child, on_open_tab=on_open_tab, depth=depth + 1)
 
-    if open_state["open"]:
-        body_host.pack(fill="x", padx=10, pady=(0, 10))
-    else:
-        body_host.pack_forget()
+    body_host.pack_forget()

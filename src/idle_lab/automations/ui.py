@@ -36,6 +36,8 @@ class AutomationsPanel(ctk.CTkFrame):
         comments: CommentStore | None = None,
         scroll: ScrollMemory | None = None,
         taxonomy: Taxonomy | None = None,
+        default_mode: str = "Atoms",
+        title: str = "Molecules",
     ) -> None:
         super().__init__(master, fg_color="transparent")
         self.store = store
@@ -53,7 +55,9 @@ class AutomationsPanel(ctk.CTkFrame):
         self.on_comment_collection = on_comment_collection
         self.comments = comments
         self.scroll = scroll or ScrollMemory()
-        self._mode = ctk.StringVar(value="Atoms")
+        mode = "Molecules" if str(default_mode).strip().lower().startswith("mol") else "Atoms"
+        self._mode = ctk.StringVar(value=mode)
+        self._panel_title = title
         self._detail_mode = ctk.StringVar(value="Basic")
         self._selected_event: Event | None = None
         self._selected_collection: Collection | None = None
@@ -64,7 +68,9 @@ class AutomationsPanel(ctk.CTkFrame):
     def _build(self) -> None:
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
         toolbar.pack(fill="x", padx=8, pady=(8, 4))
-        ctk.CTkLabel(toolbar, text="Molecules", font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
+        ctk.CTkLabel(
+            toolbar, text=self._panel_title, font=ctk.CTkFont(size=18, weight="bold")
+        ).pack(side="left")
         # CUT: Loops-local Reload — global Refresh only. Keep attribute for call sites.
         self.reload_button = ctk.CTkButton(toolbar, text="Reload", width=90, command=self.on_reload)
         self.stop_button = ctk.CTkButton(toolbar, text="Stop", width=80, command=self.on_stop)
@@ -282,13 +288,8 @@ class AutomationsPanel(ctk.CTkFrame):
             self.up_button.configure(state="normal" if self._browse_stack else "disabled")
 
             if folder is None:
-                ctk.CTkLabel(
-                    self.list_box,
-                    text="Taxonomy missing Atoms / Molecules roots (loops.events / loops.collections).",
-                    text_color="#F09595",
-                    wraplength=220,
-                    justify="left",
-                ).pack(anchor="w", padx=4)
+                # Flat fallback so Molecule Lab stays usable if taxonomy fails to load.
+                self._pack_flat_fallback()
                 return
             if not folder.children:
                 ctk.CTkLabel(self.list_box, text="Empty folder.", text_color="#9AA4B2").pack(anchor="w", padx=4)
@@ -300,6 +301,49 @@ class AutomationsPanel(ctk.CTkFrame):
                     self._pack_leaf_row(node)
 
         self.scroll.around_rebuild("automations.list", rebuild)
+
+    def _pack_flat_fallback(self) -> None:
+        ctk.CTkLabel(
+            self.list_box,
+            text="Taxonomy unavailable — flat list fallback.",
+            text_color="#E7C36A",
+            wraplength=220,
+            justify="left",
+        ).pack(anchor="w", padx=4, pady=(0, 6))
+        if self._mode.get() == "Molecules":
+            items = sorted(self.store.collections.values(), key=lambda c: c.title.lower())
+            if not items:
+                ctk.CTkLabel(self.list_box, text="No molecules on disk.", text_color="#9AA4B2").pack(
+                    anchor="w", padx=4
+                )
+                return
+            for collection in items:
+                row = ctk.CTkFrame(self.list_box, fg_color="transparent")
+                row.pack(fill="x", pady=3)
+                ctk.CTkButton(
+                    row,
+                    text=collection.title,
+                    anchor="w",
+                    fg_color="transparent",
+                    command=lambda c=collection: self._select_collection(c),
+                ).pack(fill="x")
+            return
+        items = sorted(self.store.events.values(), key=lambda e: e.title.lower())
+        if not items:
+            ctk.CTkLabel(self.list_box, text="No atoms on disk.", text_color="#9AA4B2").pack(
+                anchor="w", padx=4
+            )
+            return
+        for event in items:
+            row = ctk.CTkFrame(self.list_box, fg_color="transparent")
+            row.pack(fill="x", pady=3)
+            ctk.CTkButton(
+                row,
+                text=f"{event.title}  · p{event.priority}",
+                anchor="w",
+                fg_color="transparent",
+                command=lambda e=event: self._select_event(e),
+            ).pack(fill="x")
 
     def _pack_folder_row(self, node: TaxonomyNode) -> None:
         row = ctk.CTkFrame(self.list_box, fg_color="transparent")

@@ -48,6 +48,9 @@ class SharedOverlayTests(unittest.TestCase):
         self.assertFalse(buys.is_leaf)
         self.assertIn("2 step", buys.label)
         self.assertEqual(buys.children[0].action["type"], "atom_add_lco")
+        text = atom_create_prompt(phase=AtomCreatePhase.CREATE)
+        self.assertIn("drag", text.lower())
+        self.assertIn("queue", text.lower())
 
     def test_shared_console_fanout(self) -> None:
         console = SharedConsole(maxlen=10)

@@ -18,13 +18,11 @@
 
 ## Content outline (draft)
 
-1. **What Idle Lab is** — human-translation workbench; files; attended; Tower proving ground.  
-2. **Two surfaces** — Idle Lab (mouse, no hotkeys) vs Flight Deck (hotkeys); never both; boot preference in Settings.  
-3. **Nomenclature** — Labs, atoms, molecules, LOL, Anchor, Restart, Deactivate / `` ` ``, Current State, …  
-4. **Chrome** — Anchor, Restart, Settings, live status strip, optional console.  
-5. **Each Lab** — purpose, when to use, checklist, link → tab.  
-6. **Running / Deactivate / resume** — plain language.  
-7. Nested deeper pages as needed (sense ladder, file locations, …).
+1. **How it talks** — interactive **specimen tray** (accordion · toggle · type-in · hold D · Esc peel · queue+glyph · Lab float · two voices). Mirrors [FEEL.md](FEEL.md). Not a prose manual.  
+2. **What Idle Lab is** — optional depth (collapsed).  
+3. **Two surfaces** — optional depth.  
+4. **Nomenclature** / **Chrome** / **Each Lab** / **Running** — optional depth + Lab jump links.  
+5. Nested deeper pages as needed (sense ladder, file locations, …).
 
 ## Open
 

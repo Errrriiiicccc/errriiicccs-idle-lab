@@ -9,26 +9,35 @@
 
 ## Active focus (2026-11-11)
 
-**Exclusive surfaces polish + smoke**, then Atom Create visual authoring.
+**Operator feel draft** — [pieces/shell/FEEL.md](pieces/shell/FEEL.md) + Info **specimen tray** (not locked). Poke How it talks; prose outline is collapsed under More.
 
-→ Boot Flight Deck must not paint Idle Lab; **I→1** opens IL (closes FD); IL chrome **Open Flight Deck** `(closes Idle Lab)`.  
-→ Next likely: on-screen Atom Create queue / drag-place marks.  
-→ Alternates: Atom Edit W/S R/F · Observation accordion · Trial polish.
+→ **Restart** (code changed — `feel_tray.py` / Info).
+
+### Soft hold: Atom Create smoke
+
+Prior Atom Create IA rewrite still uncommitted until Eric says go. Smoke notes below still valid when you return.
+
+### Smoke Atom Create
+
+1. Deck **M→3** Create Atom. Queue must **not** cover the Deck.
+2. **B** expands / **B** again collapses · no empty **X Collapse menu**.
+3. **B→3** Key: FD says “Creating Key Event…” · queue shows `key:?` · press key → confirms.
+4. **D** → detail arrows under steps (position / mode / drag fields…).
+5. **E** on click/key: **Mode:** toggle · when Spam: **Spam: Clicks|Timed** · Amount/Duration + Interval (press → type). Esc snaps timed duration.
+6. Drag/OCR also state-on-leaf. **P** rewrite · Esc peels · outer Esc saves.
 
 **Chat contract:** [REFRESH-RESTART.md](REFRESH-RESTART.md) — data → Refresh; code → Restart.  
 **Test:** [HARNESS.md](HARNESS.md) · [`lab-context.json`](../lab-context.json).
 
 ## What landed recently
 
-- FD **L/M/S** accordion deepen; Atom Create on Deck uses create keymap; Compose → Molecule jump fixed  
-- Molecule Lab Atom coverage + thin `lco_*` wrappers + Atom Create first persist  
-- Shape-first Phases 0–5; Deck Esc immediate + LOL `` ` `` pause/resume  
-- CUT demos archived under [`archive/automations/2026-11-10-cut-demos/`](../archive/automations/2026-11-10-cut-demos/REASON.md)
+- Atom Create: **B** Basic Gesture, **P** Playbook nested, **E** Edit; louder queue; key capture; dialog typing; R reorder unblocked
+- Trial / in-tab composer (prior slice)
 
-## Soft parked (OK later)
+## Soft parked
 
-- OCR create · ML Trial ↔ creator IA polish · Current State detailed schema  
-- In-app AI dispatch · Disk rename pass · Observation Lab accordion depth
+- Richer OCR color picker UI · spam hold-time variants beyond clicks/timed  
+- Current State schema · package rename · in-app AI dispatch
 
 ## Push rule
 

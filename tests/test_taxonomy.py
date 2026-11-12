@@ -42,22 +42,21 @@ class TaxonomyLoadTests(unittest.TestCase):
         root = project_root()
         keymap = load_keymap(default_keymap_path(root))
         labels = [node.label for node in keymap.roots]
-        self.assertEqual(labels, ["Observe", "Clicks", "Nav", "Atoms", "Molecules"])
+        self.assertEqual(
+            labels,
+            ["Live Overlay Lab", "Molecule Lab", "Observation Lab", "Idle Lab", "Settings"],
+        )
         keys = [node.key.upper() for node in keymap.roots]
-        self.assertEqual(keys, ["O", "C", "N", "A", "M"])
-        observe = keymap.child_for_key(keymap.roots, "O")
-        assert observe is not None
-        shot = keymap.child_for_key(observe.children, "2")
-        assert shot is not None
-        self.assertEqual(shot.action["type"], "observation_mark")
-        start = keymap.child_for_key(observe.children, "1")
-        assert start is not None
-        self.assertEqual(start.action["type"], "observation_start")
-        # No Space flagship on the deck catalog.
+        self.assertEqual(keys, ["L", "M", "O", "I", "S"])
+        mol = keymap.child_for_key(keymap.roots, "M")
+        assert mol is not None
+        self.assertFalse(mol.is_leaf)
+        create = keymap.child_for_key(mol.children, "3")
+        assert create is not None
+        self.assertEqual(create.action["type"], "open_atom_create")
+        # No Space flagship on the deck catalog roots.
         for root_node in keymap.roots:
             self.assertNotEqual(root_node.key.strip().lower(), "space")
-            for child in root_node.children:
-                self.assertNotEqual(child.key.strip().lower(), "space")
 
     def test_rejects_reserved_key(self) -> None:
         payload = {

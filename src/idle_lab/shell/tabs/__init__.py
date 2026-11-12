@@ -46,8 +46,10 @@ def mount_stub_tabs(
     on_open_atom_create: Callable[[], None] | None = None,
     on_open_composer: Callable[[], None] | None = None,
     host_automations: Callable[[Any], None] | None = None,
+    host_composer: Callable[[Any], None] | None = None,
     host_atom_pane: Callable[[Any], None] | None = None,
     on_goto_molecule_tab: Callable[[], None] | None = None,
+    on_goto_trial_tab: Callable[[], None] | None = None,
     on_register_molecule_lab_root: Callable[[Any], None] | None = None,
     host_observation_user: Callable[[Any], None] | None = None,
     host_observation_ai: Callable[[Any], None] | None = None,
@@ -69,8 +71,10 @@ def mount_stub_tabs(
                 on_open_atom_create=on_open_atom_create,
                 on_open_composer=on_open_composer,
                 host_automations=host_automations,
+                host_composer=host_composer,
                 host_atom_pane=host_atom_pane,
                 on_goto_molecule_tab=on_goto_molecule_tab,
+                on_goto_trial_tab=on_goto_trial_tab,
                 on_register_root=on_register_molecule_lab_root,
             )
         else:

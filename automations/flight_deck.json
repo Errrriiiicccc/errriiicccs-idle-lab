@@ -40,8 +40,14 @@
         {
           "key": "2",
           "label": "Atom Lab",
-          "description": "Atom Create on Deck — accordion steps, Esc saves with an id.",
+          "description": "Lightweight Molecule Lab focused on the Atom tab (library + LOL coverage).",
           "action": { "type": "open_atom_lab" }
+        },
+        {
+          "key": "3",
+          "label": "Create Atom",
+          "description": "Atom Create on Deck — queue + drag-place. Esc saves and returns to Atom Lab.",
+          "action": { "type": "open_atom_create" }
         }
       ]
     },

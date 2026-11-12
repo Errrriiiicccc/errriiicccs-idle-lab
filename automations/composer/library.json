@@ -2,19 +2,10 @@
   "version": 1,
   "molecules": [
     {
-      "id": "mol_untitled_molecule",
-      "title": "Untitled molecule",
-      "requires_tab": "attack",
-      "description": "Composer molecule (requires attack tab context).",
-      "children": [
-        "composer_untitled_molecule_tab_attack"
-      ]
-    },
-    {
       "id": "mol_lab_smoke_attack_pair",
       "title": "Lab Smoke Attack Pair",
       "requires_tab": "attack",
-      "description": "Molecule Lab · buy · beginning (requires attack tab).",
+      "description": "Molecule Lab \u00b7 buy \u00b7 beginning (requires attack tab).",
       "children": [
         "composer_lab_smoke_attack_pair_tab_attack",
         "composer_lab_smoke_attack_pair_damage",
@@ -28,12 +19,27 @@
       "id": "mol_123",
       "title": "123",
       "requires_tab": "attack",
-      "description": "Molecule Lab · buy · unfiled (requires attack tab).",
+      "description": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires attack tab).",
       "children": [
         "composer_123_tab_attack",
         "composer_123_damage",
         "composer_123_atk_speed",
         "composer_123_multishot_chance"
+      ],
+      "phase": "unfiled",
+      "kind": "buy",
+      "source": "lab"
+    },
+    {
+      "id": "mol_untitled_molecule",
+      "title": "Untitled molecule",
+      "requires_tab": "attack",
+      "description": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires attack tab).",
+      "children": [
+        "composer_untitled_molecule_tab_attack",
+        "composer_untitled_molecule_range",
+        "stat_collect",
+        "composer_untitled_molecule_tab_defense"
       ],
       "phase": "unfiled",
       "kind": "buy",

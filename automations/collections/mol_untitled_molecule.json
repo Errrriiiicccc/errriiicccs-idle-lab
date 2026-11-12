@@ -2,14 +2,17 @@
   "id": "mol_untitled_molecule",
   "title": "Untitled molecule",
   "version": 1,
-  "description": "Composer molecule (requires attack tab context).",
+  "description": "Molecule Lab \u00b7 buy \u00b7 unfiled (requires attack tab).",
   "children": [
-    "composer_untitled_molecule_tab_attack"
+    "composer_untitled_molecule_tab_attack",
+    "composer_untitled_molecule_range",
+    "stat_collect",
+    "composer_untitled_molecule_tab_defense"
   ],
   "branch_variable": "phase",
   "branches": {},
   "loop": false,
   "stop_when": null,
   "run": "once",
-  "notes": "Authored via molecule composer. Files are source of truth \u2014 edit JSON or re-export. Phase/stat branching is stubbed for a later pass."
+  "notes": "Authored via Molecule Lab. Files are source of truth.\nstep 4: Condition: step 3.wave \u2265 100"
 }

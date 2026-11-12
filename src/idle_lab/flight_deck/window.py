@@ -411,7 +411,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
         return list(node.children) if node is not None else []
 
     def go_back(self) -> bool:
-        """X: collapse open section, or collapse the whole menu if none open."""
+        """X: collapse the open section only. Whole menu stays; toggle the same letter to close."""
 
         if not self._expanded:
             return False
@@ -420,8 +420,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
             self._render_menu()
             self._fit_expanded_size()
             return True
-        self.collapse_menu()
-        return True
+        # Nothing open — do not collapse the whole accordion (press the same letter to close).
+        return False
 
     def navigate(self, token: str) -> dict[str, Any] | None:
         """Accordion: letter toggles a top menu; digit fires a leaf under the open menu.
@@ -816,9 +816,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
                     detail = (child.description or "").strip() or "(no description)"
                     lines.append(f"            {detail}")
         if open_node is not None:
-            lines.append(f"  {BACK_TOKEN:<4} Collapse {open_node.label}")
-        else:
-            lines.append(f"  {BACK_TOKEN:<4} Collapse menu")
+            lines.append(f"  {BACK_TOKEN:<4} Close {open_node.label} (or press its letter again)")
         desc_state = "on — press D to hide" if self._show_descriptions else "press D to show (hold later)"
         lines.append(f"  {DESCRIBE_TOKEN:<4} Descriptions ({desc_state})")
         self.menu_list.configure(text="\n".join(lines) if lines else "  (empty)")

@@ -25,11 +25,15 @@
 | --- | --- |
 | **Info** | [info.md](info.md) |
 | **Live Overlay Lab (LOL)** | [lol.md](lol.md) |
-| **Molecule Lab** | [molecule-lab.md](molecule-lab.md) — Atom + Molecule; Trial cohesion parked |
+| **Molecule Lab** | [molecule-lab.md](molecule-lab.md) — Atom + Molecule composer + Trial |
 | **Observation Lab** | [observation-lab.md](observation-lab.md) — User + AI mission |
 | **Flight Deck** | [flight-deck.md](flight-deck.md) — dive complete enough; soft leftovers parked |
 
 ~~Autoclicker Lab~~ → Molecule Lab Atom ([autoclicker-lab.md](autoclicker-lab.md)).
+
+## Feel (draft)
+
+Operator palette: [FEEL.md](FEEL.md). In-app = Info **specimen tray** (interactive), not a wall of text. Not locked.
 
 ## Implementation
 

@@ -20,6 +20,8 @@ class InfoSection:
     children: tuple["InfoSection", ...] = field(default_factory=tuple)
 
 
+# "How it talks" lives in feel_tray.py as interactive specimens — not prose here.
+
 INFO_OUTLINE: tuple[InfoSection, ...] = (
     InfoSection(
         title="What Idle Lab is",

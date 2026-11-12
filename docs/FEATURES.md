@@ -31,7 +31,7 @@ Detail: [pieces/shell/README.md](pieces/shell/README.md), [pieces/shell/flight-d
 | --- | --- |
 | **Info** | Nested verbose docs / onboarding; checklists + links to Labs |
 | **Live Overlay Lab** | Interactive target map + live object-map hands |
-| **Molecule Lab** | **Atom** create/edit + **Molecule** compose; Trial cohesion parked for later polish |
+| **Molecule Lab** | **Atom** create/edit · **Molecule** compose · **Trial** browse/run |
 | **Observation Lab** | **User** capture/review + **AI mission** (Start / Mission view / Results) |
 
 No separate Bench, Loops, Missions, or Autoclicker top-level tabs.
@@ -70,9 +70,9 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 ### Flight Deck
 
 - Inactive → Activate `` ` ``; accordion **L/M/O/I/S** ([`automations/flight_deck.json`](../automations/flight_deck.json)).
-- **L** → Start · Toggle Console · Console Verbosity; **M** → Molecule Lab float · Atom Lab; **O** → Observation float; **I** → Start (closes Flight Deck → Idle Lab); **S** → Open Settings · Set Deactivate Key · Boot Preferences.
+- **L** → Start · Toggle Console · Console Verbosity; **M** → Molecule Lab · Atom Lab · Create Atom; **O** → Observation float; **I** → Start (closes Flight Deck → Idle Lab); **S** → Open Settings · Set Deactivate Key · Boot Preferences.
 - Idle Lab chrome always has **Open Flight Deck** `(closes Idle Lab)` — surfaces never share the screen.
-- Atom Create keeps FD accordion grammar (Buys/Tabs/Scroll/Utility/Click); Esc saves only with an event id.
+- **M→2 Atom Lab** = lightweight Atom library/coverage float; **M→3 Create Atom** = queue + drag-place on Deck. Esc from Create asks to save then returns to Atom Lab. `` ` `` pauses Deck only (keeps Create).
 - Live overlay: object map, hold D describe, Esc exit. [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md), [OBJECT-MAP.md](OBJECT-MAP.md).
 
 ### Idle Lab Labs
@@ -81,7 +81,7 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 | --- | --- |
 | **Info** | Nested outline + tab links |
 | **Live Overlay Lab** | Map list + Start live → Deck |
-| **Molecule Lab** | Atom library + LOL coverage · Atom Create save (lco/click) · Automations panel (Start-all cut) · floating composer · Trial parked |
+| **Molecule Lab** | **Atom** library + LOL coverage · Atom Create (**B** Basic Gesture · **P** Playbook · **E** Edit + queue) · **Molecule** in-tab composer (+ Pop out) · **Trial** browse/run |
 | **Observation Lab** | **User** capture/review (date groups; Mark + rename-on-stop cut) · **AI mission** (Add feedback cut) |
 
 ### Engines still callable
@@ -102,7 +102,7 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 
 ### Still not finished (honest stubs / parked)
 
-- Atom Create visual queue + drag-place paint · Atom Edit reorder · OCR create  
-- Trial ↔ creator IA polish · Current State deep schema · package rename · in-app AI dispatch  
+- Atom Create OCR deep fields / color-shape · keyboard capture without prompt  
+- Current State deep schema · package rename · in-app AI dispatch  
 - Process injection / stealth / in-process LLM  
 - Fully finished Tower buy-priority product loop · C5–C9  

@@ -42,7 +42,9 @@ _TEXT = "#E8EEF6"
 _SELECT = "#3A5A78"
 
 
-class MoleculeLabWindow(ctk.CTkToplevel):
+class MoleculeComposerPane(ctk.CTkFrame):
+    """Embeddable molecule composer body — Molecule tab or float chrome."""
+
     def __init__(
         self,
         master,
@@ -52,19 +54,15 @@ class MoleculeLabWindow(ctk.CTkToplevel):
         on_exported: Callable[[str], None] | None = None,
         on_status: Callable[[str, str], None] | None = None,
         on_lco_changed: Callable[[], None] | None = None,
-        on_close: Callable[[], None] | None = None,
+        heading: str = "Molecule composer",
     ) -> None:
-        super().__init__(master)
-        self.title("Molecule Lab")
-        self.geometry("1280x860")
-        self.minsize(1100, 720)
-        self.configure(fg_color=_BG)
+        super().__init__(master, fg_color=_BG)
         self.automations_root = Path(automations_root or (project_root() / "automations"))
         self.project_root_path = Path(project_root_path or project_root())
         self.on_exported = on_exported
         self.on_status = on_status
         self.on_lco_changed = on_lco_changed
-        self.on_close = on_close
+        self._heading = heading
 
         self.catalog: CapabilityCatalog = load_capability_catalog(self.project_root_path)
         self.context = ComposerContext()
@@ -77,57 +75,6 @@ class MoleculeLabWindow(ctk.CTkToplevel):
 
         self._build()
         self.refresh()
-        self.protocol("WM_DELETE_WINDOW", self._close)
-        # Orphan + focus like LCO console / flight deck — owned Toplevels under a
-        # withdrawn Lab never receive Win32 keyboard focus, so entries look dead.
-        self.after(0, self._orphan_and_focus)
-        self.after(50, self._orphan_and_focus)
-        self.after(150, self._orphan_and_focus)
-
-    # --- lifecycle ---------------------------------------------------------
-
-    def _orphan_and_focus(self) -> None:
-        """Detach from Lab's Win32 owner and steal keyboard focus into this window."""
-
-        if not self.winfo_exists():
-            return
-        try:
-            self.update_idletasks()
-            hwnd = win32_api.widget_hwnd(self)
-            win32_api.clear_window_owner(hwnd)
-            self.lift()
-            self.attributes("-topmost", True)
-            self.focus_force()
-            win32_api.focus_window(hwnd)
-        except Exception:
-            try:
-                self.lift()
-                self.focus_force()
-            except Exception:
-                pass
-        try:
-            self.after(300, self._release_topmost)
-        except Exception:
-            pass
-
-    def _release_topmost(self) -> None:
-        try:
-            if self.winfo_exists():
-                self.attributes("-topmost", False)
-        except Exception:
-            pass
-
-    def _close(self) -> None:
-        callback = self.on_close
-        try:
-            self.destroy()
-        except Exception:
-            pass
-        if callback is not None:
-            try:
-                callback()
-            except Exception:
-                pass
 
     def _emit(self, message: str, level: str = "info") -> None:
         if self.on_status:
@@ -144,7 +91,7 @@ class MoleculeLabWindow(ctk.CTkToplevel):
         header.pack(fill="x", padx=14, pady=(12, 4))
         ctk.CTkLabel(
             header,
-            text="Molecule Lab",
+            text=self._heading,
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=_ACCENT,
         ).pack(side="left")
@@ -1007,4 +954,86 @@ class MoleculeLabWindow(ctk.CTkToplevel):
 
 
 # Back-compat for app wiring / older imports.
+
+class MoleculeLabWindow(ctk.CTkToplevel):
+    """Floating Molecule Lab — same composer body as the in-tab pane."""
+
+    def __init__(
+        self,
+        master,
+        *,
+        automations_root: Path | None = None,
+        project_root_path: Path | None = None,
+        on_exported: Callable[[str], None] | None = None,
+        on_status: Callable[[str, str], None] | None = None,
+        on_lco_changed: Callable[[], None] | None = None,
+        on_close: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(master)
+        self.title("Molecule Lab")
+        self.geometry("1280x860")
+        self.minsize(1100, 720)
+        self.configure(fg_color=_BG)
+        self.on_close = on_close
+        self.pane = MoleculeComposerPane(
+            self,
+            automations_root=automations_root,
+            project_root_path=project_root_path,
+            on_exported=on_exported,
+            on_status=on_status,
+            on_lco_changed=on_lco_changed,
+            heading="Molecule Lab",
+        )
+        self.pane.pack(fill="both", expand=True)
+        self.protocol("WM_DELETE_WINDOW", self._close)
+        self.after(0, self._orphan_and_focus)
+        self.after(50, self._orphan_and_focus)
+        self.after(150, self._orphan_and_focus)
+
+    def refresh(self) -> None:
+        self.pane.refresh()
+
+    def _orphan_and_focus(self) -> None:
+        if not self.winfo_exists():
+            return
+        try:
+            self.update_idletasks()
+            hwnd = win32_api.widget_hwnd(self)
+            win32_api.clear_window_owner(hwnd)
+            self.lift()
+            self.attributes("-topmost", True)
+            self.focus_force()
+            win32_api.focus_window(hwnd)
+        except Exception:
+            try:
+                self.lift()
+                self.focus_force()
+            except Exception:
+                pass
+        try:
+            self.after(300, self._release_topmost)
+        except Exception:
+            pass
+
+    def _release_topmost(self) -> None:
+        try:
+            if self.winfo_exists():
+                self.attributes("-topmost", False)
+        except Exception:
+            pass
+
+    def _close(self) -> None:
+        callback = self.on_close
+        try:
+            self.destroy()
+        except Exception:
+            pass
+        if callback is not None:
+            try:
+                callback()
+            except Exception:
+                pass
+
+
 MoleculeComposerWindow = MoleculeLabWindow
+

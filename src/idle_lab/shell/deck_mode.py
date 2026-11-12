@@ -9,6 +9,7 @@ class DeckMode(str, Enum):
     MENU = "menu"
     LOL = "lol"
     MOLECULE_LAB = "molecule_lab"
+    ATOM_LAB = "atom_lab"
     OBSERVATION_LAB = "observation_lab"
     SETTINGS = "settings"
     ATOM_CREATE = "atom_create"
@@ -33,6 +34,12 @@ def mode_prompt(mode: DeckMode | str, *, activate_key: str = "`") -> str:
             "Molecule Lab (floating composer)\n"
             f"Esc = stop run or close → Deck menu · {key} = Deactivate\n"
             "Type freely — deck letter map paused"
+        )
+    if kind is DeckMode.ATOM_LAB:
+        return (
+            "Atom Lab (lightweight Molecule Lab · Atom tab)\n"
+            f"Esc = close → Deck menu · {key} = Deactivate\n"
+            "Library + LOL coverage · Create Atom is M→3 / button"
         )
     if kind is DeckMode.OBSERVATION_LAB:
         return (
@@ -61,6 +68,8 @@ def mode_legend(mode: DeckMode | str) -> str:
         return "ESC = EXIT LIVE OVERLAY LAB"
     if kind is DeckMode.MOLECULE_LAB:
         return "ESC = CLOSE MOLECULE LAB"
+    if kind is DeckMode.ATOM_LAB:
+        return "ESC = CLOSE ATOM LAB"
     if kind is DeckMode.OBSERVATION_LAB:
         return "ESC = CLOSE OBSERVATION LAB"
     if kind is DeckMode.SETTINGS:
@@ -78,6 +87,7 @@ def mode_display_name(mode: DeckMode | str) -> str:
         DeckMode.MENU: "Menu",
         DeckMode.LOL: "Live Overlay Lab",
         DeckMode.MOLECULE_LAB: "Molecule Lab",
+        DeckMode.ATOM_LAB: "Atom Lab",
         DeckMode.OBSERVATION_LAB: "Observation Lab",
         DeckMode.SETTINGS: "Settings",
         DeckMode.ATOM_CREATE: "Atom Create",

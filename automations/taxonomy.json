@@ -180,7 +180,7 @@
                     },
                     {
                       "id": "loops.events.real.gameplay.stat_collect",
-                      "key": "5",
+                      "key": "6",
                       "label": "Persistent state",
                       "description": "Read tool_export \u2192 variables + CSV (Start selected). Interval every 30s when in a pool.",
                       "ref": {
@@ -190,7 +190,7 @@
                     },
                     {
                       "id": "loops.events.real.gameplay.minute_stats",
-                      "key": "6",
+                      "key": "7",
                       "label": "Endgame minute stats",
                       "description": "Older once-a-minute stats atom (used by endgame_tier1).",
                       "ref": {

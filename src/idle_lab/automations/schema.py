@@ -25,6 +25,8 @@ ACTION_TYPES = frozenset(
         "wait",
         "wait_until",
         "click",
+        "drag",
+        "key",
         "detect_panel",
         "ensure_upgrade_tab",
         "seek_list_top",

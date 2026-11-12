@@ -1,0 +1,54 @@
+{
+  "id": "atom_new",
+  "title": "atom new",
+  "version": 1,
+  "enabled": false,
+  "priority": 50,
+  "timing": {
+    "type": "interval",
+    "every_ms": 60000
+  },
+  "description": "Authored via Atom Create (Molecule Lab).",
+  "notes": "enabled:false by default \u2014 Run selected once from Molecule Lab Atom tab.",
+  "actions": [
+    {
+      "type": "click",
+      "nx": 0.7956081081081081,
+      "ny": 0.8227848101265823,
+      "mode": "single",
+      "description": "Normalized click (Atom Create)."
+    },
+    {
+      "type": "ocr",
+      "nx": 0.35,
+      "ny": 0.35,
+      "nw": 0.3,
+      "nh": 0.12,
+      "variable": "ocr",
+      "parse_as": "raw",
+      "ocr_kind": "text",
+      "color_hex": "",
+      "needs_review": true,
+      "description": "Inline OCR region (Atom Create \u2014 review parse_as)."
+    },
+    {
+      "type": "click",
+      "nx": 0.8209459459459459,
+      "ny": 0.6942551119766309,
+      "mode": "single",
+      "description": "Normalized click (Atom Create)."
+    },
+    {
+      "type": "click",
+      "nx": 0.3614864864864865,
+      "ny": 0.7088607594936709,
+      "mode": "single",
+      "description": "Normalized click (Atom Create)."
+    },
+    {
+      "type": "lco",
+      "action": "tab_attack",
+      "description": "Playbook actuation tab_attack."
+    }
+  ]
+}

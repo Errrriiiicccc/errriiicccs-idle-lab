@@ -32,7 +32,7 @@
 | Key | Action |
 | --- | --- |
 | **L** | Accordion: Start · Toggle Console · Console Verbosity |
-| **M** | Accordion: Molecule Lab (float) · Atom Lab (Atom Create) |
+| **M** | Accordion: Molecule Lab (float) · Atom Lab (library float) · Create Atom |
 | **O** | Observation Lab (floating) — accordion depth later |
 | **I** | Accordion: Start (closes Flight Deck → Idle Lab) |
 | **S** | Accordion: Open Settings · Set Deactivate Key · Boot Preferences |
@@ -50,13 +50,15 @@ Menu letters are abandoned when a Lab mode owns the surface. **Atom Create** swa
 
 Entry-dependent exit like LOL (Esc → Idle Lab Atom path if entered from Idle Lab; → Deck menu if entered from Deck). Save on exit. Creator ≡ editor.
 
-### C — Create (example: click)
+### B — Basic Gesture (example: click)
 
-1. Press **C** → visual **queue** appears (e.g. shows `1: Single Click`).
-2. On the game, a **click indicator** appears (center initially) with **1** inside.
-3. User **mouse drag** moves the indicator to the click target (not “arm then click to place” as the primary story).
+1. Press **B** → Flight Deck accordion expands → **1** Click / **2** Drag / **3** Key / **4** OCR.
+2. Dedicated **Atom queue** window (separate from the Deck) lists the script; glyphs on the game.
+3. For click: numbered circle — **mouse drag** to the target.
 
-Same spirit for drag/key/OCR create flows (queue line + on-screen glyph); detail as we go.
+### P — Playbook rewrite
+
+**P** replaces the Create menu with Tower playbook (**B/T/S/U** accordion). **Esc** returns to Create root (does not exit Create).
 
 ### E — Edit
 
@@ -82,26 +84,23 @@ Always present in these modes: describes hotkeys / fields that aren’t self-exp
 
 **C** (→ click type) → queue shows `N: Single Click` → centered **#** circle → **drag** to target.
 
-### Drag (settled)
+### Drag (ships)
 
-1. **C** → drag type → queue `N: Drag`.  
-2. Two handles appear (start + end), same **N**, arrow between.  
-3. Drag each handle into place (start then end, or either order).  
-4. Default speed Medium; refine under **E**.
+1. **B→2** → queue `N: Drag` · handles `Na` / `Nb`.  
+2. Drag each handle into place.  
+3. Persists as `drag`. Speed / end-pause under **E** later.
 
-### Keyboard (settled)
+### Keyboard (ships — press to capture)
 
-1. **C** → keyboard type → keyboard queue box appears (if first key event).  
-2. Next physical keypress on the real keyboard becomes `N: <Key>` in the box (capture one key).  
-3. Optional: click/drag the queue box position on screen so it doesn’t cover the game.  
-4. Spam/single under **E**.
+1. **B→3** → prompt “press a key” · next physical key → queue `N: key:…`.  
+2. Esc cancels capture.  
+3. Persists as `key`.
 
-### OCR (settled)
+### OCR (ships — region + needs_review)
 
-1. **C** → OCR type → a **region rectangle** appears with **N**, starting as a default mid-screen box.  
-2. User **drags edges/corners** (or move+resize) to the ROI.  
-3. Deck prompts / form for Text vs Color vs Shape enough to proceed; else atom **needs review** (warn only).  
-4. Deeper OCR fields under **E**.
+1. **B→4** → ROI rectangle with **N**.  
+2. Drag body to move; SE grip to resize.  
+3. Inline `nx/ny/nw/nh` + `needs_review`; deeper fields under **E** later.
 
 ### Floating ML → Create Atom
 

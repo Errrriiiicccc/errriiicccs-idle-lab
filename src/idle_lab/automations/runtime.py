@@ -34,12 +34,14 @@ from idle_lab.automations.tower_nav import (
     panel_status_vars,
     seek_list_top,
 )
+from idle_lab.click_foreground import foreground_drag
+from idle_lab import win32_api
 from idle_lab.automations.video import VideoError, clip_name, record_clip
 from idle_lab.evidence import write_failure_pack
 from idle_lab.humanize import HumanizeProfile, interruptible_sleep
 from idle_lab.lab_mode import SuperviseGate
 from idle_lab.live_control.controller import LiveControlController, LiveControlError, NullOverlay
-from idle_lab.models import Rect
+from idle_lab.models import Rect, normalized_to_screen
 from idle_lab.trace_log import TraceLog
 
 
@@ -497,6 +499,8 @@ class AutomationRuntime:
             "wait": self._action_wait,
             "wait_until": self._action_wait_until,
             "click": self._action_click,
+            "drag": self._action_drag,
+            "key": self._action_key,
             "detect_panel": self._action_detect_panel,
             "ensure_upgrade_tab": self._action_ensure_upgrade_tab,
             "scroll_list": self._action_scroll_list,
@@ -563,9 +567,20 @@ class AutomationRuntime:
         roi_id = str(raw.get("roi") or "")
         variable = str(raw.get("variable") or roi_id or "ocr")
         parse_as = str(raw.get("parse_as") or "raw")
-        roi = self.store.rois.get(roi_id)
+        roi = self.store.rois.get(roi_id) if roi_id else None
+        if roi is None and all(k in raw for k in ("nx", "ny", "nw", "nh")):
+            roi = Roi(
+                id=roi_id or f"inline_{variable}",
+                nx=float(raw["nx"]),
+                ny=float(raw["ny"]),
+                nw=float(raw["nw"]),
+                nh=float(raw["nh"]),
+                version=1,
+                notes="inline Atom Create ROI",
+                path=None,
+            )
         if roi is None:
-            raise OcrError(f"unknown roi: {roi_id}")
+            raise OcrError(f"unknown roi: {roi_id or '(missing inline nx/ny/nw/nh)'}")
         rect = self.get_anchor_rect()
         if rect is None:
             self.state.states["anchor_missing"] = True
@@ -588,8 +603,9 @@ class AutomationRuntime:
             self.state.variables["game_over"] = result.inference
         if parse_as == "presence":
             self.state.states[f"{variable}_present"] = result.inference == "PRESENT"
+        label = roi_id or f"inline({roi.nx:.2f},{roi.ny:.2f})"
         self.log(
-            f"OCR {roi_id}: observation={result.observation!r} inference={result.inference!r} → {variable}",
+            f"OCR {label}: observation={result.observation!r} inference={result.inference!r} → {variable}",
             "info",
         )
 
@@ -873,20 +889,97 @@ class AutomationRuntime:
             ny = float(raw["ny"])
         hold_ms = int(raw.get("hold_ms") or 70)
         label = target or f"({nx:.2f},{ny:.2f})"
-        if not self._supervise(f"Click {label}"):
+        times = self._spam_repeat_count(raw)
+        interval_ms = max(10, int(raw.get("interval_ms") or 50))
+        if not self._supervise(f"Click {label}" + (f" ×{times}" if times > 1 else "")):
             return
-        self.log(f"click {label}", "run")
-        click_normalized(
-            hwnd=hwnd,
-            rect=rect,
-            nx=nx,
-            ny=ny,
-            hold_ms=hold_ms,
+        self.log(f"click {label}" + (f" spam×{times} every {interval_ms}ms" if times > 1 else ""), "run")
+        for i in range(times):
+            if self._stop is not None and self._stop.is_set():
+                break
+            click_normalized(
+                hwnd=hwnd,
+                rect=rect,
+                nx=nx,
+                ny=ny,
+                hold_ms=hold_ms,
+                restore_cursor=self.restore_cursor,
+                profile=self._profile(),
+                stop=self._stop,
+            )
+            if i + 1 < times:
+                interruptible_sleep(interval_ms, self._stop)
+        # Clicks change UI — force a fresh frame next observe.
+        self.state.last_image = None
+
+    def _spam_repeat_count(self, raw: dict[str, Any]) -> int:
+        if str(raw.get("mode") or "single").strip().lower() != "spam":
+            return 1
+        interval_ms = max(10, int(raw.get("interval_ms") or 50))
+        spam_by = str(raw.get("spam_by") or "clicks").strip().lower()
+        if spam_by == "timed":
+            from idle_lab.shell.atom_create import snap_spam_duration_ms, spam_click_count
+
+            duration_ms = snap_spam_duration_ms(int(raw.get("duration_ms") or 1000), interval_ms)
+            return spam_click_count(duration_ms=duration_ms, interval_ms=interval_ms)
+        return max(1, int(raw.get("click_amount") or 1))
+
+    def _action_drag(self, raw: dict[str, Any]) -> None:
+        hwnd, rect = self._anchor()
+        if rect is None or not hwnd:
+            raise CaptureError("anchor missing")
+        nx0 = float(raw.get("nx0", raw.get("nx", 0.4)))
+        ny0 = float(raw.get("ny0", raw.get("ny", 0.5)))
+        nx1 = float(raw.get("nx1", 0.6))
+        ny1 = float(raw.get("ny1", 0.5))
+        label = f"({nx0:.2f},{ny0:.2f})→({nx1:.2f},{ny1:.2f})"
+        if not self._supervise(f"Drag {label}"):
+            return
+        self.log(f"drag {label}", "run")
+        if hwnd:
+            win32_api.focus_window(hwnd)
+            time.sleep(0.05)
+        x0, y0 = normalized_to_screen(rect, nx0, ny0)
+        x1, y1 = normalized_to_screen(rect, nx1, ny1)
+        speed = str(raw.get("speed") or "medium").strip().lower()
+        speed_steps = {"slow": 20, "medium": 12, "fast": 6}.get(speed, 12)
+        speed_ms = {"slow": 35, "medium": 25, "fast": 12}.get(speed, 25)
+        hold_end = int(raw.get("hold_end_ms") or 0)
+        if "pause_end" in raw:
+            hold_end = int(raw.get("pause_ms") or 200) if bool(raw.get("pause_end")) else 0
+        foreground_drag(
+            x0,
+            y0,
+            x1,
+            y1,
             restore_cursor=self.restore_cursor,
-            profile=self._profile(),
+            steps=int(raw.get("steps") or speed_steps),
+            step_ms=int(raw.get("step_ms") or speed_ms),
+            hold_end_ms=hold_end,
             stop=self._stop,
         )
-        # Clicks change UI — force a fresh frame next observe.
+        self.state.last_image = None
+
+    def _action_key(self, raw: dict[str, Any]) -> None:
+        token = str(raw.get("key") or "").strip()
+        if not token:
+            raise CaptureError("key action needs key")
+        times = self._spam_repeat_count(raw)
+        interval_ms = max(10, int(raw.get("interval_ms") or 50))
+        if not self._supervise(f"Key {token}" + (f" ×{times}" if times > 1 else "")):
+            return
+        hwnd, _rect = self._anchor()
+        if hwnd:
+            win32_api.focus_window(hwnd)
+            time.sleep(0.05)
+        self.log(f"key {token}" + (f" spam×{times} every {interval_ms}ms" if times > 1 else ""), "run")
+        for i in range(times):
+            if self._stop is not None and self._stop.is_set():
+                break
+            if not win32_api.send_key_token(token):
+                raise CaptureError(f"unsupported key token: {token}")
+            if i + 1 < times:
+                interruptible_sleep(interval_ms, self._stop)
         self.state.last_image = None
 
     def _action_detect_panel(self, raw: dict[str, Any]) -> None:
