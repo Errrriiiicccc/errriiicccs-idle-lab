@@ -8,7 +8,12 @@
 - Scroll memory per tab; panel/tab helpers; object-map context for LCO.
 - **Persistent state** atom via `tool_export` (Tower dump) — numbers without HUD OCR.
 - Molecule Lab conditions can author gates, but runtime does not yet enforce against a shared state object (C5/C7 pending).
+- Phase map atoms **author** the transition graph and expand to automation children; they do **not** yet write a shared Current State object.
 - Layered model described in [VISION.md §5](../../VISION.md); field tables in [knowledge/TOWER-PERCEPTION.md](../../knowledge/TOWER-PERCEPTION.md) / [TOWER-TOOL-EXPORT.md](../../knowledge/TOWER-TOOL-EXPORT.md).
+
+## Soft hold (2026-11-13)
+
+Still core to the vision, but **shell reshape** (expanded/condensed + hotkey pocket) is the active docs arc — [CONTINUATION.md](../../CONTINUATION.md). Revisit Current State + C5 vertical after unless Eric reorders.
 
 ## Proposed
 

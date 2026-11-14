@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | S3 | settled | Fresh start → Info; then last tab |
 | S10 | settled | Tabs = **Info** + Labs |
-| S15–S17 | settled | Running → Deck only; resume handle; exclusive surfaces |
+| S15–S17 | **broken → leaning** | Running → Deck only; exclusive surfaces | **2026-11-13:** one window expanded/condensed instead — [README.md](README.md) |
 | S19 | settled | Info = verbose nested docs |
 | S20 | settled | Live status = chrome header or bottom |
 | S21 | open | Nested-docs widget shape — implement-time OK |
@@ -25,7 +25,8 @@
 | S48 | settled | Atom Create place/edit + entry-dependent Esc |
 | S49 | settled | Edit: **W** prev / **S** next; **R/F** reorder |
 | S50 | settled | Top-level **L/M/O/S** + X + hold D + `` ` `` |
-| S43 | settled | Deck starts deactivated; `` ` `` activates; clear live-hotkey affordance |
+| S70 | leaning | Expanded / condensed costumes; hotkey pocket left-rail bottom; themes→skins | Talk 2026-11-13 |
+| S43 | settled | `` ` `` Deactivate = Stop all; clear live-hotkey affordance | Peer Deck activation story superseded |
 | S44 | settled | Accordion redesigned from scratch; X collapse; hold D = describe |
 | S45 | settled | Modes abandon prior hotkeys; LOL/ML listen Esc+`; Atom Create has no accordion |
 | S46 | settled | Running: Deactivate + queue/status + console + mode-unique keys |

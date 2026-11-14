@@ -59,8 +59,9 @@ Use **operator terms** in UI and product docs. Disk and package names lag for co
 
 | Operator / docs | On disk | Package / symbols |
 | --- | --- | --- |
-| **Flight Deck** | `automations/flight_deck.json` | `flight_deck/` |
-| **Idle Lab** (window) | (rebuild; replaces mega tabs) | `app.py` today |
+| **Idle Lab** (window) | (one app; expanded / condensed) | `app.py` today |
+| **Hotkey Flight Deck** (pocket) | (in-Lab; was peer Deck) | `flight_deck/` (rename later) |
+| **Flight Deck** (legacy peer) | `automations/flight_deck.json` | exclusive Deck — **docs broken 2026-11-13** |
 | **Info** | (in-app docs tab) | — |
 | **Live Overlay Lab (LOL)** | `automations/maps/*.objects.json` | `live_control/` (rename later) |
 | **Molecule Lab** / **Atom Create** | `automations/composer/` + atoms on disk | `composer/` |
@@ -73,7 +74,7 @@ Use **operator terms** in UI and product docs. Disk and package names lag for co
 | Legacy Bench presets | `presets/` | `presets.py` … |
 | Package import | `errriiicccs-idle-lab` | `idle_lab` |
 
-**Flight Deck** = hotkeys · **Idle Lab** = mouse dual · **Labs** = LOL, Molecule (Atom inside), Observation. Legacy words Bench/Loops/Missions/LCO/Screen Map map into that. Rename pass + archive: [pieces/hygiene/](pieces/hygiene/README.md), [archive/](../archive/README.md). Shell: [pieces/shell/](pieces/shell/README.md).
+**Idle Lab** = the app (expanded desk / condensed shoulder-glance) · **Hotkey Flight Deck** = in-Lab expected-action pocket · **Labs** = LOL, Molecule (Atom inside), Observation. Peer exclusive Deck is being folded away ([CONTINUATION.md](CONTINUATION.md)). Legacy words Bench/Loops/Missions/LCO/Screen Map map into that. Rename pass + archive: [pieces/hygiene/](pieces/hygiene/README.md), [archive/](../archive/README.md). Shell: [pieces/shell/](pieces/shell/README.md).
 
 ---
 
@@ -186,13 +187,12 @@ Ethics remain operator responsibility: check target rules; prefer attended runs;
 
 ## 8. How current surfaces serve the vision
 
-Shell redesign ([pieces/shell/](pieces/shell/README.md)): **Flight Deck** (hotkeys) and **Idle Lab** (mouse) both open the same **Labs**. Mega tabbed window is retired in the plan. Until code lands, some docs still say Bench / Observe / LCO.
+Shell redesign ([pieces/shell/](pieces/shell/README.md)): **one Idle Lab window** — expanded for authoring, condensed when LOL/Observation owns focus; hotkeys as an in-Lab pocket mirroring expected actions. Code may still ship the older exclusive peer Deck until that reshape lands.
 
 | Surface | Vision role |
 | --- | --- |
-| **Flight Deck** | Hotkey companion — quick Labs/starts; Deactivate = Stop all |
-| **Idle Lab** (window) | Mouse-dense dual — same power, more description/review |
-| **Labs** | Focused modules (LOL, Molecule, Observation, Basic Autoclicker, …) |
+| **Idle Lab** | The workbench — mouse desk + hotkey pocket; condensed face when hands are on the target |
+| **Labs** | Focused modules (LOL, Molecule, Observation, …) |
 | **Current State** | Memory — queryable layered state ([pieces/state/](pieces/state/README.md)) |
 | **Chrome** | Honesty — Anchor, Refresh, Restart, Stop all / Deactivate |
 

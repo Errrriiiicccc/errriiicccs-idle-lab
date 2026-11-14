@@ -2,9 +2,9 @@
 
 | ID | Status | Question / idea |
 | --- | --- | --- |
-| M1 | leaning | C5 runtime enforce before new authoring sugar |
-| M2 | open | How much Loops tab UI survives once Molecule Lab + companion own the workflow? |
-| M3 | open | Cadence features (every-N, state-change-once) — near-term or after Current State? |
+| M1 | parked | C5 runtime enforce with Current State — before new authoring sugar | Soft-hold vs shell reshape 2026-11-13 |
+| M2 | open | How much Loops tab UI survives once Molecule Lab + pocket own the workflow? |
+| M3 | parked | Cadence features (every-N, state-change-once) — after Current State + C5 |
 | M4 | open | Should “Run pack” live on Idle Lab companion only, Molecule Lab, or both? |
 | M5 | open | Walkthrough mode — keep, move to a Lab, or cut? |
 | M6 | settled | Atom Create **kind gate**: Automation vs Phase map; phase map leaves + expand-on-save | Shape-first 2026-11-11 |

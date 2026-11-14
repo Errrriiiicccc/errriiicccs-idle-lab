@@ -11,48 +11,46 @@ Day-to-day chat focus: [CONTINUATION.md](CONTINUATION.md).
 
 ---
 
-## Target shell (agreed)
+## Target shell (direction 2026-11-13 — docs lead code)
 
 ### Surfaces
 
 | Surface | Role |
 | --- | --- |
-| **Idle Lab** | Mouse-first home. **No hotkeys** while open. Tabs = **Info** + Labs. Factory boot. Persist last tab. |
-| **Flight Deck** | Hotkey companion. Starts **deactivated** (only `` ` ``). Never shown with Idle Lab at once. |
-| **Labs** | Focused modules (embedded in Idle Lab; **floating** from Deck). |
+| **Idle Lab** | The app. **Expanded** = mouse desk (left file-tree labs + hotkey pocket + action pane). **Condensed** = skinny status/chords when LOL/Observation owns focus (Steam Play morph). |
+| **Hotkey Flight Deck** | In-Lab pocket only — never a peer window. Expected-action chords for current focus; remappable open/close later. |
+| **Labs** | Info, LOL, Molecule, Observation in the tree. |
 
-Hard rules: anything running → Idle Lab closes, Deck only; **Deactivate** = Stop all; resume handle after Deactivate; shared **console** object (docked bottom when Molecule Lab open; floating on Deck).
+Hard rules: `` ` `` **Deactivate = Stop all**; LOL Esc → confirm on anchored screen; pocket never steals action-space; condensed@LOL = outside chords + status (glass owns LOL keys).
 
-Detail: [pieces/shell/README.md](pieces/shell/README.md), [pieces/shell/flight-deck.md](pieces/shell/flight-deck.md).
+Detail: [pieces/shell/README.md](pieces/shell/README.md), [pieces/shell/FEEL.md](pieces/shell/FEEL.md). Historical peer-Deck writeup: [pieces/shell/flight-deck.md](pieces/shell/flight-deck.md).
 
-### Idle Lab tabs
+### Idle Lab labs
 
-| Tab | Job |
+| Lab | Job |
 | --- | --- |
-| **Info** | Nested verbose docs / onboarding; checklists + links to Labs |
-| **Live Overlay Lab** | Interactive target map + live object-map hands |
-| **Molecule Lab** | **Atom** create/edit · **Molecule** compose · **Trial** browse/run |
-| **Observation Lab** | **User** capture/review + **AI mission** (Start / Mission view / Results) |
+| **Info** | Nested docs / onboarding (not a Feel Lab) |
+| **Live Overlay Lab** | Interactive target map + live hands → **condensed** |
+| **Molecule Lab** | **Atom** create/edit · **Molecule** compose · **Trial** — mouse desk + pocket |
+| **Observation Lab** | User capture/review + AI mission → **condensed** |
 
-No separate Bench, Loops, Missions, or Autoclicker top-level tabs.
+No separate Bench, Loops, Missions, or Autoclicker top-level tabs. No peer Flight Deck.
 
-### Flight Deck (target)
+### Skins / feel (target)
 
-- Top-level accordion: **L** / **M** / **O** / **S** · **X** collapse · hold **D** describe · `` ` `` Deactivate.
-- Prefer nested leaves over flat enter — e.g. **L** Start + console toggles; **M** Molecule vs Atom Lab; **S** common settings inline.
-- Modes abandon prior hotkeys when a Lab owns the surface (LOL / ML float / Settings). **Atom Create** keeps accordion grammar with a create keymap.
-- Atom Create: accordion step sections · **E** edit stub · save on exit (needs event id) · shared overlay primitives with Live Overlay Lab.
+- Multiple **themes** as real Idle Lab skins (from Feel Lab keep-list).
+- Omit Structure experiments; omit Info specimen-tray as product surface.
 
 ### Sense / state / hygiene (target)
 
 - Sense ladder: structured source → title-native hooks → pixels/OCR ([VISION §4.3](VISION.md)).
-- Current State is core (timing vs ML polish parked).
+- Current State is core (soft-hold vs shell reshape — [CONTINUATION.md](CONTINUATION.md)).
 - Deprecated demos/docs → [archive/](../archive/README.md); observations are **deleted**, not auto-archived.
-- Full disk/package rename pass with or after shape-first ([pieces/hygiene/](pieces/hygiene/README.md)).
+- Full disk/package rename after shell shape stabilizes ([pieces/hygiene/](pieces/hygiene/README.md)).
 
-### Shape-first build rule
+### Build rule
 
-Show UI skeletons/stubs before full wiring — no fake success. Exact runtime (C5 gates, etc.) follows once the shell looks right.
+Docs for this reshape before coding waterfall. Show UI skeletons/stubs before full wiring — no fake success.
 
 ---
 
@@ -100,15 +98,15 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 - `python -m idle_lab.harness …` — [HARNESS.md](HARNESS.md). [`lab-context.json`](../lab-context.json).
 - Click-logger demos are archived — restore from archive only if a harness story needs them.
 
-### Feel Lab (sandbox)
+### Feel Lab (sandbox on disk)
 
-- Separate window: `python -m idle_lab.feel_lab` (Desktop **Feel Lab** shortcut). Not product chrome.
-- A/B(/C) stages for menu / overlay / feedback mouth-feel; NEW rings; picks → `feel/picks.json`.
+- Still runnable: `python -m idle_lab.feel_lab`. Product direction: fold **themes → Idle Lab skins**; sandbox not required.
 - [pieces/shell/FEEL.md](pieces/shell/FEEL.md).
 
 ### Still not finished (honest stubs / parked)
 
-- Atom Create OCR deep fields / color-shape · keyboard capture without prompt  
-- Current State deep schema · package rename · in-app AI dispatch  
+- **Active arc (docs):** one-window shell — expanded/condensed + hotkey pocket + skins ([CONTINUATION.md](CONTINUATION.md))  
+- Code still on exclusive peer Flight Deck until reshape lands  
+- Current State + C5 (soft-hold) · Atom Create OCR deep fields · package rename · in-app AI dispatch  
 - Process injection / stealth / in-process LLM  
 - Fully finished Tower buy-priority product loop · C5–C9  

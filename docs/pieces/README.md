@@ -16,10 +16,10 @@ High-level map of Idle Lab. Purpose: [VISION.md](../VISION.md).
 
 | Piece | Job | Docs |
 | --- | --- | --- |
-| **Shell** | Idle Lab ↔ Flight Deck; Labs | [shell/](shell/README.md) |
-| **Hands** | LOL + Atom Create overlays | [hands/](hands/README.md) |
+| **Shell** | One Idle Lab · expanded/condensed · hotkey pocket (**active**) | [shell/](shell/README.md) |
+| **Hands** | LOL + overlays (Create moves into Lab) | [hands/](hands/README.md) |
 | **Molecules** | Atom + Molecule Lab | [molecules/](molecules/README.md) |
-| **State** | Current State (core; timing parked) | [state/](state/README.md) |
+| **State** | Current State (core; soft-hold vs shell reshape) | [state/](state/README.md) |
 | **Sense** | Source → native → OCR | [sense/](sense/README.md) |
 | **Authoring** | Files + AI dispatch (parked) | [authoring/](authoring/README.md) |
 | **Evidence** | Observation Lab | [evidence/](evidence/README.md) |
@@ -30,7 +30,9 @@ Living questions: [DECISIONS.md](DECISIONS.md).
 
 ## After docs
 
-1. **Shape-first UI** — [shell/SHAPE-FIRST-PLAN.md](shell/SHAPE-FIRST-PLAN.md) (Phase 0 greenlit)  
-2. **State** — deepen Current State when needed (parked vs shell)  
-3. **Rename pass** — disk/packages with or after UI  
-4. Move CUT demos into `archive/` during waterfall (plan Phase 5)  
+1. ~~**Shape-first peer Deck**~~ — landed in code; **docs now break** exclusive Deck ([CONTINUATION.md](../CONTINUATION.md)).  
+2. **Shell reshape** — expanded/condensed + hotkey pocket + themes→skins (**active**).  
+3. **State loop** — Current State + C5 on a Tower vertical — after reshape unless reordered.  
+4. **Rename pass** — after shell shape stabilizes.  
+5. ~~CUT demos → `archive/`~~ — done in Phase 5.  
+

@@ -1,106 +1,95 @@
 # Operator feel (draft)
 
-**Status:** draft — not locked.  
-**Purpose:** [VISION.md](../../VISION.md) · **Shell:** [README.md](README.md) · **Info:** [info.md](info.md)
+**Status:** draft — direction locked in talk 2026-11-13; not fully coded.  
+**Purpose:** [VISION.md](../../VISION.md) · **Shell:** [README.md](README.md) · **Handoff:** [../../CONTINUATION.md](../../CONTINUATION.md)
 
-**Two in-app surfaces:**
+## What we kept / cut from Feel Lab
 
-| Surface | Job |
+| Keep | Cut |
 | --- | --- |
-| **Info → How it talks** | Settled **specimen tray** of the current palette (poke; captions from doing) |
-| **Feel Lab** | Sandbox. Left **Home** = main tabs. Middle = accordion **sub-tabs** (siblings stay; open one expands children underneath — e.g. Colour: Thread/Rim/Lift/Type). Colour lean: **Type → Bracket**. Structure lean: same accordion. Picks → [`feel/picks.json`](../../../feel/picks.json). |
+| **Multiple themes** → real **Idle Lab skin system** | Structure experiments |
+| Nested one-path folder grammar + Esc peel for keys | Info tab as Feel Lab / specimen-tray product surface |
+| `[key] Label` expected-action language | Peer Flight Deck as second home |
 
-### Fundamental feel (candidate → FD)
+Feel Lab (`python -m idle_lab.feel_lab`) may remain a private toy; product chrome only needs **skins**.
 
-1. User lands on a **layer** (e.g. Stages). Only that layer’s buttons are live/highlighted.  
-2. Live buttons read **`[key] Label`**.  
-3. Press key → push deeper; parent layer loses keys/highlight.  
-4. **Esc** peels one layer.  
-5. Flight Deck accordion should speak this same language once a theme wins.
+## Two costumes, one window
 
-Agents use the palette ids below when asking “accordion or Lab button?” — not freeform widgets. Wild alternatives live in Feel Lab first; winners promote here + Info tray before coding into the shell.
+| Costume | Feel |
+| --- | --- |
+| **Expanded** | Desk. Mouse builds atoms/molecules. Left = file-tree labs; bottom of rail = **Hotkey Flight Deck** pocket; right = action space. |
+| **Condensed** | Shoulder glance. Lab on pause while LOL/Observation owns focus. Status + outside chords. Same window, less furniture. |
 
----
+`` ` `` = Deactivate = Stop all. Esc out of LOL = **loud confirm on the anchored screen**, not a tiny Lab dialog.
 
-## Two voices, one product
+## Hotkey pocket (expanded)
+
+App saying: *I think your focus is here — here are the expected actions as keys.*  
+Screen buttons always work. Pocket tracks. Height breathes. Minimize is obvious (`Hotkey flight deck · [key] open/close`). Never floats; never eats the action pane.
+
+**Mouse** may teleport in the tree (sibling click collapses the other branch).  
+**Keys** walk the stack; Esc peels one folder.
+
+## Voices (updated)
 
 | Voice | Channel | Density |
 | --- | --- | --- |
-| **Idle Lab** | Mouse · buttons · tabs | Explanatory |
-| **Flight Deck** | Hotkeys · accordion | Terse · muscle-memory |
+| **Expanded Lab** | Mouse · tree · action pane | Explanatory |
+| **Hotkey pocket / condensed** | Expected chords · status | Terse · muscle-memory |
+| **LOL glass** | Overlay on target | Hands-on; *is* the LOL hotkey UI |
 
-Same Labs. Never a third voice (half-hotkey dialogs, unique cancel paths, one-off chrome).
+No peer Deck window. No third cancel story.
 
----
-
-## Surfaces
+## Surfaces (updated)
 
 | Part | What it is |
 | --- | --- |
-| **Idle Lab** | Mouse home · tabs · no hotkeys while open |
-| **Flight Deck** | Hotkey companion · never shown with Idle Lab |
-| **Lab float** | Lightweight Lab from Deck (ML / Atom Lab / OL) |
-| **Overlay** | Marks / regions / handles on the game |
-| **Queue** | Separate script list (Atom Create truth) |
-| **Console** | Shared log · docked in Molecule Lab · float on Deck |
+| **Idle Lab** | The app — expanded or condensed |
+| **Hotkey Flight Deck** | Docked pocket in left rail (expanded) / condensed face language |
+| **Overlay (LOL)** | Marks / regions / handles on the game |
+| **Queue** | Script list when authoring atoms |
+| **Console** | Shared log — progressive in condensed; docked when useful in expanded |
 
----
-
-## Menus
+## Menus / controls (leaning)
 
 | Type | Use when |
 | --- | --- |
-| **Tabs** | Top Lab switch (Info / LOL / Molecule / Observation) |
-| **Sub-tabs** | Inside a Lab (Atom · Molecule · Trial) |
-| **Accordion** | Deck letter → digit leaves · Create / Edit too |
-| **Nested outline** | Info drill-down only |
+| **File-tree labs** | Left rail navigation |
+| **Action pane** | Right — the work |
+| **Hotkey pocket leaves** | Expected actions for current folder depth |
+| **Lab button** | Mouse twin of a pocket leaf |
+| **Esc peel** | One folder out (keys); LOL exit = confirm overlay |
+| **`` ` ``** | Deactivate = Stop all |
+| **Hold D** | Describe (LOL) |
 
----
+## Hard refuse
 
-## Controls
-
-| Type | Use when |
-| --- | --- |
-| **Chrome button** | Always-on transport (Anchor · Restart · Settings · Open Deck) |
-| **Lab button** | Mouse twin of a Deck leaf |
-| **Hotkey leaf** | One action in an accordion |
-| **Toggle leaf** | Two-state press (e.g. Single \| Spam) |
-| **Type-in leaf** | Press → type number/text · Esc cancels |
-| **Hold D** | Describe the live leaf |
-| **Esc peel** | One layer out · outer save / exit |
-| **`` ` ``** | Activate / Deactivate only |
-
----
-
-## Feedback
-
-| Type | Use when |
-| --- | --- |
-| **Deck line** | What’s live (“Creating Key Event…”) |
-| **Queue line** | Script step truth (`key:?`) |
-| **Glyph** | Selection / placement on the game |
-| **Status strip** | Running / files changed — chrome, not Info |
-| **Needs review** | Incomplete cue (OCR) — honest, not silent |
-
----
-
-## Hard refuse (anti-patterns)
-
-- Unique dialogs for what **Esc peel** already does  
-- Empty chrome / collapse buttons with no job  
-- Modes that hide Stop / Deactivate  
-- Mouse-only paths with no Deck dual (or the reverse) without documenting why  
+- Peer Flight Deck as a second exclusive OS  
+- Floating hotkey window over the action pane  
+- Atom Create as Deck-only piano with no mouse desk  
 - Silent no-ops — fail loud or abstain  
 - Inventing a new cancel / save story mid-feature  
 
----
-
 ## Agent gate
 
-Before proposing UI or implementing a Lab slice:
+Before proposing UI:
 
-1. Which **surfaces / menus / controls / feedback** does this use?  
-2. Does it **extend** the palette? If yes → update this draft + Info first.  
-3. Prefer “accordion + queue + Esc peel” over a new window type.
+1. Expanded or condensed? Pocket or glass?  
+2. Does this extend skins / tree grammar? Update this draft first.  
+3. Prefer “tree + pocket + Esc peel” over a new window type.
 
-Ask the operator in palette language: “Accordion leaf or Lab button?” · “Lab float or Idle Lab sub-tab?” — not freeform widgets.
+Ask: “Lab button or pocket leaf?” · “Morph to condensed or stay expanded?” — not freeform widgets.
+
+---
+
+## Palette ids (legacy specimen — revisit with skins)
+
+Older accordion/tray ids below may still inform naming; **Info specimen tray is not a product requirement.** Prefer skins + pocket language above when they conflict.
+
+### Fundamental feel (still true)
+
+1. User lands on a **layer** / folder. Only that layer’s expected actions are live.  
+2. Live actions read **`[key] Label`** (in pocket and/or on glass).  
+3. Key → push deeper; mouse may re-root.  
+4. **Esc** peels one layer (except LOL exit confirm).  
+5. Condensed + pocket speak this same language.

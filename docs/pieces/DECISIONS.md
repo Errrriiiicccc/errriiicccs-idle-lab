@@ -10,61 +10,66 @@ Status tags: `open` · `leaning` · `settled` · `parked`
 
 | ID | Status | Question / idea | Notes |
 | --- | --- | --- | --- |
-| D7 | open | **Operator feel** catalog ([shell/FEEL.md](shell/FEEL.md)) + Info **How it talks** | Draft only — lock after Eric reviews in-app |
-| D8 | leaning | **Feel Lab** sandbox (`python -m idle_lab.feel_lab`) for A/B mouth-feel before shell locks | Same repo/Python; not a second product. Picks in `feel/picks.json`. Desktop shortcut. |
-| D1 | settled | Keep **Flight Deck** as the hotkey companion | Not renamed to Idle Lab |
-| D2 | settled | Rename LCO → **Live Overlay Lab (LOL)** | Lab nomenclature + atoms/molecules |
-| D3 | settled | Destroy mega tabbed window; rebuild as **Labs** only | Labs: Info, LOL, Molecule (Atom inside), Observation; Autoclicker folded into Atom |
-| D4 | settled | **Idle Lab** = mouse-dense dual of Flight Deck | Same starts; mouse vs hotkeys |
-| D5 | settled | **Deactivate = Stop all**; only `` ` `` still listened | Confirmed |
-| D6 | settled | Rich surface name = **Idle Lab** | Resolves naming collision |
+| D1 | **broken → leaning** | Peer **Flight Deck** as exclusive hotkey companion | **2026-11-13:** fold into Idle Lab — expanded/condensed + in-Lab hotkey pocket. [shell/README.md](shell/README.md) |
+| D4 | **broken → leaning** | Idle Lab = mouse dual of Deck (no hotkeys while open) | Hotkeys live in Lab via pocket; mouse still owns authoring |
+| D7 | leaning | Operator feel + **skins** ([shell/FEEL.md](shell/FEEL.md)) | Themes → real Idle Lab skins; drop Info specimen-tray product surface |
+| D8 | parked | **Feel Lab** sandbox | Themes fold into product; Structure omitted; sandbox optional toy |
+| D2 | settled | Rename LCO → **Live Overlay Lab (LOL)** | |
+| D3 | settled | Destroy mega tabbed window; rebuild as **Labs** | Info, LOL, Molecule, Observation |
+| D5 | settled | **Deactivate = Stop all**; `` ` `` | Confirmed again 2026-11-13 |
+| D6 | settled | Rich surface name = **Idle Lab** | |
+| D60 | leaning | Costumes: **expanded** / **condensed** (same window) | Condensed auto for LOL / Observation |
+| D61 | leaning | **Hotkey Flight Deck** pocket = left-rail bottom; never float; Settings key later | Tracks focus; breathes with map |
+| D62 | leaning | Tree: one open path; mouse teleport OK; keys Esc-peel | |
+| D63 | leaning | LOL Esc → big confirm on anchored screen | Esc cancel · Enter exit |
+| D64 | leaning | Condensed@LOL = outside chords + status only | Glass owns LOL actions |
 
 ## Cut / keep / rename
 
 | ID | Status | Question / idea | Notes |
 | --- | --- | --- | --- |
-| D10 | settled | Cut / Refine / Keep | Agreed leans in [hygiene/CUT-REFINE-KEEP.md](hygiene/CUT-REFINE-KEEP.md); archive policy in [archive/README.md](../../archive/README.md) |
-| D11 | settled | **Full rename pass** (UI + disk + packages) | After shell/LOL names land in plan; before or with code waterfall |
-| D12 | settled | External `idle-lab/docs/` — **ignore by default**; mine only if a piece needs a specific fact; no parallel vision | Agent judgment 2026-11-09; happy to cut |
-| D13 | parked | FEATURES “Not in this POC” review | Same canvas as D10 |
+| D10 | settled | Cut / Refine / Keep | [hygiene/CUT-REFINE-KEEP.md](hygiene/CUT-REFINE-KEEP.md) |
+| D11 | settled | **Full rename pass** | Timing still after shell shape stabilizes |
+| D12 | settled | External `idle-lab/docs/` — ignore by default | |
+| D13 | parked | FEATURES “Not in this POC” review | |
 
 ## Sense & state
 
 | ID | Status | Question / idea | Notes |
 | --- | --- | --- | --- |
 | D20 | settled | Sense ladder: source → native hooks → pixels/OCR | VISION §4.3 |
-| D21 | settled | **Current State** is core | |
-| D22 | parked | Ordering C5 vs Current State vs shell | Everything rewriting; decide later |
-| D23 | parked | Browser DOM / a11y trees | Explained below; later-title research, not Tower-now |
-| D24 | settled | **Atom kinds:** Automation + Phase map; Atom Create chooses kind first; phase maps author layered screen state on-screen | Shape-first leaves + expand 2026-11-11 · [shell/molecule-lab.md](shell/molecule-lab.md) |
+| D21 | settled | **Current State** is core | Still true; not the active docs arc tonight |
+| D22 | parked | Ordering C5 vs Current State vs shell | **Re-parked 2026-11-13:** shell reshape first (tonight); state loop after unless Eric reorders |
+| D23 | parked | Browser DOM / a11y trees | |
+| D24 | settled | **Atom kinds:** Automation + Phase map | |
 
 ### D23 plain English (for later)
 
-**Browser DOM** = the HTML structure of a web page (buttons, text, IDs) — automation can click/read nodes instead of OCR’ing pixels.  
-**Accessibility tree** = the OS/app’s “what’s on screen for screen readers” API (names, roles, bounds) — same idea for desktop apps.  
-Both are “title-native hooks” on the sense ladder. Tower/BlueStacks won’t give us much here; useful when we hit browsers or accessible desktop apps.
+**Browser DOM** = HTML structure — click/read nodes instead of OCR.  
+**Accessibility tree** = OS “what’s on screen for screen readers.”  
+Title-native hooks on the sense ladder; not Tower-now.
 
 ## Authoring & AI
 
 | ID | Status | Question / idea | Notes |
 | --- | --- | --- | --- |
-| D30 | parked | In-app prompt dispatch | TBD — not current focus |
-| D31 | parked | Model transport | Needs a scoped pass later |
-| D32 | parked | Files remain source of truth | Settled in principle; not focusing now |
+| D30 | parked | In-app prompt dispatch | |
+| D31 | parked | Model transport | |
+| D32 | parked | Files remain source of truth | |
 
 ## Target & ambition
 
 | ID | Status | Question / idea | Notes |
 | --- | --- | --- | --- |
 | D40 | settled | Tower until much cleaner; multi-title ceiling | |
-| D41 | parked | “Much cleaner” exit checklist | Hard to say; revisit after shell/labs settle |
+| D41 | open | “Much cleaner” exit checklist | Revisit after expanded/condensed + pocket land |
 
 ## Process
 
 | ID | Status | Question / idea | Notes |
 | --- | --- | --- | --- |
 | D50 | settled | Docs/plan before coding waterfall | |
-| D51 | settled | FEATURES/LAYOUT/README synced to target vs ships-today | 2026-11-10 |
+| D51 | settled | FEATURES target vs ships-today | Keep honest while docs lead code |
 | D52 | parked | Research L1–L10 cite-only | |
 
 ---
@@ -73,5 +78,7 @@ Both are “title-native hooks” on the sense ladder. Tower/BlueStacks won’t 
 
 | Date | What folded | Where |
 | --- | --- | --- |
+| 2026-11-13 | Shell reshape talk: one window, expanded/condensed, hotkey pocket, themes→skins; break D1/D4; re-park D22 | CONTINUATION + shell README/FEEL + this file |
+| 2026-11-13 | *(superseded)* Accidental “state-loop next” handoff from unread plan implement | Replaced by shell reshape above |
 | 2026-11-09 | Sense ladder; Tower proving-ground; Deactivate; archive mine | VISION + pieces created |
-| 2026-11-09 | Flight Deck kept; Idle Lab = mouse dual; LOL; Labs destroy/rebuild; D12/D22–D32/D41 parked | shell + hands + VISION lexicon + this file |
+| 2026-11-09 | Flight Deck kept; Idle Lab = mouse dual; LOL; Labs destroy/rebuild | shell + hands + VISION lexicon — **peer Deck now broken** |

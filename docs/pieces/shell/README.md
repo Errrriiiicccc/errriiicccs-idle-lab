@@ -1,40 +1,55 @@
 # Shell
 
-**Job:** Two exclusive surfaces — **Idle Lab** (mouse, no hotkeys) and **Flight Deck** (hotkeys, lightweight Labs) — never shown at once.  
-**Decisions:** [decisions.md](decisions.md)
+**Job:** One window — **Idle Lab** — with two costumes (**expanded** / **condensed**) and an in-Lab **Hotkey Flight Deck** pocket.  
+**Decisions:** [decisions.md](decisions.md) · **Feel:** [FEEL.md](FEEL.md) · **Handoff:** [../../CONTINUATION.md](../../CONTINUATION.md)
 
-## Hard rules (settled)
+## Direction (2026-11-13 — leaning / docs ahead of code)
 
-1. **Never** show Flight Deck and Idle Lab at the same time.
-2. **Idle Lab open** → **no** keyboard hotkeys (buttons only).
-3. **Anything running** → Idle Lab closed; **Flight Deck only**.
-4. `` ` `` = Activate / Deactivate on Flight Deck; resume handle after Deactivate (continue / restart-wipe / Esc → Idle Lab).
-5. Factory / fresh start → Idle Lab on **Info**. Thereafter persist **last selected tab**.
-6. Live status lives in Idle Lab **chrome** (header or bottom bar) — not inside Info.
+Peer Flight Deck as a second exclusive surface is **out**. Fold that job into Idle Lab.
 
-## Surfaces
-
-| Surface | Role |
+| Costume | Role |
 | --- | --- |
-| **Idle Lab** | Mouse home. Tabs = **Info** + Labs. Shared wrap: Anchor, Restart, Settings, tab switch, live status strip. |
-| **Flight Deck** | Hotkey companion when Deck is the surface (idle-on-deck or something running). Lightweight Lab windows + atom-create overlay chords. |
+| **Expanded** | Full Idle Lab. Mouse desk. Left rail = labs as file-tree; right = action space. Hotkey pocket at bottom of left rail. |
+| **Condensed** | Same window, skinny representation. Auto when LOL / Observation owns focus (Steam Play: Lab takes a break). Close that Lab → expand again. |
 
-## Tabs inventory
+### Hard rules (new — replace exclusive-Deck law)
 
-| Tab | Doc |
+1. **One window** — no peer Deck process/surface.
+2. **Authoring is mouse-first** — buttons on the right are real; hotkey pocket mirrors **expected actions** for current focus.
+3. **`` ` `` = Deactivate = Stop all** — unchanged.
+4. **Pocket tracks focus** — click elsewhere retargets the map; no separate “announce mismatch” UI.
+5. **Tree grammar** — one open path; mouse may collapse/re-root; hotkeys **Esc**-peel.
+6. **LOL Esc** → big confirm on **anchored screen**: Exit Live Overlay Lab? · Esc cancel · Enter exit.
+7. **Condensed during LOL** = outside chords + status only (Hold D, Esc, `` ` ``, status) — glass owns LOL actions.
+8. Factory / fresh start → expanded Idle Lab (Info or last lab — revisit). Live status in chrome / condensed face.
+
+### Hotkey Flight Deck (pocket)
+
+- Always inside Idle Lab — **never floating**.
+- Left-rail bottom (“dead space”) so it never steals action-space.
+- Titlebar feel: `Hotkey flight deck · [key] open/close` + obvious minimize; key in Settings later.
+- Grows/shrinks with the focused chord map.
+- Console in condensed: progressive disclosure + verbosity toggle (control TBD).
+
+### Labs inventory
+
+| Lab | Doc |
 | --- | --- |
-| **Info** | [info.md](info.md) |
-| **Live Overlay Lab (LOL)** | [lol.md](lol.md) |
-| **Molecule Lab** | [molecule-lab.md](molecule-lab.md) — Atom + Molecule composer + Trial |
-| **Observation Lab** | [observation-lab.md](observation-lab.md) — User + AI mission |
-| **Flight Deck** | [flight-deck.md](flight-deck.md) — dive complete enough; soft leftovers parked |
+| **Info** | [info.md](info.md) — docs/onboarding (not a Feel Lab) |
+| **Live Overlay Lab (LOL)** | [lol.md](lol.md) — triggers condensed |
+| **Molecule Lab** | [molecule-lab.md](molecule-lab.md) — Atom + Molecule + Trial; authoring in expanded |
+| **Observation Lab** | [observation-lab.md](observation-lab.md) — triggers condensed |
 
-~~Autoclicker Lab~~ → Molecule Lab Atom ([autoclicker-lab.md](autoclicker-lab.md)).
+~~Peer Flight Deck~~ → condensed costume + in-Lab pocket ([flight-deck.md](flight-deck.md) is historical until rewritten).
 
-## Feel (draft)
+## Feel
 
-Operator palette: [FEEL.md](FEEL.md). In-app = Info **specimen tray** (settled palette) + **Feel Lab** sandbox (`python -m idle_lab.feel_lab`, Desktop shortcut) for A/B mouth-feel. Picks → [`feel/picks.json`](../../../feel/picks.json). Not locked.
+[FEEL.md](FEEL.md) — themes become **Idle Lab skins**; Structure / Info specimen-tray product surface omitted.
+
+## Ships today vs this direction
+
+Code still runs **exclusive Idle Lab ↔ Flight Deck** from shape-first. These docs are the **target** until the reshape lands. [FEATURES.md](../../FEATURES.md) keeps both layers honest.
 
 ## Implementation
 
-Shape-first waterfall (review before coding): [SHAPE-FIRST-PLAN.md](SHAPE-FIRST-PLAN.md).
+Prior waterfall: [SHAPE-FIRST-PLAN.md](SHAPE-FIRST-PLAN.md) (historical). Next coding pass follows [CONTINUATION.md](../../CONTINUATION.md) — not more peer-Deck leaves.
