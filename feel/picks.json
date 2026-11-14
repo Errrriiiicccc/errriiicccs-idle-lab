@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "picks": {
+    "change_theme": {
+      "variant": "type_bracket",
+      "note": ""
+    },
+    "change_structure": {
+      "variant": "folder_tree",
+      "note": ""
+    }
+  },
+  "main_look": "type_bracket"
+}

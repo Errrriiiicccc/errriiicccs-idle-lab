@@ -65,9 +65,11 @@ Use **operator terms** in UI and product docs. Disk and package names lag for co
 | **Live Overlay Lab (LOL)** | `automations/maps/*.objects.json` | `live_control/` (rename later) |
 | **Molecule Lab** / **Atom Create** | `automations/composer/` + atoms on disk | `composer/` |
 | **Observation Lab** | `screen-maps/`, `ai-batches/` | `observation/`, `ai_batch/` |
-| **Atoms** | `automations/events/*.json` | `Event` |
+| **Atoms** | `automations/events/*.json` (kinds below) | `Event` |
+| · **Automation** (atom kind) | same events files; gesture / action sequences | Atom Create → Automation |
+| · **Phase map** (atom kind) | same family (schema TBD); key groups + phases + transitions | Atom Create → Phase map |
 | **Molecules** | `automations/collections/*.json` | `Collection` |
-| **Persistent / Current State** | e.g. `stat_collect` + exports | `tool_export` (+ future state) |
+| **Persistent / Current State** | e.g. `stat_collect` + exports; fed by phase maps + sense | `tool_export` (+ future state) |
 | Legacy Bench presets | `presets/` | `presets.py` … |
 | Package import | `errriiicccs-idle-lab` | `idle_lab` |
 
@@ -144,6 +146,8 @@ Requirements implied by this model:
 4. **Knowledge docs** — once calibrated (“Utility tab + ~300px scroll → Free Upgrade row visible”), write it down for future chats and for the operator.
 
 Building these structures is primarily a **data and schema** problem: define the state machine, map cues to fields, store playbooks. The runtime then branches on those fields. Molecule Lab conditionals and a queryable **Current State** are the product face of this section.
+
+**Phase map atoms** are the on-screen authoring face of this model: key groups (hamburger rail, footer tabs, …), named phases they enter/exit, and which automation atoms belong when the screen is in a phase (the clean “tab → buy” pattern). Atom Create chooses **Automation** vs **Phase map** up front — both are core atom kinds; molecules still compose them.
 
 ---
 

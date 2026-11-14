@@ -3,7 +3,22 @@
 **Status:** draft — not locked.  
 **Purpose:** [VISION.md](../../VISION.md) · **Shell:** [README.md](README.md) · **Info:** [info.md](info.md)
 
-**In-app:** Idle Lab → Info → **How it talks** is a **specimen tray** (poke parts; captions from doing). Agents use the same ids below when asking “accordion or Lab button?” — not freeform widgets. If nothing fits, extend this file and the tray before coding.
+**Two in-app surfaces:**
+
+| Surface | Job |
+| --- | --- |
+| **Info → How it talks** | Settled **specimen tray** of the current palette (poke; captions from doing) |
+| **Feel Lab** | Sandbox. Left **Home** = main tabs. Middle = accordion **sub-tabs** (siblings stay; open one expands children underneath — e.g. Colour: Thread/Rim/Lift/Type). Colour lean: **Type → Bracket**. Structure lean: same accordion. Picks → [`feel/picks.json`](../../../feel/picks.json). |
+
+### Fundamental feel (candidate → FD)
+
+1. User lands on a **layer** (e.g. Stages). Only that layer’s buttons are live/highlighted.  
+2. Live buttons read **`[key] Label`**.  
+3. Press key → push deeper; parent layer loses keys/highlight.  
+4. **Esc** peels one layer.  
+5. Flight Deck accordion should speak this same language once a theme wins.
+
+Agents use the palette ids below when asking “accordion or Lab button?” — not freeform widgets. Wild alternatives live in Feel Lab first; winners promote here + Info tray before coding into the shell.
 
 ---
 

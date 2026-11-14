@@ -16,6 +16,7 @@
 - Sense ladder fills fields (export → native → pixels); unknown/abstain allowed.
 - Molecules query state; Hands/UI can show it.
 - Tower layers (surface, overlay, dock/tab, scroll, HUD mode, combat phase) as the first concrete schema.
+- **Phase map atoms** (Atom Create kind) author the transition graph by hand: key groups → named phases → which automation atoms apply. Current State is the runtime memory those maps write into; sense cues verify/repair it.
 
 ## Fit to vision
 

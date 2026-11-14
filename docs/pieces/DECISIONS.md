@@ -11,6 +11,7 @@ Status tags: `open` · `leaning` · `settled` · `parked`
 | ID | Status | Question / idea | Notes |
 | --- | --- | --- | --- |
 | D7 | open | **Operator feel** catalog ([shell/FEEL.md](shell/FEEL.md)) + Info **How it talks** | Draft only — lock after Eric reviews in-app |
+| D8 | leaning | **Feel Lab** sandbox (`python -m idle_lab.feel_lab`) for A/B mouth-feel before shell locks | Same repo/Python; not a second product. Picks in `feel/picks.json`. Desktop shortcut. |
 | D1 | settled | Keep **Flight Deck** as the hotkey companion | Not renamed to Idle Lab |
 | D2 | settled | Rename LCO → **Live Overlay Lab (LOL)** | Lab nomenclature + atoms/molecules |
 | D3 | settled | Destroy mega tabbed window; rebuild as **Labs** only | Labs: Info, LOL, Molecule (Atom inside), Observation; Autoclicker folded into Atom |
@@ -35,6 +36,7 @@ Status tags: `open` · `leaning` · `settled` · `parked`
 | D21 | settled | **Current State** is core | |
 | D22 | parked | Ordering C5 vs Current State vs shell | Everything rewriting; decide later |
 | D23 | parked | Browser DOM / a11y trees | Explained below; later-title research, not Tower-now |
+| D24 | settled | **Atom kinds:** Automation + Phase map; Atom Create chooses kind first; phase maps author layered screen state on-screen | Shape-first leaves + expand 2026-11-11 · [shell/molecule-lab.md](shell/molecule-lab.md) |
 
 ### D23 plain English (for later)
 

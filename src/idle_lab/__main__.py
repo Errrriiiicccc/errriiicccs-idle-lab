@@ -1,4 +1,4 @@
-"""python -m idle_lab  |  python -m idle_lab validate  |  python -m idle_lab harness …"""
+"""python -m idle_lab  |  validate  |  harness …  |  feel"""
 
 from __future__ import annotations
 
@@ -25,6 +25,11 @@ def main(argv: list[str] | None = None) -> None:
         from idle_lab.harness.cli import main as harness_main
 
         raise SystemExit(harness_main(args[1:]))
+
+    if args and args[0] in {"feel", "--feel", "feel-lab"}:
+        from idle_lab.feel_lab.app import main as feel_main
+
+        raise SystemExit(feel_main())
 
     args, auto_anchor = pop_auto_anchor_flag(args)
     if args:

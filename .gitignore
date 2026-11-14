@@ -7,6 +7,8 @@ dist/
 build/
 settings.json
 lab-comments.json
+feel/seen.json
+tool_export.json
 runs/
 /screen-maps/
 /ai-batches/

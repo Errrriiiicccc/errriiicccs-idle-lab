@@ -72,7 +72,7 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 - Inactive → Activate `` ` ``; accordion **L/M/O/I/S** ([`automations/flight_deck.json`](../automations/flight_deck.json)).
 - **L** → Start · Toggle Console · Console Verbosity; **M** → Molecule Lab · Atom Lab · Create Atom; **O** → Observation float; **I** → Start (closes Flight Deck → Idle Lab); **S** → Open Settings · Set Deactivate Key · Boot Preferences.
 - Idle Lab chrome always has **Open Flight Deck** `(closes Idle Lab)` — surfaces never share the screen.
-- **M→2 Atom Lab** = lightweight Atom library/coverage float; **M→3 Create Atom** = queue + drag-place on Deck. Esc from Create asks to save then returns to Atom Lab. `` ` `` pauses Deck only (keeps Create).
+- **M→2 Atom Lab** = lightweight Atom library/coverage float; **M→3 Create Atom** = kind gate (**Automation** | **Phase map**) + queue + drag-place on Deck. Phase map leaves: key groups, phases, targets, scroll defs (= Automation drag), regions; save expands targets to child automation atoms. Esc from Create asks to save then returns to Atom Lab. `` ` `` pauses Deck only (keeps Create).
 - Live overlay: object map, hold D describe, Esc exit. [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md), [OBJECT-MAP.md](OBJECT-MAP.md).
 
 ### Idle Lab Labs
@@ -99,6 +99,12 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 
 - `python -m idle_lab.harness …` — [HARNESS.md](HARNESS.md). [`lab-context.json`](../lab-context.json).
 - Click-logger demos are archived — restore from archive only if a harness story needs them.
+
+### Feel Lab (sandbox)
+
+- Separate window: `python -m idle_lab.feel_lab` (Desktop **Feel Lab** shortcut). Not product chrome.
+- A/B(/C) stages for menu / overlay / feedback mouth-feel; NEW rings; picks → `feel/picks.json`.
+- [pieces/shell/FEEL.md](pieces/shell/FEEL.md).
 
 ### Still not finished (honest stubs / parked)
 

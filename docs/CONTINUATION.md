@@ -9,13 +9,22 @@
 
 ## Active focus (2026-11-11)
 
-**Operator feel draft** — [pieces/shell/FEEL.md](pieces/shell/FEEL.md) + Info **specimen tray** (not locked). Poke How it talks; prose outline is collapsed under More.
+**Phase map Atom Create** — kind gate + leaves (shape-first).
 
-→ **Restart** (code changed — `feel_tray.py` / Info).
+- Deck **M→3** → **1 Automation** | **2 Phase map**
+- Phase map: **G** Keys · **H** Phases · **T** Targets · **S** Scroll (= Automation drag) · **R** Region · **A** Raw · **E** Edit · **X** Expand preview
+- Save expands targets → child automation atoms (enter + scrolls + act). Sample: [`automations/events/phase_map_cards.json`](../automations/events/phase_map_cards.json)
+- Docs: [pieces/shell/molecule-lab.md](pieces/shell/molecule-lab.md)
 
-### Soft hold: Atom Create smoke
+→ **Restart** Idle Lab · Create Atom · Phase map · author Cards scroll+equip · **X** preview · Esc save.
 
-Prior Atom Create IA rewrite still uncommitted until Eric says go. Smoke notes below still valid when you return.
+### Soft hold: Feel Lab
+
+Primary: **Type → Bracket**. Accordion sub-tabs in the middle — siblings stay visible; expand under selection (Colour: 1–4 families, looks nest with A/S/D…). Restart Feel Lab.
+
+### Soft hold: Automation Atom Create smoke
+
+Atom Create IA checkpoint committed (`090db3f`). Smoke notes below still valid when you return.
 
 ### Smoke Atom Create
 
@@ -31,13 +40,16 @@ Prior Atom Create IA rewrite still uncommitted until Eric says go. Smoke notes b
 
 ## What landed recently
 
-- Atom Create: **B** Basic Gesture, **P** Playbook nested, **E** Edit; louder queue; key capture; dialog typing; R reorder unblocked
-- Trial / in-tab composer (prior slice)
+- Phase map Atom Create kind gate + G/H/T/S/R/A/E/X leaves; scroll defs = drag; expand-on-save
+- Sample Cards phase map (`phase_map_cards`)
+- Feel Lab sandbox (`python -m idle_lab.feel_lab` / Desktop shortcut)
+- Atom Create Automation: **B** Basic Gesture, **P** Playbook, **E** Edit
 
 ## Soft parked
 
 - Richer OCR color picker UI · spam hold-time variants beyond clicks/timed  
-- Current State schema · package rename · in-app AI dispatch
+- Current State schema · package rename · in-app AI dispatch  
+- Molecule Lab palette: pick phase-map targets as first-class compose steps (expand works on save today)
 
 ## Push rule
 
