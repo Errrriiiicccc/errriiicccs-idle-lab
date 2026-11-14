@@ -27,9 +27,20 @@ Creating a basic atomic loop is too hard today. Observation alone shouldn’t be
 
 ### Enter
 
-From Idle Lab Atom tab or Deck **M→3 Create Atom** → **Atom Create** on Deck with FD accordion + on-screen queue. **M→2 Atom Lab** is the lightweight library/coverage float (not Create). Esc from Create asks to save then returns to Atom Lab; `` ` `` pauses Deck only (Create stays). Edit peels to Create first.
+From Idle Lab Atom tab or Deck **M→3 Create Atom** → **Atom Create** on Deck with FD accordion + on-screen queue. **M→2 Atom Lab** is the lightweight library/coverage float (not Create). Esc peels inward first (place → Edit/Playbook → Create). Esc from Create root opens **Save / Discard / Cancel** — Cancel stays in Create. `` ` `` pauses Deck only (Create stays).
 
-### Create (Basic Gesture + Playbook rewrite)
+### Kind gate (leaning — Eric 2026-11-11)
+
+Atom Create **starts by choosing kind** (both are core atom types):
+
+| Kind | Job |
+| --- | --- |
+| **Automation** | Gesture / action sequence (today’s Create: click, drag, key, OCR). |
+| **Phase map** | Screen phases: key groups, named phases, transitions, which automations belong in a phase (“tab → buy”). |
+
+Shared overlay primitives (queue, marks, hold-D). Edit leaves and save schema diverge by kind. Phase maps feed **Current State**; molecules compose both kinds. Open: disk layout ([../molecules/decisions.md](../molecules/decisions.md) M7).
+
+### Create — Automation (Basic Gesture + Playbook rewrite)
 
 1. **B Basic Gesture** expands (FD accordion) → **1** Click / **2** Drag / **3** Key / **4** OCR.  
 2. Dedicated **Atom queue** window (separate from Deck) is the script; place glyphs on the game.  
@@ -38,8 +49,8 @@ From Idle Lab Atom tab or Deck **M→3 Create Atom** → **Atom Create** on Deck
 
 | Type | Glyph |
 | --- | --- |
-| Click | Circle + queue # |
-| Drag | Two handles (`Na`/`Nb`) |
+| Click | Opaque ghost on cursor + green banner · **LMB / Space / Enter** drops · Esc cancels place (stays in Create) |
+| Drag | Same: place start, then end (rubber-band); Esc cancels place only |
 | Keyboard | Queue `key:…` (press to capture) |
 | OCR | Region + #; needs-review |
 
@@ -76,9 +87,30 @@ From Idle Lab Atom tab or Deck **M→3 Create Atom** → **Atom Create** on Deck
 
 On create, prompt for enough OCR info; unfinished OCR → **needs review** flag on the atom.
 
+### Create — Phase map (ships shape-first 2026-11-11)
+
+Atom Create **kind gate** → **2 Phase map**. Leaves (Flight Deck accordion):
+
+| Root | Job |
+| --- | --- |
+| **G Key Group** | New group · type (overlay/dock/surface/rail) · Enter click · Exit click · Enter hotkey |
+| **H Phases** | New phase · **Set active** (number hotkeys) · **Set parent** (0=root, numbers) · **Mark home** (numbers) |
+| **T Targets** | Equip / Buy / Action / Sense · Bind scrolls → target |
+| **S Scroll defs** | Place scroll (**same drag** as Automation) · Name · Bind phase · Link region |
+| **R Regions / Sense** | Scroll viewport ROI · Phase OCR · Active strip ROI |
+| **A Actuation (raw)** | Click / Drag / Key / OCR — identical gesture results |
+| **E Edit** | Same gesture edit leaves; scrolls get Speed + Pause end |
+| **X Expand preview** | Show enter → scrolls → act for selected target |
+
+**Unify:** scroll defs and raw actuations persist as the same `click`/`drag`/`key`/`ocr` actions Automation uses. Only authoring UX + `role` metadata differ.
+
+**Queue window:** Phase maps keep the same Atom queue chrome. Title becomes **Phase map queue**. Body shows active/home/group, a **PHASES** tree, then **PIECES** grouped under each phase (role glyphs →enter / ←exit / ⌄scroll / ★target). Selected targets show an inline `expand: enter → scroll → act` line. On-game click marks use the same glyphs.
+
+**Expand (tab → buy pattern):** saving a phase map also writes child automation atoms per target. Example Cards → Equip Free Upgrades = options-rail enter + cards enter + `inventory_down` drag + tile click. Sample: [`automations/events/phase_map_cards.json`](../../../automations/events/phase_map_cards.json). Module: `idle_lab.shell.atom_phase_map`.
+
 ### Relationship to agency
 
-Goal: **simple loops first**, then molecules from those atoms — not “only Observation → hope the AI invents clicks.”
+Goal: **simple loops first**, then **phase maps** so tab/menu context is explicit, then molecules from those atoms — not “only Observation → hope the AI invents clicks.”
 
 ---
 

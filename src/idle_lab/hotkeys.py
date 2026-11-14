@@ -105,6 +105,8 @@ class HookFlags:
         self.atom_create_active = False
         # Next key becomes an Atom Create keyboard step (do not route to accordion).
         self.atom_key_capture = False
+        # Ghost-cursor place mode — Space/Enter drops the mark.
+        self.atom_placing = False
         self.our_pid = os.getpid()
 
 
@@ -299,6 +301,26 @@ class InputHooks:
                 self.events.put(("flight_deck_activate",))
             return 1
         if (
+            (vk == VK_SPACE or vk == VK_RETURN)
+            and self.state.atom_create_active
+            and self.state.atom_placing
+            and not self.state.lab_visible
+            and not self.state.title_dialog_open
+        ):
+            swallow = True
+            if vk == VK_SPACE:
+                if is_up:
+                    self._space_down = False
+                elif not self._space_down:
+                    self._space_down = True
+                    self.events.put(("atom_place_confirm",))
+            else:
+                if is_up:
+                    self._enter_down = False
+                elif not self._enter_down:
+                    self._enter_down = True
+                    self.events.put(("atom_place_confirm",))
+        elif (
             vk == VK_SPACE
             and self.state.flight_deck_expanded
             and not self.state.live_control_active

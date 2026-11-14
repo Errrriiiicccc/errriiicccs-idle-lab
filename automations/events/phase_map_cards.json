@@ -1,0 +1,192 @@
+{
+  "id": "phase_map_cards",
+  "title": "Cards",
+  "version": 1,
+  "enabled": false,
+  "priority": 50,
+  "timing": {
+    "type": "interval",
+    "every_ms": 60000
+  },
+  "kind": "phase_map",
+  "description": "Sample Cards phase map — options rail enter, inventory scroll, equip Free Upgrades.",
+  "notes": "Authored as the Phase Map pattern for menu navigation. Expand targets into automation atoms (enter + scroll + click). Coords are illustrative — re-place in Atom Create on your setup.",
+  "home_phase": "cards",
+  "phases": [
+    {
+      "id": "options_rail",
+      "label": "Options rail",
+      "parent": ""
+    },
+    {
+      "id": "cards",
+      "label": "Cards",
+      "parent": "options_rail"
+    }
+  ],
+  "active_group": "options_rail",
+  "active_group_type": "overlay_menu",
+  "pieces": [
+    {
+      "type": "click",
+      "role": "enter_key",
+      "nx": 0.89,
+      "ny": 0.06,
+      "mode": "single",
+      "phase": "options_rail",
+      "group": "battle_chrome",
+      "group_type": "overlay_menu",
+      "label": "enter:options_rail",
+      "description": "Hamburger → options rail."
+    },
+    {
+      "type": "click",
+      "role": "enter_key",
+      "nx": 0.82,
+      "ny": 0.28,
+      "mode": "single",
+      "phase": "cards",
+      "group": "options_rail",
+      "group_type": "overlay_menu",
+      "label": "enter:cards",
+      "description": "Cards icon on options rail."
+    },
+    {
+      "type": "click",
+      "role": "exit_key",
+      "nx": 0.5,
+      "ny": 0.96,
+      "mode": "single",
+      "phase": "cards",
+      "leaves_phase": "cards",
+      "group": "options_rail",
+      "label": "exit:cards",
+      "description": "Tap To Return To Game."
+    },
+    {
+      "type": "ocr",
+      "role": "phase_sense",
+      "nx": 0.08,
+      "ny": 0.1,
+      "nw": 0.25,
+      "nh": 0.06,
+      "variable": "ocr",
+      "parse_as": "raw",
+      "ocr_kind": "text",
+      "color_hex": "",
+      "needs_review": true,
+      "phase": "cards",
+      "label": "sense:cards",
+      "description": "CARDS title cue."
+    },
+    {
+      "type": "ocr",
+      "role": "scroll_region",
+      "nx": 0.08,
+      "ny": 0.48,
+      "nw": 0.84,
+      "nh": 0.4,
+      "variable": "ocr",
+      "parse_as": "raw",
+      "ocr_kind": "shape",
+      "color_hex": "",
+      "needs_review": true,
+      "phase": "cards",
+      "region_id": "inventory",
+      "region_kind": "scroll_viewport",
+      "label": "inventory",
+      "description": "Inventory grid viewport."
+    },
+    {
+      "type": "drag",
+      "role": "scroll_def",
+      "nx0": 0.5,
+      "ny0": 0.72,
+      "nx1": 0.5,
+      "ny1": 0.52,
+      "speed": "medium",
+      "pause_end": false,
+      "pause_ms": 200,
+      "scroll_id": "inventory_down",
+      "phase": "cards",
+      "region_id": "inventory",
+      "label": "inventory_down",
+      "description": "Inventory scroll down (same drag fields as Automation)."
+    },
+    {
+      "type": "click",
+      "role": "target",
+      "target_kind": "equip",
+      "target_id": "free_upgrades",
+      "label": "Free Upgrades",
+      "phase": "cards",
+      "scrolls": [
+        "inventory_down"
+      ],
+      "nx": 0.2,
+      "ny": 0.62,
+      "mode": "single",
+      "description": "Equip Free Upgrades — expand includes inventory_down."
+    },
+    {
+      "type": "click",
+      "role": "target",
+      "target_kind": "equip",
+      "target_id": "critical_chance",
+      "label": "Critical Chance",
+      "phase": "cards",
+      "scrolls": [],
+      "nx": 0.2,
+      "ny": 0.52,
+      "mode": "single",
+      "description": "Critical Chance visible without scroll."
+    },
+    {
+      "type": "click",
+      "role": "target",
+      "target_kind": "buy",
+      "target_id": "buy_card_x1",
+      "label": "Buy Card x1",
+      "phase": "cards",
+      "scrolls": [],
+      "nx": 0.55,
+      "ny": 0.22,
+      "mode": "single",
+      "description": "BUY NEW CARD x1 (20 gems)."
+    }
+  ],
+  "targets": [
+    {
+      "id": "free_upgrades",
+      "label": "Free Upgrades",
+      "phase": "cards",
+      "kind": "equip",
+      "scrolls": [
+        "inventory_down"
+      ]
+    },
+    {
+      "id": "critical_chance",
+      "label": "Critical Chance",
+      "phase": "cards",
+      "kind": "equip",
+      "scrolls": []
+    },
+    {
+      "id": "buy_card_x1",
+      "label": "Buy Card x1",
+      "phase": "cards",
+      "kind": "buy",
+      "scrolls": []
+    }
+  ],
+  "actions": [
+    {
+      "type": "click",
+      "nx": 0.82,
+      "ny": 0.28,
+      "mode": "single",
+      "description": "Cards icon on options rail."
+    }
+  ]
+}

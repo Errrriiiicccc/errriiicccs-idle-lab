@@ -15,8 +15,10 @@ from idle_lab.live_control.playbook import ACTUATION_ACTIONS
 
 class AtomCreatePhase(str, Enum):
     IDLE = "idle"
+    KIND = "kind"
     CREATE = "create"
     PLAYBOOK = "playbook"
+    PHASE_MAP = "phase_map"
     EDIT = "edit"
 
 
@@ -28,6 +30,14 @@ class AtomDraft:
     event_id: str = ""
     title: str = ""
     selected_index: int = 0
+    # automation | phase_map — chosen at Atom Create kind gate
+    kind: str = "automation"
+    # Phase-map authoring context (ignored for automation)
+    phases: list[dict[str, Any]] = field(default_factory=list)
+    active_phase: str = ""
+    home_phase: str = ""
+    active_group: str = ""
+    active_group_type: str = "overlay_menu"
 
     def add_lco(self, action: str) -> None:
         name = str(action or "").strip().lower()
@@ -365,6 +375,12 @@ class AtomDraft:
         self.event_id = ""
         self.title = ""
         self.selected_index = 0
+        self.kind = "automation"
+        self.phases.clear()
+        self.active_phase = ""
+        self.home_phase = ""
+        self.active_group = ""
+        self.active_group_type = "overlay_menu"
 
 
 def ensure_spam_defaults(step: dict[str, Any]) -> None:
@@ -399,6 +415,20 @@ def snap_spam_duration_ms(duration_ms: int, interval_ms: int) -> int:
 def step_label(step: dict[str, Any]) -> str:
     """Compact primary line for the queue (details go under via step_detail_lines)."""
 
+    role = str(step.get("role") or "").strip()
+    if role == "enter_key":
+        return f"enter→{step.get('phase') or '?'}"
+    if role == "exit_key":
+        return f"exit←{step.get('phase') or '?'}"
+    if role == "scroll_def":
+        return f"scroll:{step.get('scroll_id') or step.get('label') or '?'}"
+    if role == "target":
+        kind = str(step.get("target_kind") or "action")
+        return f"{kind}:{step.get('label') or step.get('target_id') or '?'}"
+    if role == "scroll_region":
+        return f"region:{step.get('region_id') or '?'}"
+    if role == "phase_sense":
+        return f"sense:{step.get('phase') or '?'}"
     kind = str(step.get("type") or "").strip().lower()
     if kind == "click":
         mode = str(step.get("mode") or "single")
@@ -438,6 +468,15 @@ def step_detail_lines(step: dict[str, Any]) -> list[str]:
 
     kind = str(step.get("type") or "").strip().lower()
     lines: list[str] = []
+    role = str(step.get("role") or "").strip()
+    if role:
+        lines.append(f"→ role {role}")
+        if step.get("phase"):
+            lines.append(f"→ phase {step.get('phase')}")
+        if role == "target" and step.get("scrolls"):
+            lines.append(f"→ scrolls {', '.join(str(s) for s in step.get('scrolls') or [])}")
+        if role == "scroll_def" and step.get("scroll_id"):
+            lines.append(f"→ id {step.get('scroll_id')}")
     if kind == "click":
         nx = float(step.get("nx", 0.5))
         ny = float(step.get("ny", 0.5))
@@ -480,6 +519,12 @@ def step_detail_lines(step: dict[str, Any]) -> list[str]:
 def atom_create_prompt(*, phase: AtomCreatePhase | str, activate_key: str = "`") -> str:
     key = (activate_key or "`").strip() or "`"
     kind = phase if isinstance(phase, AtomCreatePhase) else AtomCreatePhase(str(phase))
+    if kind is AtomCreatePhase.KIND:
+        return (
+            "Atom Create — choose kind\n"
+            "1 Automation · 2 Phase map\n"
+            f"Esc = back to Atom Lab · {key} = pause Deck"
+        )
     if kind is AtomCreatePhase.EDIT:
         return (
             "Atom Edit — W/S select · R/F reorder · Esc → Create\n"
@@ -492,6 +537,10 @@ def atom_create_prompt(*, phase: AtomCreatePhase | str, activate_key: str = "`")
             "Same Flight Deck accordion; Esc returns to Create\n"
             f"{key} = pause Flight Deck (keeps Create)"
         )
+    if kind is AtomCreatePhase.PHASE_MAP:
+        from idle_lab.shell.atom_phase_map import phase_map_prompt
+
+        return phase_map_prompt(activate_key=key)
     return (
         "Atom Create — B Basic Gesture · P Playbook · E Edit\n"
         "B expands 1–4 · P rewrites menu · Atom queue is the script\n"
@@ -501,10 +550,16 @@ def atom_create_prompt(*, phase: AtomCreatePhase | str, activate_key: str = "`")
 
 def atom_create_legend(*, phase: AtomCreatePhase | str) -> str:
     kind = phase if isinstance(phase, AtomCreatePhase) else AtomCreatePhase(str(phase))
+    if kind is AtomCreatePhase.KIND:
+        return "ATOM KIND · 1 AUTO · 2 PHASE MAP"
     if kind is AtomCreatePhase.EDIT:
         return "ATOM EDIT · W/S R/F · ESC = CREATE"
     if kind is AtomCreatePhase.PLAYBOOK:
         return "PLAYBOOK · ESC = CREATE"
+    if kind is AtomCreatePhase.PHASE_MAP:
+        from idle_lab.shell.atom_phase_map import phase_map_legend
+
+        return phase_map_legend()
     return "ATOM CREATE · B GESTURE · P PLAYBOOK · E EDIT"
 
 
@@ -804,6 +859,7 @@ def build_event_payload(*, event_id: str, title: str, steps: list[dict[str, Any]
         "enabled": False,
         "priority": 50,
         "timing": {"type": "interval", "every_ms": 60000},
+        "kind": "automation",
         "description": "Authored via Atom Create (Molecule Lab).",
         "notes": "enabled:false by default — Run selected once from Molecule Lab Atom tab.",
         "actions": list(steps),
@@ -815,6 +871,11 @@ def save_atom_draft(events_dir: Path, draft: AtomDraft) -> Path:
         raise ValueError("needs persist path — set event id before save")
     if not draft.steps:
         raise ValueError("needs at least one step before save")
+    if str(draft.kind or "automation") == "phase_map":
+        from idle_lab.shell.atom_phase_map import save_phase_map_draft
+
+        path, _expanded = save_phase_map_draft(events_dir, draft, expand_targets=True)
+        return path
     events_dir = Path(events_dir)
     events_dir.mkdir(parents=True, exist_ok=True)
     payload = build_event_payload(

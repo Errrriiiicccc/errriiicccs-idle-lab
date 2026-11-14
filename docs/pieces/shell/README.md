@@ -33,7 +33,7 @@
 
 ## Feel (draft)
 
-Operator palette: [FEEL.md](FEEL.md). In-app = Info **specimen tray** (interactive), not a wall of text. Not locked.
+Operator palette: [FEEL.md](FEEL.md). In-app = Info **specimen tray** (settled palette) + **Feel Lab** sandbox (`python -m idle_lab.feel_lab`, Desktop shortcut) for A/B mouth-feel. Picks → [`feel/picks.json`](../../../feel/picks.json). Not locked.
 
 ## Implementation
 

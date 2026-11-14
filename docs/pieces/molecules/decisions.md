@@ -7,3 +7,5 @@
 | M3 | open | Cadence features (every-N, state-change-once) — near-term or after Current State? |
 | M4 | open | Should “Run pack” live on Idle Lab companion only, Molecule Lab, or both? |
 | M5 | open | Walkthrough mode — keep, move to a Lab, or cut? |
+| M6 | settled | Atom Create **kind gate**: Automation vs Phase map; phase map leaves + expand-on-save | Shape-first 2026-11-11 |
+| M7 | leaning | Phase map disk = `events/*.json` with `"kind":"phase_map"` + expanded `map__target` automation children | Matches sample `phase_map_cards` |

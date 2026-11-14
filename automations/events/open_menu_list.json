@@ -1,0 +1,22 @@
+{
+  "id": "open_menu_list",
+  "title": "Open Menu List",
+  "version": 1,
+  "enabled": false,
+  "priority": 50,
+  "timing": {
+    "type": "interval",
+    "every_ms": 60000
+  },
+  "description": "Authored via Atom Create (Molecule Lab).",
+  "notes": "enabled:false by default \u2014 Run selected once from Molecule Lab Atom tab.",
+  "actions": [
+    {
+      "type": "click",
+      "nx": 0.8902027027027027,
+      "ny": 0.062317429406037,
+      "mode": "single",
+      "description": "Normalized click (Atom Create)."
+    }
+  ]
+}

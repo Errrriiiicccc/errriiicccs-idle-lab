@@ -71,7 +71,25 @@ from idle_lab.shell.atom_create import (
     build_atom_playbook_keymap,
     draft_step_from_token,
     save_atom_draft,
+    slugify_event_id,
     step_label,
+)
+from idle_lab.shell.atom_phase_map import (
+    add_enter_key,
+    add_exit_key,
+    add_phase_sense,
+    add_raw_gesture,
+    add_region,
+    add_scroll_def,
+    add_target,
+    build_atom_kind_keymap,
+    build_phase_map_edit_keymap,
+    build_phase_map_keymap,
+    cycle_group_type,
+    expand_preview_lines,
+    register_phase,
+    role_glyph,
+    set_parent_phase,
 )
 from idle_lab.shell.atom_create_overlay import AtomCreateOverlay
 from idle_lab.shell.console import SharedConsole
@@ -1586,11 +1604,34 @@ class App(ctk.CTk):
             if self._atom_key_capture:
                 self._cancel_atom_key_capture()
                 return
+            overlay = self._atom_create_overlay
+            if overlay is not None and overlay.placing:
+                overlay.cancel_place(remove_step=True)
+                # cancel_place → _atom_place_cancelled already refreshes; stay in Create.
+                return
             if self._atom_create_phase is AtomCreatePhase.EDIT:
                 self._atom_edit_exit()
                 return
             if self._atom_create_phase is AtomCreatePhase.PLAYBOOK:
                 self._atom_playbook_exit()
+                return
+            if self._atom_create_phase is AtomCreatePhase.KIND:
+                # Kind gate has no draft pieces — confirm leave vs stay.
+                choice = self._ask_choice(
+                    "Leave Atom Create?",
+                    "No atom started yet.",
+                    ["Leave to Atom Lab", "Cancel — stay here"],
+                )
+                if choice != 0:
+                    self._status("Still in Atom Create — pick 1 Automation or 2 Phase map.", "info")
+                    return
+                self._hide_atom_create_overlay()
+                self._atom_create_phase = AtomCreatePhase.IDLE
+                self.hooks.state.atom_create_active = False
+                self._deck_mode = DeckMode.MENU
+                self._restore_menu_keymap()
+                self._open_atom_lab_from_deck()
+                self._status("Left Atom Create.", "info")
                 return
             self._exit_atom_create_to_atom_lab()
             return
@@ -1687,11 +1728,11 @@ class App(ctk.CTk):
             self._activate_flight_deck()
         # Leaving Atom Lab float for Create — close the float, keep create session.
         self._close_atom_lab_float(quiet=True)
-        self._atom_create_phase = AtomCreatePhase.CREATE
         self._atom_draft = AtomDraft()
+        self._atom_create_phase = AtomCreatePhase.KIND
         self._enter_deck_mode(DeckMode.ATOM_CREATE)
         self._status(
-            "Create Atom — accordion + queue; Esc saves → Atom Lab; ` pauses Deck only.",
+            "Create Atom — choose 1 Automation or 2 Phase map.",
             "info",
         )
 
@@ -1764,25 +1805,73 @@ class App(ctk.CTk):
         self._close_floating_lab()
 
     def _exit_atom_create_to_atom_lab(self) -> None:
-        """Esc from Create: ask to save, then return to Atom Lab (not bare Deck menu)."""
+        """Esc from Create root: Save / Discard / Cancel. Cancel stays in Atom Create."""
 
-        self._try_save_atom_draft()
+        outcome = self._resolve_atom_create_exit()
+        if outcome == "cancel":
+            self._refresh_atom_create_chrome()
+            self._status("Cancelled exit — still in Atom Create.", "info")
+            return
+        # save or discard (or empty) → leave Create for Atom Lab.
         self._hide_atom_create_overlay()
         self._atom_create_phase = AtomCreatePhase.IDLE
         self._atom_key_capture = False
         self.hooks.state.atom_key_capture = False
+        self.hooks.state.atom_placing = False
         self.hooks.state.atom_create_active = False
         try:
             self.flight_deck.set_deck_lab_mode(False)
         except Exception:
             pass
-        # Ensure Deck is active for Atom Lab float chrome.
         if self._shell_phase is ShellPhase.INACTIVE:
             self._activate_flight_deck()
         self._deck_mode = DeckMode.MENU
         self._restore_menu_keymap()
         self._open_atom_lab_from_deck()
-        self._status("Returned to Atom Lab.", "ok")
+        if outcome == "saved":
+            self._status("Atom saved — returned to Atom Lab.", "ok")
+        elif outcome == "discarded":
+            self._status("Draft discarded — returned to Atom Lab.", "warn")
+        else:
+            self._status("Returned to Atom Lab.", "ok")
+
+    def _resolve_atom_create_exit(self) -> str:
+        """Return 'saved' | 'discarded' | 'cancel' | 'empty'."""
+
+        draft = self._atom_draft
+        if not draft.steps:
+            draft.clear()
+            return "empty"
+        choice = self._ask_choice(
+            "Leave Atom Create?",
+            "What should happen to this atom?",
+            ["Save", "Discard", "Cancel — stay in Atom Create"],
+        )
+        if choice is None or choice == 2:
+            return "cancel"
+        if choice == 1:
+            draft.clear()
+            return "discarded"
+        # Save
+        name = self._ask_name("Save atom — event id", draft.event_id or "atom_new")
+        if not name:
+            # Back out of save → treat as cancel so we don't lose work.
+            self._status("Save cancelled — still in Atom Create.", "info")
+            return "cancel"
+        draft.event_id = name
+        draft.title = name.replace("_", " ")
+        try:
+            path = save_atom_draft(project_root() / "automations" / "events", draft)
+        except ValueError as exc:
+            self._status(f"Atom save blocked: {exc} — still in Atom Create.", "warn")
+            return "cancel"
+        except OSError as exc:
+            self._status(f"Atom save failed: {exc} — still in Atom Create.", "error")
+            return "cancel"
+        draft.clear()
+        self._reload_automations()
+        self._shared_console.append(f"Atom Create saved {path.name}", "ok")
+        return "saved"
 
     def _ensure_atom_create_overlay(self) -> AtomCreateOverlay:
         if self._atom_create_overlay is None:
@@ -1793,6 +1882,8 @@ class App(ctk.CTk):
                 on_drag_moved=self._atom_drag_mark_moved,
                 on_drag_released=self._atom_drag_mark_released,
                 on_ocr_changed=self._atom_ocr_mark_changed,
+                on_place_finished=self._atom_place_finished,
+                on_place_cancelled=self._atom_place_cancelled,
             )
         return self._atom_create_overlay
 
@@ -1827,16 +1918,24 @@ class App(ctk.CTk):
             show_details = bool(getattr(self.flight_deck, "_show_descriptions", False))
         except Exception:
             show_details = False
+        draft = self._atom_draft
         overlay.sync(
-            steps=list(self._atom_draft.steps),
-            selected_index=int(self._atom_draft.selected_index),
+            steps=list(draft.steps),
+            selected_index=int(draft.selected_index),
             phase=self._atom_create_phase.value,
             anchor=self._atom_anchor_rect(),
             avoid=self._atom_create_avoid_rect(),
             show_details=show_details,
+            draft_kind=str(draft.kind or "automation"),
+            map_phases=list(draft.phases),
+            home_phase=str(draft.home_phase or ""),
+            active_phase=str(draft.active_phase or ""),
+            active_group=str(draft.active_group or ""),
+            active_group_type=str(draft.active_group_type or ""),
         )
 
     def _hide_atom_create_overlay(self) -> None:
+        self.hooks.state.atom_placing = False
         overlay = self._atom_create_overlay
         if overlay is None:
             return
@@ -1852,6 +1951,8 @@ class App(ctk.CTk):
     def _atom_click_mark_released(self, step_index: int, nx: float, ny: float) -> None:
         self._atom_draft.set_click_norm(step_index, nx=nx, ny=ny)
         self._atom_draft.selected_index = step_index
+        if 0 <= step_index < len(self._atom_draft.steps):
+            self._atom_draft.steps[step_index].pop("placing", None)
         self._sync_atom_create_overlay()
         self._status(f"Click {step_index + 1} → ({nx:.2f},{ny:.2f})", "ok")
 
@@ -1885,14 +1986,25 @@ class App(ctk.CTk):
         selected = None
         if self._atom_draft.steps and 0 <= self._atom_draft.selected_index < len(self._atom_draft.steps):
             selected = self._atom_draft.steps[self._atom_draft.selected_index]
-        if self._atom_create_phase is AtomCreatePhase.EDIT:
-            keymap = build_atom_edit_keymap(
-                step_count=len(self._atom_draft.steps),
-                selected_index=self._atom_draft.selected_index,
-                selected_step=selected,
-            )
+        if self._atom_create_phase is AtomCreatePhase.KIND:
+            keymap = build_atom_kind_keymap()
+        elif self._atom_create_phase is AtomCreatePhase.EDIT:
+            if str(self._atom_draft.kind or "") == "phase_map":
+                keymap = build_phase_map_edit_keymap(
+                    step_count=len(self._atom_draft.steps),
+                    selected_index=self._atom_draft.selected_index,
+                    selected_step=selected,
+                )
+            else:
+                keymap = build_atom_edit_keymap(
+                    step_count=len(self._atom_draft.steps),
+                    selected_index=self._atom_draft.selected_index,
+                    selected_step=selected,
+                )
         elif self._atom_create_phase is AtomCreatePhase.PLAYBOOK:
             keymap = build_atom_playbook_keymap(step_count=len(self._atom_draft.steps))
+        elif self._atom_create_phase is AtomCreatePhase.PHASE_MAP:
+            keymap = build_phase_map_keymap(draft=self._atom_draft)
         else:
             keymap = build_atom_create_keymap(step_count=len(self._atom_draft.steps))
         self.flight_deck.set_deck_lab_mode(False)
@@ -1952,21 +2064,157 @@ class App(ctk.CTk):
 
     def _atom_add_click_step(self) -> None:
         self._atom_draft.add_click()
-        self._atom_create_phase = AtomCreatePhase.CREATE
+        i = self._atom_draft.selected_index
+        self._atom_draft.steps[i]["placing"] = True
+        if str(self._atom_draft.kind or "") == "phase_map":
+            self._atom_create_phase = AtomCreatePhase.PHASE_MAP
+        else:
+            self._atom_create_phase = AtomCreatePhase.CREATE
         self._refresh_atom_create_chrome()
+        self._start_atom_place_click(i)
         self._status(
-            f"Added click mark {self._atom_draft.selected_index + 1} — drag it on the game.",
+            f"Placing click {i + 1} — LMB or Space to drop · Esc cancel.",
             "ok",
         )
 
     def _atom_add_drag_step(self) -> None:
         self._atom_draft.add_drag()
-        self._atom_create_phase = AtomCreatePhase.CREATE
+        i = self._atom_draft.selected_index
+        self._atom_draft.steps[i]["placing"] = True
+        if str(self._atom_draft.kind or "") == "phase_map":
+            self._atom_create_phase = AtomCreatePhase.PHASE_MAP
+        else:
+            self._atom_create_phase = AtomCreatePhase.CREATE
         self._refresh_atom_create_chrome()
+        self._start_atom_place_drag(i)
         self._status(
-            f"Added drag {self._atom_draft.selected_index + 1} — place start (a) and end (b).",
+            f"Placing drag {i + 1} start — LMB/Space drop start, then end · Esc cancel.",
             "ok",
         )
+
+    def _stamp_phase_map_step(self, step_index: int) -> bool:
+        """Bind placing piece to current active phase. Warn if none."""
+
+        draft = self._atom_draft
+        if str(draft.kind or "") != "phase_map":
+            return True
+        if not 0 <= step_index < len(draft.steps):
+            return False
+        step = draft.steps[step_index]
+        role = str(step.get("role") or "")
+        if role not in {
+            "enter_key",
+            "exit_key",
+            "target",
+            "scroll_def",
+            "scroll_region",
+            "phase_sense",
+            "gesture",
+        }:
+            return True
+        if not draft.active_phase:
+            self._status(
+                "No active phase — H→1 new phase or H→2 pick one, then place clicks.",
+                "warn",
+            )
+            return False
+        step["phase"] = draft.active_phase
+        if role == "exit_key":
+            step["leaves_phase"] = draft.active_phase
+        return True
+
+    def _start_atom_place_click(self, step_index: int) -> None:
+        overlay = self._ensure_atom_create_overlay()
+        if self._atom_anchor_rect() is None:
+            self._status("Anchor a window first — then place clicks on the game.", "warn")
+            return
+        if not self._stamp_phase_map_step(step_index):
+            # Undo the pending piece so we don't leave orphans.
+            draft = self._atom_draft
+            if 0 <= step_index < len(draft.steps) and draft.steps[step_index].get("placing"):
+                draft.selected_index = step_index
+                draft.remove_selected()
+                self._refresh_atom_create_chrome()
+            return
+        step = self._atom_draft.steps[step_index]
+        role = str(step.get("role") or "")
+        ghost = f"{role_glyph(role)}{step_index + 1}" if role else str(step_index + 1)
+        phase_bit = f" · phase {step.get('phase')}" if step.get("phase") else ""
+        overlay.begin_place_click(step_index, label=ghost)
+        self.hooks.state.atom_placing = True
+        try:
+            self.flight_deck.set_deck_lab_mode(
+                True,
+                prompt=f"Placing click{phase_bit} — LMB or Space drops · Esc cancels",
+                legend="PLACE · LMB/SPACE",
+            )
+        except Exception:
+            pass
+
+    def _start_atom_place_drag(self, step_index: int) -> None:
+        overlay = self._ensure_atom_create_overlay()
+        if self._atom_anchor_rect() is None:
+            self._status("Anchor a window first — then place the drag on the game.", "warn")
+            return
+        if not self._stamp_phase_map_step(step_index):
+            draft = self._atom_draft
+            if 0 <= step_index < len(draft.steps) and draft.steps[step_index].get("placing"):
+                draft.selected_index = step_index
+                draft.remove_selected()
+                self._refresh_atom_create_chrome()
+            return
+        step = self._atom_draft.steps[step_index]
+        phase_bit = f" · phase {step.get('phase')}" if step.get("phase") else ""
+        overlay.begin_place_drag(step_index, label=f"{step_index + 1}a")
+        self.hooks.state.atom_placing = True
+        try:
+            self.flight_deck.set_deck_lab_mode(
+                True,
+                prompt=f"Placing drag start{phase_bit} — LMB/Space · then end · Esc cancels",
+                legend="PLACE DRAG",
+            )
+        except Exception:
+            pass
+
+    def _atom_place_finished(self) -> None:
+        i = self._atom_draft.selected_index
+        overlay = self._atom_create_overlay
+        if 0 <= i < len(self._atom_draft.steps):
+            step = self._atom_draft.steps[i]
+            if overlay is not None and overlay.placing and overlay.place_kind == "drag_end":
+                # Mid drag: start landed, end still on cursor.
+                step["placing"] = True
+                self.hooks.state.atom_placing = True
+                try:
+                    self.flight_deck.set_deck_lab_mode(
+                        True,
+                        prompt="Placing drag end — LMB or Space drops · Esc cancels",
+                        legend="PLACE END",
+                    )
+                except Exception:
+                    pass
+                self._sync_atom_create_overlay()
+                self._status(f"Start set — now place end for drag {i + 1}.", "ok")
+                return
+            step.pop("placing", None)
+        self.hooks.state.atom_placing = False
+        self._refresh_atom_create_chrome()
+        self._status("Placed.", "ok")
+
+    def _atom_place_cancelled(self, step_index: int) -> None:
+        self.hooks.state.atom_placing = False
+        draft = self._atom_draft
+        if 0 <= step_index < len(draft.steps):
+            draft.selected_index = step_index
+            draft.remove_selected()
+        self._refresh_atom_create_chrome()
+        self._status("Place cancelled — still in Atom Create. Add another piece when ready.", "warn")
+
+    def _atom_place_confirm(self) -> None:
+        overlay = self._atom_create_overlay
+        if overlay is None or not overlay.placing:
+            return
+        overlay.confirm_place_at_cursor()
 
     def _atom_add_key_step(self) -> None:
         """Queue a pending key:? step, then wait for the physical key."""
@@ -2014,7 +2262,10 @@ class App(ctk.CTk):
             self._atom_draft.set_key(i, key)
         else:
             self._atom_draft.add_key(key)
-        self._atom_create_phase = AtomCreatePhase.CREATE
+        if str(self._atom_draft.kind or "") == "phase_map":
+            self._atom_create_phase = AtomCreatePhase.PHASE_MAP
+        else:
+            self._atom_create_phase = AtomCreatePhase.CREATE
         self._refresh_atom_create_chrome()
         self._status(f"Key confirmed · key:{key}", "ok")
 
@@ -2041,9 +2292,262 @@ class App(ctk.CTk):
             "ok",
         )
 
+    def _atom_kind_choose_automation(self) -> None:
+        self._atom_draft.kind = "automation"
+        self._atom_create_phase = AtomCreatePhase.CREATE
+        self._refresh_atom_create_chrome()
+        self._status("Automation atom — B Basic Gesture · P Playbook · E Edit.", "ok")
+
+    def _atom_kind_choose_phase_map(self) -> None:
+        self._atom_draft.kind = "phase_map"
+        self._atom_create_phase = AtomCreatePhase.PHASE_MAP
+        self._refresh_atom_create_chrome()
+        self._status(
+            "Phase map — G Keys · H Phases · T Targets · S Scroll · R Region · A Raw · E Edit.",
+            "ok",
+        )
+
+    def _pm_after_place(self, message: str) -> None:
+        self._atom_create_phase = AtomCreatePhase.PHASE_MAP
+        step = None
+        if self._atom_draft.steps:
+            step = self._atom_draft.steps[self._atom_draft.selected_index]
+        if step and step.get("type") == "key" and step.get("pending"):
+            self._atom_key_capture = True
+            self.hooks.state.atom_key_capture = True
+        self._refresh_atom_create_chrome()
+        self._status(message, "ok")
+
+    def _dispatch_phase_map_action(self, kind: str, action: dict) -> None:
+        draft = self._atom_draft
+        draft.kind = "phase_map"
+
+        if kind == "pm_new_group":
+            name = self._ask_name("Key group id", draft.active_group or "options_rail")
+            if not name:
+                return
+            draft.active_group = slugify_event_id(name)
+            self._pm_after_place(f"Active key group: {draft.active_group}")
+            return
+        if kind == "pm_cycle_group_type":
+            nxt = cycle_group_type(draft)
+            self._pm_after_place(f"Group type: {nxt}")
+            return
+        if kind == "pm_add_enter_key":
+            add_enter_key(draft, via="click")
+            draft.steps[draft.selected_index]["placing"] = True
+            self._pm_after_place("Enter key — LMB/Space drops on the menu icon.")
+            self._start_atom_place_click(draft.selected_index)
+            return
+        if kind == "pm_add_enter_key_hotkey":
+            add_enter_key(draft, via="key")
+            self._pm_after_place("Enter hotkey — press the key.")
+            return
+        if kind == "pm_add_exit_key":
+            add_exit_key(draft)
+            draft.steps[draft.selected_index]["placing"] = True
+            self._pm_after_place("Exit key — LMB/Space drops on close / Tap To Return.")
+            self._start_atom_place_click(draft.selected_index)
+            return
+        if kind == "pm_new_phase":
+            name = self._ask_name("Phase name", draft.active_phase or "cards")
+            if not name:
+                return
+            pid = register_phase(draft, name)
+            self._pm_after_place(
+                f"Phase active: {pid} — H→3 pick parent by hotkey · G→3 place enter click."
+            )
+            return
+        if kind in {"pm_set_active_phase", "pm_pick_active"}:
+            # Legacy leaf + hotkey picker both land here.
+            pid = str(action.get("phase_id") or "").strip()
+            if not pid:
+                self._status("H→2 then press a number to pick the active phase.", "warn")
+                return
+            if not any(p.get("id") == pid for p in draft.phases):
+                register_phase(draft, pid)
+            else:
+                draft.active_phase = pid
+            self._pm_after_place(
+                f"Active phase: {draft.active_phase} — new clicks/scrolls bind here."
+            )
+            return
+        if kind in {"pm_set_parent_phase", "pm_pick_parent"}:
+            child = draft.active_phase
+            if not child:
+                self._status("Set an active phase first (H→2), then H→3 for parent.", "warn")
+                return
+            # Missing phase_id only for legacy; picker always sends it ("" = root).
+            if "phase_id" not in action:
+                self._status("H→3 then press a number (0 = root).", "warn")
+                return
+            parent = str(action.get("phase_id") or "").strip()
+            set_parent_phase(draft, child, parent)
+            self._pm_after_place(
+                f"Parent of {child}: {parent or '(root)'} — enter path walks parents."
+            )
+            return
+        if kind in {"pm_mark_home", "pm_pick_home"}:
+            pid = str(action.get("phase_id") or "").strip() or draft.active_phase
+            if not pid:
+                self._status("H→4 then press a number to mark home.", "warn")
+                return
+            if not any(p.get("id") == pid for p in draft.phases):
+                register_phase(draft, pid)
+            draft.home_phase = pid
+            draft.active_phase = draft.active_phase or pid
+            self._pm_after_place(f"Home phase: {draft.home_phase}")
+            return
+        if kind == "pm_add_target":
+            add_target(draft, target_kind=str(action.get("target_kind") or "equip"))
+            label = self._ask_name(
+                "Target label",
+                str(draft.steps[draft.selected_index].get("label") or "Free Upgrades"),
+            )
+            if label:
+                draft.steps[draft.selected_index]["label"] = label.strip()
+                draft.steps[draft.selected_index]["target_id"] = slugify_event_id(label)
+            step = draft.steps[draft.selected_index]
+            if str(step.get("type")) == "click":
+                step["placing"] = True
+                self._pm_after_place(
+                    f"Target «{step.get('label')}» — LMB/Space drops on the tile."
+                )
+                self._start_atom_place_click(draft.selected_index)
+            else:
+                self._pm_after_place(
+                    f"Target «{step.get('label')}» — resize the OCR region on game."
+                )
+            return
+        if kind == "pm_bind_scrolls":
+            if not draft.steps:
+                self._status("No pieces yet.", "warn")
+                return
+            step = draft.steps[draft.selected_index]
+            if str(step.get("role")) != "target":
+                self._status("Select a Target piece first (Edit W/S, or place T).", "warn")
+                return
+            known = [
+                str(s.get("scroll_id") or "")
+                for s in draft.steps
+                if str(s.get("role")) == "scroll_def" and s.get("scroll_id")
+            ]
+            hint = ",".join(known) if known else "inventory_down"
+            raw = self._ask_name("Scroll ids (comma-separated)", hint)
+            if raw is None:
+                return
+            ids = [p.strip() for p in str(raw).split(",") if p.strip()]
+            step["scrolls"] = ids
+            self._pm_after_place(f"Bound scrolls → {ids}")
+            return
+        if kind == "pm_add_scroll":
+            add_scroll_def(draft)
+            draft.steps[draft.selected_index]["placing"] = True
+            self._pm_after_place("Scroll def — LMB/Space drop start, then end.")
+            self._start_atom_place_drag(draft.selected_index)
+            return
+        if kind == "pm_add_gesture":
+            gesture = str(action.get("gesture") or "click")
+            add_raw_gesture(draft, gesture=gesture)
+            step = draft.steps[draft.selected_index]
+            if gesture == "click":
+                step["placing"] = True
+                self._pm_after_place("Raw click — LMB/Space to drop.")
+                self._start_atom_place_click(draft.selected_index)
+            elif gesture == "drag":
+                step["placing"] = True
+                self._pm_after_place("Raw drag — LMB/Space start, then end.")
+                self._start_atom_place_drag(draft.selected_index)
+            else:
+                self._pm_after_place(f"Raw {gesture} placed (unified Automation result).")
+            return
+        if kind == "pm_name_scroll":
+            if not draft.steps:
+                return
+            step = draft.steps[draft.selected_index]
+            if str(step.get("role")) != "scroll_def":
+                self._status("Select a scroll def piece first.", "warn")
+                return
+            name = self._ask_name("Scroll id", str(step.get("scroll_id") or "inventory_down"))
+            if not name:
+                return
+            sid = slugify_event_id(name)
+            step["scroll_id"] = sid
+            step["label"] = sid
+            self._pm_after_place(f"Scroll id: {sid}")
+            return
+        if kind == "pm_bind_scroll_phase":
+            # Prefer active phase (hotkey flow). Typing removed — use H→2 then re-bind if needed.
+            if not draft.steps:
+                return
+            step = draft.steps[draft.selected_index]
+            if str(step.get("role")) != "scroll_def":
+                self._status("Select a scroll def piece first.", "warn")
+                return
+            if not draft.active_phase:
+                self._status("H→2 pick active phase first, then S→3 binds scroll to it.", "warn")
+                return
+            step["phase"] = draft.active_phase
+            self._pm_after_place(f"Scroll bound to active phase {step['phase']}")
+            return
+        if kind == "pm_link_scroll_region":
+            if not draft.steps:
+                return
+            step = draft.steps[draft.selected_index]
+            if str(step.get("role")) != "scroll_def":
+                self._status("Select a scroll def piece first.", "warn")
+                return
+            regions = [
+                str(s.get("region_id") or "")
+                for s in draft.steps
+                if str(s.get("role")) == "scroll_region" and s.get("region_id")
+            ]
+            hint = regions[0] if regions else "region_1"
+            name = self._ask_name("Region id", hint)
+            if not name:
+                return
+            step["region_id"] = name.strip()
+            self._pm_after_place(f"Scroll linked to region {step['region_id']}")
+            return
+        if kind == "pm_add_region":
+            add_region(draft, region_kind=str(action.get("region_kind") or "scroll_viewport"))
+            self._pm_after_place("Region ROI — resize on the inventory / strip.")
+            return
+        if kind == "pm_add_phase_sense":
+            add_phase_sense(draft)
+            self._pm_after_place("Phase sense OCR — place on title / banner.")
+            return
+        if kind == "pm_expand_preview":
+            lines = expand_preview_lines(draft)
+            text = " | ".join(lines[:6])
+            self._status(text, "info")
+            self._shared_console.append("\n".join(lines), "info")
+            return
+        if kind == "pm_edit_show_role":
+            if draft.steps:
+                step = draft.steps[draft.selected_index]
+                self._status(f"Role {step.get('role')} · phase {step.get('phase')}", "info")
+            return
+        if kind == "pm_rename_selected":
+            if not draft.steps:
+                return
+            step = draft.steps[draft.selected_index]
+            name = self._ask_name("Rename", str(step.get("label") or step.get("target_id") or ""))
+            if not name:
+                return
+            step["label"] = name.strip()
+            if str(step.get("role")) == "target":
+                step["target_id"] = slugify_event_id(name)
+            self._pm_after_place(f"Renamed → {step.get('label')}")
+            return
+        self._status(f"Unknown phase-map action: {kind}", "warn")
+
     def _atom_edit_exit(self) -> None:
         snapped = self._atom_draft.snap_timed_spam_fields()
-        self._atom_create_phase = AtomCreatePhase.CREATE
+        if str(self._atom_draft.kind or "") == "phase_map":
+            self._atom_create_phase = AtomCreatePhase.PHASE_MAP
+        else:
+            self._atom_create_phase = AtomCreatePhase.CREATE
         self._refresh_atom_create_chrome()
         if snapped:
             self._status(
@@ -2095,7 +2599,10 @@ class App(ctk.CTk):
         before = len(self._atom_draft.steps)
         self._atom_draft.remove_selected()
         if not self._atom_draft.steps:
-            self._atom_create_phase = AtomCreatePhase.CREATE
+            if str(self._atom_draft.kind or "") == "phase_map":
+                self._atom_create_phase = AtomCreatePhase.PHASE_MAP
+            else:
+                self._atom_create_phase = AtomCreatePhase.CREATE
             self._refresh_atom_create_chrome()
             self._status("Removed last step — back to Create.", "warn")
             return
@@ -2243,33 +2750,10 @@ class App(ctk.CTk):
             self._atom_add_click_step()
 
     def _try_save_atom_draft(self) -> bool:
-        """Prompt for event id and persist. Returns True if saved or nothing to save."""
+        """Deactivate/other leave paths — Save / Discard / Cancel. Cancel aborts the leave."""
 
-        draft = self._atom_draft
-        if not draft.steps:
-            return True
-        name = self._ask_name("Save atom — event id", draft.event_id or "atom_new")
-        if not name:
-            self._status(
-                "Atom not saved — needs persist path (event id). Draft discarded.",
-                "warn",
-            )
-            return False
-        draft.event_id = name
-        draft.title = name.replace("_", " ")
-        try:
-            path = save_atom_draft(project_root() / "automations" / "events", draft)
-        except ValueError as exc:
-            self._status(f"Atom save blocked: {exc}", "warn")
-            return False
-        except OSError as exc:
-            self._status(f"Atom save failed: {exc}", "error")
-            return False
-        draft.clear()
-        self._reload_automations()
-        self._status(f"Atom saved: {path.name}", "ok")
-        self._shared_console.append(f"Atom Create saved {path.name}", "ok")
-        return True
+        outcome = self._resolve_atom_create_exit()
+        return outcome != "cancel"
 
     def _host_trial_automations(self, parent) -> None:
         """Trial tab — browse / Start / Dry-run / Walkthrough (was Molecule tab)."""
@@ -2536,9 +3020,9 @@ class App(ctk.CTk):
 
         if mode is DeckMode.ATOM_CREATE:
             # Keep real FD accordion chrome with a create keymap (Esc → Atom Lab).
-            if not self._atom_draft.steps:
+            if self._atom_create_phase is AtomCreatePhase.IDLE:
                 self._atom_draft = AtomDraft()
-            self._atom_create_phase = AtomCreatePhase.CREATE
+                self._atom_create_phase = AtomCreatePhase.KIND
             self._install_atom_create_keymap()
             self.hooks.state.atom_create_active = True
             self._sync_shell_hook_flags()
@@ -2571,8 +3055,12 @@ class App(ctk.CTk):
     def _exit_deck_mode(self, *, quiet: bool = False) -> None:
         leaving = self._deck_mode
         if leaving is DeckMode.ATOM_CREATE:
-            # Prefer Esc path (_exit_atom_create_to_atom_lab). This is Deactivate/other.
-            self._try_save_atom_draft()
+            # Save / Discard / Cancel — Cancel keeps Create open.
+            if not self._try_save_atom_draft():
+                self._refresh_atom_create_chrome()
+                if not quiet:
+                    self._status("Cancelled exit — still in Atom Create.", "info")
+                return
             self._hide_atom_create_overlay()
         self._atom_lab_float_pane = None
         self._close_floating_lab()
@@ -2580,6 +3068,7 @@ class App(ctk.CTk):
         self._atom_create_phase = AtomCreatePhase.IDLE
         self._atom_key_capture = False
         self.hooks.state.atom_key_capture = False
+        self.hooks.state.atom_placing = False
         try:
             self.flight_deck.set_deck_lab_mode(False)
         except Exception:
@@ -2775,6 +3264,12 @@ class App(ctk.CTk):
                 self._atom_edit_ocr_cycle_kind()
             elif kind == "atom_edit_ocr_color":
                 self._atom_edit_ocr_color()
+            elif kind == "atom_kind_automation":
+                self._atom_kind_choose_automation()
+            elif kind == "atom_kind_phase_map":
+                self._atom_kind_choose_phase_map()
+            elif kind.startswith("pm_"):
+                self._dispatch_phase_map_action(kind, action)
             elif kind == "play_preset":
                 self._ensure_deck_only_surface()
                 self._flight_deck_play_preset(str(action["preset"]), path=path)
@@ -4182,6 +4677,9 @@ class App(ctk.CTk):
                         mode = str(event[2]) if len(event) > 2 else "step"
                         retries = int(event[3]) if len(event) > 3 else 0
                         self.live_control.run_scroll(str(event[1]), mode=mode, _retries=retries)
+                elif kind == "atom_place_confirm":
+                    if self._deck_mode is DeckMode.ATOM_CREATE:
+                        self._atom_place_confirm()
                 elif kind == "flight_deck_menu_key":
                     if self._shell_phase is ShellPhase.ACTIVE and self._is_anchored():
                         action = self.flight_deck.navigate(str(event[1]))

@@ -6,6 +6,7 @@
 ## Current
 
 - **Atoms** = `automations/events/*.json`; **Molecules** = `automations/collections/*.json`.
+- Today’s Atom Create authors **Automation** atoms only (clicks / drags / keys / OCR).
 - Loops UI: browse, Start selected (atom once / molecule once|interval), Run pack, queue, console, Validate / Dry-run.
 - **Molecule Lab** (`composer/`): drafts, selection-gated conditions (C1–C4 + C10), expand to disk; **runtime skip (C5) not done**.
 - LCO/Hands marks can be placed from Molecule Lab.
@@ -15,6 +16,7 @@
 
 - Shell plan: [../shell/molecule-lab.md](../shell/molecule-lab.md) — **Atom tab** (visual create on Deck) + Molecule compose/Trial; Loops dissolves; elevated queue; Walkthrough + Notes; Stop → Deactivate.
 - Autoclicker Lab not a separate top-level tab.
+- **Atom kinds:** entering Atom Create chooses **Automation** or **Phase map**. Phase maps are first-class atoms (key groups, phases, transitions); automations remain gesture/action sequences. Molecules compose both.
 
 ## Fit to vision
 

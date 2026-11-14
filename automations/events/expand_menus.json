@@ -1,0 +1,214 @@
+{
+  "id": "expand_menus",
+  "title": "Expand Menus",
+  "version": 1,
+  "enabled": false,
+  "priority": 50,
+  "timing": {
+    "type": "interval",
+    "every_ms": 60000
+  },
+  "kind": "phase_map",
+  "description": "Phase map atom \u2014 key groups, scrolls, targets (Atom Create).",
+  "notes": "Expand targets into automation atoms for Molecule Lab (enter+scroll+act).",
+  "home_phase": "main",
+  "phases": [
+    {
+      "id": "main",
+      "label": "main",
+      "parent": ""
+    },
+    {
+      "id": "expanded_menus",
+      "label": "expanded-menus",
+      "parent": ""
+    }
+  ],
+  "active_group": "",
+  "active_group_type": "overlay_menu",
+  "pieces": [
+    {
+      "type": "click",
+      "nx": 0.893581081081081,
+      "ny": 0.06426484907497566,
+      "mode": "single",
+      "description": "Phase map target (action) in phase main.",
+      "role": "target",
+      "target_kind": "action",
+      "target_id": "menu_expand",
+      "label": "menu-expand",
+      "phase": "main",
+      "scrolls": []
+    },
+    {
+      "type": "click",
+      "nx": 0.8902027027027027,
+      "ny": 0.06621226874391431,
+      "mode": "single",
+      "description": "Phase map target (action) in phase expanded_menus.",
+      "role": "target",
+      "target_kind": "action",
+      "target_id": "collapse_menus",
+      "label": "collapse-menus",
+      "phase": "expanded_menus",
+      "scrolls": []
+    },
+    {
+      "type": "click",
+      "nx": 0.7972972972972973,
+      "ny": 0.11489776046738072,
+      "mode": "single",
+      "description": "Phase map target (action) in phase expanded_menus.",
+      "role": "target",
+      "target_kind": "action",
+      "target_id": "daily_missions",
+      "label": "daily-missions",
+      "phase": "expanded_menus",
+      "scrolls": []
+    },
+    {
+      "type": "click",
+      "nx": 0.7905405405405406,
+      "ny": 0.16747809152872445,
+      "mode": "single",
+      "description": "Phase map target (action) in phase expanded_menus.",
+      "role": "target",
+      "target_kind": "action",
+      "target_id": "cards",
+      "label": "cards",
+      "phase": "expanded_menus",
+      "scrolls": []
+    },
+    {
+      "type": "click",
+      "nx": 0.8969594594594594,
+      "ny": 0.16845180136319376,
+      "mode": "single",
+      "description": "Phase map target (action) in phase expanded_menus.",
+      "role": "target",
+      "target_kind": "action",
+      "target_id": "labs",
+      "label": "labs",
+      "phase": "expanded_menus",
+      "scrolls": []
+    },
+    {
+      "type": "click",
+      "nx": 0.7972972972972973,
+      "ny": 0.21908471275559882,
+      "mode": "single",
+      "description": "Phase map target (action) in phase expanded_menus.",
+      "role": "target",
+      "target_kind": "action",
+      "target_id": "events",
+      "label": "events",
+      "phase": "expanded_menus",
+      "scrolls": []
+    },
+    {
+      "type": "click",
+      "nx": 0.8851351351351351,
+      "ny": 0.22297955209347614,
+      "mode": "single",
+      "description": "Phase map target (action) in phase expanded_menus.",
+      "role": "target",
+      "target_kind": "action",
+      "target_id": "modules",
+      "label": "modules",
+      "phase": "expanded_menus",
+      "scrolls": []
+    },
+    {
+      "type": "click",
+      "nx": 0.7989864864864865,
+      "ny": 0.2745861733203505,
+      "mode": "single",
+      "description": "Phase map target (action) in phase expanded_menus.",
+      "role": "target",
+      "target_kind": "action",
+      "target_id": "clan",
+      "label": "clan",
+      "phase": "expanded_menus",
+      "scrolls": []
+    },
+    {
+      "type": "click",
+      "nx": 0.8412162162162162,
+      "ny": 0.32619279454722494,
+      "mode": "single",
+      "description": "Phase map target (action) in phase expanded_menus.",
+      "role": "target",
+      "target_kind": "action",
+      "target_id": "exit_battle",
+      "label": "exit-battle",
+      "phase": "expanded_menus",
+      "scrolls": []
+    }
+  ],
+  "actions": [],
+  "targets": [
+    {
+      "id": "menu_expand",
+      "label": "menu-expand",
+      "phase": "main",
+      "kind": "action",
+      "scrolls": []
+    },
+    {
+      "id": "collapse_menus",
+      "label": "collapse-menus",
+      "phase": "expanded_menus",
+      "kind": "action",
+      "scrolls": []
+    },
+    {
+      "id": "daily_missions",
+      "label": "daily-missions",
+      "phase": "expanded_menus",
+      "kind": "action",
+      "scrolls": []
+    },
+    {
+      "id": "cards",
+      "label": "cards",
+      "phase": "expanded_menus",
+      "kind": "action",
+      "scrolls": []
+    },
+    {
+      "id": "labs",
+      "label": "labs",
+      "phase": "expanded_menus",
+      "kind": "action",
+      "scrolls": []
+    },
+    {
+      "id": "events",
+      "label": "events",
+      "phase": "expanded_menus",
+      "kind": "action",
+      "scrolls": []
+    },
+    {
+      "id": "modules",
+      "label": "modules",
+      "phase": "expanded_menus",
+      "kind": "action",
+      "scrolls": []
+    },
+    {
+      "id": "clan",
+      "label": "clan",
+      "phase": "expanded_menus",
+      "kind": "action",
+      "scrolls": []
+    },
+    {
+      "id": "exit_battle",
+      "label": "exit-battle",
+      "phase": "expanded_menus",
+      "kind": "action",
+      "scrolls": []
+    }
+  ]
+}

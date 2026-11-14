@@ -34,12 +34,54 @@ ACTION_TYPES = frozenset(
         # Atom Create accordion leaves
         "atom_add_lco",
         "atom_add_click",
+        "atom_add_drag",
+        "atom_add_key",
+        "atom_add_ocr",
+        "atom_playbook_enter",
         "atom_edit_enter",
         "atom_edit_exit",
         "atom_edit_prev",
         "atom_edit_next",
         "atom_edit_move_up",
         "atom_edit_move_down",
+        "atom_edit_remove",
+        "atom_edit_toggle_mode",
+        "atom_edit_toggle_spam_by",
+        "atom_edit_ask_click_amount",
+        "atom_edit_ask_duration",
+        "atom_edit_ask_interval",
+        "atom_edit_recapture_key",
+        "atom_edit_drag_cycle_speed",
+        "atom_edit_drag_toggle_pause",
+        "atom_edit_ocr_cycle_kind",
+        "atom_edit_ocr_color",
+        "atom_kind_automation",
+        "atom_kind_phase_map",
+        # Phase map Atom Create leaves
+        "pm_new_group",
+        "pm_cycle_group_type",
+        "pm_add_enter_key",
+        "pm_add_enter_key_hotkey",
+        "pm_add_exit_key",
+        "pm_new_phase",
+        "pm_set_active_phase",
+        "pm_set_parent_phase",
+        "pm_mark_home",
+        "pm_pick_active",
+        "pm_pick_parent",
+        "pm_pick_home",
+        "pm_add_target",
+        "pm_bind_scrolls",
+        "pm_add_scroll",
+        "pm_name_scroll",
+        "pm_bind_scroll_phase",
+        "pm_link_scroll_region",
+        "pm_add_region",
+        "pm_add_phase_sense",
+        "pm_add_gesture",
+        "pm_expand_preview",
+        "pm_edit_show_role",
+        "pm_rename_selected",
         # Legacy aliases → Observation
         "observe_start",
         "observe_shot",
@@ -99,4 +141,14 @@ def normalize_action(raw: dict[str, Any] | None) -> dict[str, Any]:
         if not action_name:
             raise ActionError("atom_add_lco requires action")
         out["action"] = action_name
+    elif kind == "pm_add_target":
+        tk = str(raw.get("target_kind") or "equip").strip().lower()
+        out["target_kind"] = tk or "equip"
+    elif kind == "pm_add_gesture":
+        out["gesture"] = str(raw.get("gesture") or "click").strip().lower() or "click"
+    elif kind == "pm_add_region":
+        rk = str(raw.get("region_kind") or "scroll_viewport").strip().lower()
+        out["region_kind"] = rk or "scroll_viewport"
+    elif kind in {"pm_pick_active", "pm_pick_parent", "pm_pick_home"}:
+        out["phase_id"] = str(raw.get("phase_id") or "").strip()
     return out
