@@ -48,7 +48,7 @@ Peer Flight Deck as a second exclusive surface is **out**. Fold that job into Id
 
 ## Ships today vs this direction
 
-Code still runs **exclusive Idle Lab ↔ Flight Deck** from shape-first. These docs are the **target** until the reshape lands. [FEATURES.md](../../FEATURES.md) keeps both layers honest.
+**Slice 1 (costume skeleton) ships:** expanded rail + pocket + action pane; condensed morph; peer Deck not user-facing (withdrawn runtime). Still missing: Esc confirm on glass, live pocket maps, Deck retirement, skins. [FEATURES.md](../../FEATURES.md) · [CONTINUATION.md](../../CONTINUATION.md).
 
 ## Implementation
 

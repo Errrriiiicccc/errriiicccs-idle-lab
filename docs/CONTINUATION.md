@@ -11,7 +11,17 @@
 
 **One window, two costumes + a hotkey pocket** — abandon peer Flight Deck. Fold its job into Idle Lab.
 
-Talked through with Eric (docs only; code still ships the old exclusive Deck). Detail: [pieces/shell/README.md](pieces/shell/README.md) · [FEEL.md](pieces/shell/FEEL.md) · [DECISIONS.md](pieces/DECISIONS.md).
+**Slice 1 landed (costume skeleton):** left lab rail + hotkey pocket + action pane; condensed morph on LOL/Observation / Preview; peer Deck chrome removed (runtime still withdrawn under the hood). Next: LOL Esc confirm on glass · live pocket maps · retire peer Deck window.
+
+Detail: [pieces/shell/README.md](pieces/shell/README.md) · [FEEL.md](pieces/shell/FEEL.md) · [DECISIONS.md](pieces/DECISIONS.md).
+
+### Smoke slice 1 (Restart)
+
+1. Idle Lab opens **expanded** — left Labs tree, pocket at rail bottom (`Hotkey flight deck · F1 open/close`), action pane; **no** Open Flight Deck.
+2. Click labs in the tree — action pane switches; pocket **Focus:** line updates; pocket **—** minimizes body.
+3. **Preview condensed** (chrome) → skinny status + outside chords; **Expand Idle Lab** returns.
+4. Anchor → Live Overlay Lab → **Start live** → window **condenses**; Esc exits LOL → **expanded** again.
+5. `` ` `` / Deactivate still Stop all.
 
 ### Expanded vs condensed
 
@@ -56,9 +66,9 @@ Fold Feel Lab **themes** into a real Idle Lab **skin system**. Omit Structure ex
 
 ## What landed recently
 
-- Tonight’s shell feel locked in docs (expanded/condensed, pocket, themes-as-skins) — replaces accidental “state-loop next” handoff
+- **Costume skeleton (slice 1):** expanded rail+pocket+pane; condensed morph; peer Deck not user-facing
+- Shell feel docs (expanded/condensed, pocket, themes→skins)
 - Phase map Atom Create + Cards sample; Feel Lab sandbox on disk
-- Shape-first exclusive Deck/Lab still **ships in code** until this reshape is built
 
 ## Soft parked
 

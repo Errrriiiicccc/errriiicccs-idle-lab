@@ -93,6 +93,12 @@ from idle_lab.shell.atom_phase_map import (
 )
 from idle_lab.shell.atom_create_overlay import AtomCreateOverlay
 from idle_lab.shell.console import SharedConsole
+from idle_lab.shell.costume import (
+    CONDENSED_OUTSIDE_CHORDS,
+    HotkeyPocket,
+    LabTreeRail,
+    hide_tabview_segment,
+)
 from idle_lab.shell.floating import FloatingLabWindow
 from idle_lab.shell.idle_lab_window import build_tab_host
 from idle_lab.shell.resume import resume_prompt
@@ -246,6 +252,9 @@ class App(ctk.CTk):
             root / "lab-comments.json",
         ]
         self._disk_fingerprint = dir_fingerprint(self._watch_paths)
+        self._costume_mode = "expanded"  # expanded | condensed (before _build)
+        self._costume_reason = ""
+        self._expanded_geometry: str | None = None
         self._begin_load()
         self._build()
         self._end_load()
@@ -308,8 +317,8 @@ class App(ctk.CTk):
         self._sync_lco_console_deck_labels()
         self._sync_settings_deck_labels()
         self._refresh_screen_map_catalog()
-        # Lab X → exclusive Flight Deck (deactivated). Quit is Esc peel on the deck.
-        self.protocol("WM_DELETE_WINDOW", self._withdraw_idle_lab_to_deck)
+        # Lab X → hide to tray (peer Deck is not a user-facing surface in slice 1).
+        self.protocol("WM_DELETE_WINDOW", self._withdraw_idle_lab_hide)
         try:
             self.hooks.start()
         except OSError as exc:
@@ -336,14 +345,11 @@ class App(ctk.CTk):
             self._status(tray_error, "warn")
         else:
             self._status(
-                "Idle Lab · Info. Activate Deck for hotkeys. Info outline is live; Labs still stub.",
+                "Idle Lab · expanded costume. Left rail + hotkey pocket.",
                 "info",
             )
-        boot = normalize_boot_surface(self.settings.boot_surface)
-        self._lab_visible = boot == BOOT_IDLE_LAB
-        # Park Idle Lab before first paint when Deck is the boot surface.
-        if boot == BOOT_FLIGHT_DECK:
-            self._hide_lab(quiet=True)
+        # Slice 1: always boot expanded Idle Lab (peer Deck boot preference ignored).
+        self._lab_visible = True
         self.after(0, self._start_boot)
 
     def _build(self) -> None:
@@ -352,7 +358,6 @@ class App(ctk.CTk):
 
         self._build_chrome()
 
-        # Target tab strip. Info is nested docs; Labs stay stubs until later phases.
         self.auto_panel = None
         self.atom_lab_pane = None
         self._molecule_lab_root = None
@@ -360,8 +365,32 @@ class App(ctk.CTk):
         self.ai_batch_panel = None
         self.body = None
         self.preset_list = None
+        self.lab_tree = None
+        self.hotkey_pocket = None
+        self._workspace = None
+        self._condensed_panel = None
+        self.flight_deck_button = None
+        self.flight_deck_button_hint = None
+
+        # Expanded workspace: left rail (tree + pocket) | action pane (existing labs).
+        self._workspace = ctk.CTkFrame(self, fg_color="transparent")
+        self._workspace.pack(fill="both", expand=True, padx=8, pady=(4, 0))
+
+        left_rail = ctk.CTkFrame(self._workspace, fg_color="#141820", width=240, corner_radius=10)
+        left_rail.pack(side="left", fill="y", padx=(0, 8))
+        left_rail.pack_propagate(False)
+
+        self.lab_tree = LabTreeRail(left_rail, on_select=self._on_lab_tree_select)
+        self.lab_tree.pack(fill="both", expand=True, padx=4, pady=(4, 0))
+
+        self.hotkey_pocket = HotkeyPocket(left_rail)
+        self.hotkey_pocket.pack(fill="x", padx=4, pady=8, side="bottom")
+
+        self._action_pane = ctk.CTkFrame(self._workspace, fg_color="transparent")
+        self._action_pane.pack(side="left", fill="both", expand=True)
+
         self.tabs, self._current_tab = build_tab_host(
-            self,
+            self._action_pane,
             on_tab_changed=self._on_tab_changed,
             last_tab=self.settings.last_tab,
             on_open_tab=self._goto_lab_tab,
@@ -377,15 +406,53 @@ class App(ctk.CTk):
             host_observation_user=self._host_observation_user,
             host_observation_ai=self._host_observation_ai,
         )
+        hide_tabview_segment(self.tabs)
         self.settings.last_tab = self._current_tab
+        try:
+            self.lab_tree.select(self._current_tab, notify=False)
+            if self.hotkey_pocket is not None:
+                self.hotkey_pocket.set_focus_lab(self._current_tab)
+        except Exception:
+            pass
+
+        # Condensed face (hidden until morph).
+        self._condensed_panel = ctk.CTkFrame(self, fg_color="#141820", corner_radius=10)
+        ctk.CTkLabel(
+            self._condensed_panel,
+            text="Idle Lab · condensed",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            anchor="w",
+        ).pack(fill="x", padx=12, pady=(12, 4))
+        self._condensed_status = ctk.CTkLabel(
+            self._condensed_panel,
+            text="Status: Idle",
+            anchor="w",
+            text_color="#8EE0C2",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        )
+        self._condensed_status.pack(fill="x", padx=12, pady=(0, 8))
+        for line in CONDENSED_OUTSIDE_CHORDS:
+            ctk.CTkLabel(
+                self._condensed_panel,
+                text=line,
+                anchor="w",
+                text_color="#A8B4C4",
+                font=ctk.CTkFont(size=13),
+            ).pack(fill="x", padx=12, pady=1)
+        ctk.CTkButton(
+            self._condensed_panel,
+            text="Expand Idle Lab",
+            width=140,
+            command=self._preview_expand_costume,
+        ).pack(anchor="w", padx=12, pady=(12, 12))
 
     def _build_chrome(self) -> None:
-        """Thin global chrome: brand, compact Anchor, Refresh/Restart/Stop all, activity."""
+        """Thin global chrome: brand, Anchor, Refresh/Restart/Deactivate, costume preview."""
 
-        chrome = ctk.CTkFrame(self, corner_radius=12)
-        chrome.pack(fill="x", padx=8, pady=(8, 4))
+        self._chrome = ctk.CTkFrame(self, corner_radius=12)
+        self._chrome.pack(fill="x", padx=8, pady=(8, 4))
 
-        left = ctk.CTkFrame(chrome, fg_color="transparent")
+        left = ctk.CTkFrame(self._chrome, fg_color="transparent")
         left.pack(side="left", fill="y", padx=(12, 8), pady=8)
         ctk.CTkLabel(
             left,
@@ -393,7 +460,7 @@ class App(ctk.CTk):
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(anchor="w")
 
-        self.header_actions = ctk.CTkFrame(chrome, fg_color="transparent")
+        self.header_actions = ctk.CTkFrame(self._chrome, fg_color="transparent")
         self.header_actions.pack(side="right", padx=(8, 12), pady=8)
         self.settings_button = ctk.CTkButton(
             self.header_actions,
@@ -429,6 +496,15 @@ class App(ctk.CTk):
             command=self._refresh_lab,
         )
         self.refresh_button.pack(side="right", padx=(6, 0))
+        self.preview_condensed_button = ctk.CTkButton(
+            self.header_actions,
+            text="Preview condensed",
+            width=130,
+            fg_color="#1E3A4A",
+            hover_color="#2A5568",
+            command=self._preview_condensed_costume,
+        )
+        self.preview_condensed_button.pack(side="right", padx=(6, 0))
         self.mode_menu = ctk.CTkOptionMenu(
             self.header_actions,
             values=["Auto", "Supervised"],
@@ -438,7 +514,7 @@ class App(ctk.CTk):
         self.mode_menu.set("Supervised" if normalize_lab_mode(self.settings.lab_mode) == "supervised" else "Auto")
         self.mode_menu.pack(side="right", padx=(6, 0))
 
-        mid = ctk.CTkFrame(chrome, fg_color="transparent")
+        mid = ctk.CTkFrame(self._chrome, fg_color="transparent")
         mid.pack(side="left", fill="both", expand=True, padx=(4, 8), pady=6)
 
         anchor_row = ctk.CTkFrame(mid, fg_color="transparent")
@@ -464,27 +540,6 @@ class App(ctk.CTk):
         self.clear_button.pack(side="left", padx=(2, 0))
         self.anchor_dot = ctk.CTkLabel(anchor_row, text="●", text_color="#5A6474", width=16)
         self.anchor_dot.pack(side="left", padx=(6, 0))
-        deck_col = ctk.CTkFrame(anchor_row, fg_color="transparent")
-        deck_col.pack(side="left", padx=(10, 0))
-        self.flight_deck_button = ctk.CTkButton(
-            deck_col,
-            text="Open Flight Deck",
-            width=140,
-            height=28,
-            fg_color="#1E3A4A",
-            hover_color="#2A5568",
-            command=self._open_flight_deck_from_lab,
-        )
-        self.flight_deck_button.pack(anchor="w")
-        self.flight_deck_button_hint = ctk.CTkLabel(
-            deck_col,
-            text="(closes Idle Lab)",
-            anchor="w",
-            text_color="#7E8796",
-            font=ctk.CTkFont(size=11),
-        )
-        self.flight_deck_button_hint.pack(anchor="w")
-        # Activate-key remap lives in Settings (A8).
 
         self.anchor_label = ctk.CTkLabel(
             mid,
@@ -1016,28 +1071,34 @@ class App(ctk.CTk):
             lab_open and getattr(self, "_molecule_lab_close_confirm", False)
         )
         self.hooks.state.lab_visible = bool(self._lab_visible)
-        self.hooks.state.resume_handle = bool(self._resume_handle) and (not self._lab_visible)
-        self.hooks.state.deck_mode_active = bool(
-            mode_abandons_menu(self._deck_mode) and (not self._lab_visible)
-        )
+        # Expanded desk owns mouse/buttons; condensed yields to overlay / mode hotkeys.
+        desk = self._desk_owns_input()
+        self.hooks.state.resume_handle = bool(self._resume_handle) and desk
+        self.hooks.state.deck_mode_active = bool(mode_abandons_menu(self._deck_mode) and (not desk))
         self.hooks.state.atom_create_active = bool(
-            self._deck_mode is DeckMode.ATOM_CREATE and (not self._lab_visible)
+            self._deck_mode is DeckMode.ATOM_CREATE and (not desk)
         )
-        # Keep Activate armed even when the deck window is withdrawn after Close.
-        # While Idle Lab is the surface, Activate VK is silent (buttons only).
-        self.hooks.state.flight_deck_open = bool(deck_visible) and (not self._lab_visible)
-        self.hooks.state.flight_deck_expand_armed = not bool(self._lab_visible)
-        self.hooks.state.flight_deck_active = bool(active and deck_visible and not self._lab_visible)
+        # Peer Deck window may stay withdrawn; condensed LOL still needs mode flags.
+        condensed = self._costume_mode == "condensed"
+        self.hooks.state.flight_deck_open = (bool(deck_visible) and (not desk)) or condensed
+        self.hooks.state.flight_deck_expand_armed = (not desk) or condensed
+        self.hooks.state.flight_deck_active = bool(
+            (active and deck_visible and not desk) or (active and condensed)
+        )
         self.hooks.state.flight_deck_anchored = bool(
-            anchored and active and deck_visible and not self._lab_visible
+            anchored and ((active and deck_visible and not desk) or (active and condensed))
         )
         self.hooks.state.flight_deck_expanded = bool(
             active
             and anchored
-            and deck_visible
-            and (not self._lab_visible)
-            and self.flight_deck.expanded
+            and ((deck_visible and not desk) or condensed)
+            and (self.flight_deck.expanded or condensed)
         )
+
+    def _desk_owns_input(self) -> bool:
+        """Expanded Idle Lab is the mouse desk; condensed yields hotkeys to live modes."""
+
+        return bool(self._lab_visible) and self._costume_mode == "expanded"
 
     def _is_lab_visible(self) -> bool:
         return bool(self._lab_visible)
@@ -1067,7 +1128,7 @@ class App(ctk.CTk):
         )
 
     def _start_boot(self) -> None:
-        """Boot from Settings preference: Idle Lab (factory) or Flight Deck."""
+        """Slice 1: always boot expanded Idle Lab (peer Deck boot preference ignored)."""
 
         tab = normalize_last_tab(self.settings.last_tab)
         try:
@@ -1080,42 +1141,25 @@ class App(ctk.CTk):
         self._clear_resume_handle()
         self._exit_deck_mode(quiet=True)
         self.update_idletasks()
-        boot = normalize_boot_surface(self.settings.boot_surface)
-        if boot == BOOT_FLIGHT_DECK:
-            self._switch_to_flight_deck_surface(activate=False)
-            if self._auto_anchor_on_boot:
-                self._try_auto_anchor_on_boot()
-                return
-            self._status("Flight Deck (boot preference). Activate to listen.", "info")
-            return
+        self._morph_to_expanded()
         self._show_idle_lab_surface(quiet=True)
         if self._auto_anchor_on_boot:
             self._try_auto_anchor_on_boot()
             return
         self._shell_phase = ShellPhase.INACTIVE
+        self._hide_flight_deck(user_hidden=False)
         self._sync_shell_hook_flags()
-        self._status(f"Idle Lab · {tab}. Activate Deck for hotkeys.", "info")
+        self._status(f"Idle Lab · {tab} (expanded). Hotkey pocket on the left rail.", "info")
 
     def _try_auto_anchor_on_boot(self) -> None:
-        """Restart path: rebind last title; honor boot surface exclusivity."""
+        """Restart path: rebind last title; stay on expanded Idle Lab."""
 
-        boot = normalize_boot_surface(self.settings.boot_surface)
         self._refresh_boot_candidate()
         hwnd = self._boot_candidate_hwnd
         if hwnd:
             self._apply_anchor(int(hwnd))
-            if boot == BOOT_FLIGHT_DECK:
-                self._switch_to_flight_deck_surface(activate=False)
-                self._status("Flight Deck (boot preference). Activate to listen.", "info")
-                return
             self._show_idle_lab_surface(quiet=True)
-            return
-        if self._boot_offer_title:
-            # Last title remembered but window gone — Deck surface for re-anchor prompt.
-            self._switch_to_flight_deck_surface(activate=True)
-            return
-        if boot == BOOT_FLIGHT_DECK:
-            self._switch_to_flight_deck_surface(activate=False)
+            self._status("Anchored — Idle Lab expanded.", "ok")
             return
         self._shell_phase = ShellPhase.INACTIVE
         self._sync_shell_hook_flags()
@@ -1317,15 +1361,22 @@ class App(ctk.CTk):
         self._hide_lab(quiet=True)
 
     def _show_idle_lab_surface(self, *, quiet: bool = False) -> None:
-        """Exclusive Idle Lab: hide Deck, show Lab (refused while anything is running)."""
+        """Show Idle Lab; peer Deck stays withdrawn. Condensed may stay while LOL runs."""
 
-        if not can_show_idle_lab(anything_running=self._anything_running()):
-            self._status("Something is running — Flight Deck only until Deactivate.", "warn")
-            self._ensure_deck_only_surface()
+        if (
+            not can_show_idle_lab(anything_running=self._anything_running())
+            and self._costume_mode != "condensed"
+            and not self.live_control.active
+        ):
+            self._status("Something is running — Deactivate to return to the desk.", "warn")
             return
         self._clear_resume_handle()
-        self._hide_flight_deck(user_hidden=False)
-        self._shell_phase = ShellPhase.INACTIVE
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
+        if self._costume_mode != "condensed":
+            self._shell_phase = ShellPhase.INACTIVE
         self._show_lab_window(quiet=quiet)
         self._sync_shell_hook_flags()
         self._update_flight_deck_lab_button()
@@ -1658,8 +1709,11 @@ class App(ctk.CTk):
         elif action is EscAction.EXIT_LIVE_CONTROL:
             self._exit_live_control(reason="escape")
             if self._deck_mode is DeckMode.LOL:
-                self._exit_deck_mode(quiet=True)
-            self._status("Live Overlay Lab closed — Flight Deck.", "info")
+                self._deck_mode = DeckMode.MENU
+                self.hooks.state.deck_mode_active = False
+            self._morph_to_expanded()
+            self._sync_shell_hook_flags()
+            self._status("Live Overlay Lab closed — Idle Lab expanded.", "info")
         elif action is EscAction.STOP_LAB_RUNNERS:
             self._stop_lab_runners()
         elif action is EscAction.CLOSE_MOLECULE_LAB:
@@ -1685,9 +1739,158 @@ class App(ctk.CTk):
             self._show_idle_lab_surface()
 
     def _withdraw_idle_lab_to_deck(self) -> None:
-        """Window X / hide — exclusive Deck (deactivated), not both surfaces."""
+        """Legacy name — peer Deck is not user-facing; hide Lab instead."""
 
-        self._switch_to_flight_deck_surface(activate=False)
+        self._withdraw_idle_lab_hide()
+
+    def _withdraw_idle_lab_hide(self) -> None:
+        """Window X — park Lab; peer Deck stays withdrawn (tray can reopen)."""
+
+        if self.live_control.active:
+            self._exit_live_control(reason="operator")
+        self._morph_to_expanded()
+        self._hide_lab(quiet=True)
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
+        self._status("Idle Lab hidden — use tray to Open Lab.", "info")
+
+    def _on_lab_tree_select(self, name: str) -> None:
+        """Left rail → action pane + pocket focus."""
+
+        lab = normalize_last_tab(name)
+        try:
+            self.tabs.set(lab)
+        except Exception:
+            self._status(f"Could not open “{lab}”.", "warn")
+            return
+        self._current_tab = lab
+        self.settings.last_tab = lab
+        self._save_settings()
+        if self.hotkey_pocket is not None:
+            self.hotkey_pocket.set_focus_lab(lab)
+        self._status(f"Opened {lab}.", "ok")
+
+    def _desk_geometry_xy(self) -> tuple[int, int]:
+        geo = str(self.geometry() or "")
+        if "+" in geo:
+            try:
+                _size, rest = geo.split("+", 1)
+                parts = rest.split("+")
+                return int(parts[0]), int(parts[1])
+            except Exception:
+                pass
+        screen = win32_api.virtual_screen()
+        return screen.left + 80, screen.top + 60
+
+    def _morph_to_condensed(self, *, reason: str) -> None:
+        """Same window → skinny status + outside chords."""
+
+        if self._costume_mode == "expanded":
+            try:
+                geo = str(self.geometry() or "").strip()
+                if geo and "x" in geo:
+                    self._expanded_geometry = geo
+                    self._lab_saved_geometry = geo
+            except Exception:
+                pass
+        self._costume_mode = "condensed"
+        self._costume_reason = str(reason or "")
+        self._show_lab_window(quiet=True)
+        if self._workspace is not None:
+            try:
+                self._workspace.pack_forget()
+            except Exception:
+                pass
+        if self._chrome is not None:
+            try:
+                self._chrome.pack_forget()
+            except Exception:
+                pass
+        if self._condensed_panel is not None:
+            try:
+                self._condensed_panel.pack(fill="both", expand=True, padx=8, pady=(8, 0))
+            except Exception:
+                pass
+        x, y = self._desk_geometry_xy()
+        try:
+            self.minsize(320, 180)
+            self.geometry(f"420x240+{x}+{y}")
+        except Exception:
+            pass
+        self._refresh_condensed_status()
+        self._sync_shell_hook_flags()
+        self._status(f"Condensed · {self._costume_reason or 'live'}.", "info")
+
+    def _morph_to_expanded(self) -> None:
+        if self._costume_mode == "expanded" and (
+            self._condensed_panel is None or not self._condensed_panel.winfo_ismapped()
+        ):
+            return
+        self._costume_mode = "expanded"
+        self._costume_reason = ""
+        if self._condensed_panel is not None:
+            try:
+                self._condensed_panel.pack_forget()
+            except Exception:
+                pass
+        if self._chrome is not None:
+            try:
+                self._chrome.pack(fill="x", padx=8, pady=(8, 4), before=self.status_label)
+            except Exception:
+                try:
+                    self._chrome.pack(fill="x", padx=8, pady=(8, 4))
+                except Exception:
+                    pass
+        if self._workspace is not None:
+            try:
+                self._workspace.pack(
+                    fill="both", expand=True, padx=8, pady=(4, 0), before=self.status_label
+                )
+            except Exception:
+                try:
+                    self._workspace.pack(fill="both", expand=True, padx=8, pady=(4, 0))
+                except Exception:
+                    pass
+        try:
+            self.minsize(900, 700)
+            geo = self._expanded_geometry or self._lab_saved_geometry or "1100x920"
+            self.geometry(geo)
+        except Exception:
+            pass
+        self._sync_shell_hook_flags()
+
+    def _refresh_condensed_status(self) -> None:
+        if self._condensed_status is None:
+            return
+        parts = [f"Reason: {self._costume_reason or 'preview'}"]
+        if self.live_control.active:
+            parts.append("LOL live")
+            if self.live_control.paused:
+                parts.append("paused")
+        if self.observation.active:
+            parts.append("Observation ON")
+        try:
+            act = str(self.activity_label.cget("text") or "")
+            if act:
+                parts.append(act)
+        except Exception:
+            pass
+        self._condensed_status.configure(text=" · ".join(parts))
+
+    def _preview_condensed_costume(self) -> None:
+        self._morph_to_condensed(reason="preview")
+
+    def _preview_expand_costume(self) -> None:
+        if self.live_control.active:
+            self._status("Exit Live Overlay Lab before expanding (Esc).", "warn")
+            return
+        if self.observation.active or self.screen_map.active:
+            self._status("Stop Observation before expanding.", "warn")
+            return
+        self._morph_to_expanded()
+        self._status("Expanded Idle Lab.", "ok")
 
     def _goto_lab_tab(self, tab_name: str) -> None:
         """Info checklist link → switch Idle Lab tab."""
@@ -1701,21 +1904,40 @@ class App(ctk.CTk):
         self._current_tab = name
         self.settings.last_tab = name
         self._save_settings()
+        if self.lab_tree is not None:
+            try:
+                self.lab_tree.select(name, notify=False)
+            except Exception:
+                pass
+        if self.hotkey_pocket is not None:
+            self.hotkey_pocket.set_focus_lab(name)
         if not self._is_lab_visible():
             self._show_idle_lab_surface()
+        if self._costume_mode != "expanded":
+            self._morph_to_expanded()
         self._status(f"Opened {name}.", "ok")
 
     def _start_live_overlay_from_lab(self) -> None:
-        """Live Overlay Lab tab → Deck + live enter (Anchor required)."""
+        """Live Overlay Lab → condense Lab + live enter (peer Deck stays withdrawn)."""
 
-        self._ensure_deck_only_surface()
-        if self._shell_phase is ShellPhase.INACTIVE:
-            self._activate_flight_deck()
-        self._enter_deck_mode(DeckMode.LOL)
+        self._show_lab_window(quiet=True)
+        self._shell_phase = ShellPhase.ACTIVE
+        self._deck_mode = DeckMode.LOL
+        self.hooks.state.deck_mode_active = True
+        self._morph_to_condensed(reason="lol")
+        self._sync_shell_hook_flags()
         try:
-            self._enter_live_control()
-        except Exception as exc:
-            self._status(f"Live Overlay Lab: {exc}", "error")
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
+        self._enter_live_control()
+        if not self.live_control.active:
+            self._deck_mode = DeckMode.MENU
+            self.hooks.state.deck_mode_active = False
+            self._morph_to_expanded()
+            return
+        self._refresh_condensed_status()
+        self._status("Live Overlay Lab — Lab condensed. Esc exits.", "run")
 
     def _open_atom_create_from_lab(self) -> None:
         """Idle Lab / Atom Lab button → Create Atom on Deck (same as M→3)."""
@@ -2986,21 +3208,27 @@ class App(ctk.CTk):
             pass
 
     def _deactivate_from_idle_lab(self) -> None:
-        """Chrome Deactivate ≡ Deck Deactivate (one stop model)."""
+        """Chrome Deactivate = Stop all; stay on expanded Idle Lab (slice 1)."""
 
         self._exit_deck_mode(quiet=True)
-        self._ensure_deck_only_surface()
         self._stop_all()
-        self._enter_inactive(resume=True)
-        self._update_flight_deck_lab_button()
+        if self.live_control.active:
+            self._exit_live_control(reason="deactivate")
+        self._morph_to_expanded()
+        self._shell_phase = ShellPhase.INACTIVE
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
+        self._show_lab_window(quiet=True)
+        self._sync_shell_hook_flags()
+        self._status("Deactivated — Stop all. Idle Lab expanded.", "warn")
 
     def _open_settings_from_lab(self) -> None:
-        """Idle Lab Settings → same boot-preference panel as Deck S."""
+        """Settings float without peer Deck takeover."""
 
-        self._ensure_deck_only_surface()
-        if self._shell_phase is ShellPhase.INACTIVE:
-            self._activate_flight_deck()
-        self._enter_deck_mode(DeckMode.SETTINGS)
+        self._deck_mode = DeckMode.SETTINGS
+        self._open_settings_float()
 
     def _enter_deck_mode(self, mode: DeckMode) -> None:
         """Abandon menu letters; open floating Lab skeleton when needed."""
@@ -3144,24 +3372,22 @@ class App(ctk.CTk):
             pass
 
     def _open_flight_deck_from_lab(self) -> None:
-        """Idle Lab chrome → exclusive Flight Deck (closes Idle Lab)."""
+        """Peer Deck chrome removed — keep Lab expanded; Deck stays withdrawn."""
 
-        self._switch_to_flight_deck_surface(activate=False)
-        self._status("Flight Deck open — Idle Lab closed.", "ok")
+        self._morph_to_expanded()
+        self._show_lab_window(quiet=True)
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
+        self._status("Peer Flight Deck is folded away — use the hotkey pocket.", "info")
 
     def _toggle_flight_deck_from_lab(self) -> None:
-        # Compatibility alias — chrome button is exclusive Open Flight Deck.
         self._open_flight_deck_from_lab()
 
     def _update_flight_deck_lab_button(self) -> None:
-        if getattr(self, "flight_deck_button", None) is None:
-            return
-        self.flight_deck_button.configure(text="Open Flight Deck")
-        if getattr(self, "flight_deck_button_hint", None) is not None:
-            try:
-                self.flight_deck_button_hint.configure(text="(closes Idle Lab)")
-            except Exception:
-                pass
+        # Slice 1: no Open Flight Deck chrome.
+        return
 
     def _begin_flight_deck_remap(self) -> None:
         status, _hwnd, _rect, _title = self.anchor_target.snapshot()
@@ -3648,6 +3874,12 @@ class App(ctk.CTk):
             self._live_control_owns_observation = False
             if self.observation.active or self.screen_map.active:
                 self._stop_observation(reason="live-control-exit", prompt_rename=False)
+        if self._costume_reason == "lol" and reason != "escape":
+            # Escape path morphs in _handle_shell_escape; other exits expand here.
+            self._deck_mode = DeckMode.MENU
+            self.hooks.state.deck_mode_active = False
+            self._morph_to_expanded()
+            self._sync_shell_hook_flags()
 
     def _flight_deck_play_preset(self, name: str, *, path: str) -> None:
         if self.recorder.active or self.player.is_active:
@@ -3855,7 +4087,10 @@ class App(ctk.CTk):
         self._refresh_screen_map_panel()
         self._refresh_screen_map_catalog()
         self._update_activity()
-        self._status(f"Observation ON · {batch.folder.name} — play normally; Esc stops.", "run")
+        if not self.live_control.active:
+            self._morph_to_condensed(reason="observation")
+        self._refresh_condensed_status()
+        self._status(f"Observation ON · {batch.folder.name} — Lab condensed; Esc stops.", "run")
 
     def _mark_observation(self) -> None:
         if not self.observation.active:
@@ -3887,6 +4122,8 @@ class App(ctk.CTk):
         self._refresh_screen_map_panel()
         self._refresh_screen_map_catalog()
         self._update_activity()
+        if self._costume_reason == "observation" and not self.live_control.active:
+            self._morph_to_expanded()
         if summary is None:
             self._status("Observation stopped.", "warn")
             return
@@ -4070,6 +4307,17 @@ class App(ctk.CTk):
         self._current_tab = self.tabs.get()
         self.settings.last_tab = normalize_last_tab(self._current_tab)
         self._save_settings()
+        lab = normalize_last_tab(self._current_tab)
+        if self.lab_tree is not None and getattr(self.lab_tree, "_selected", None) != lab:
+            try:
+                self.lab_tree.select(lab, notify=False)
+            except Exception:
+                pass
+        if self.hotkey_pocket is not None:
+            try:
+                self.hotkey_pocket.set_focus_lab(lab)
+            except Exception:
+                pass
         prefix = self._tab_scroll_prefix(self._current_tab)
         self.after(80, lambda p=prefix: self.scroll_memory.restore_prefix(p))
 

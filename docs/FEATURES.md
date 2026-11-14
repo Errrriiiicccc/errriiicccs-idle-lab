@@ -54,33 +54,33 @@ Docs for this reshape before coding waterfall. Show UI skeletons/stubs before fu
 
 ---
 
-## Ships today (shape-first shell on `shape-first-shell`)
+## Ships today
 
-Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**, shared overlay + Atom Create stubs, Molecule/Observation hosts, CUT demos archived.
+Phases **0–5** shape-first shell plus **costume skeleton (slice 1)**.
 
 ### Global chrome
 
-- Single instance; tray; Anchor; Refresh / Restart / Stop all; Activity + files-changed; Auto/Supervised; Humanize Off default.
-- Idle Lab ↔ Flight Deck exclusive; Deactivate = Stop all; resume handle after Deactivate.
-- Boot preference (Idle Lab / Flight Deck) in Settings — applies on **Restart**.
+- Single instance; tray; Anchor; Refresh / Restart / Deactivate (= Stop all); Activity + files-changed; Auto/Supervised; Humanize Off default.
+- **Expanded Idle Lab:** left Labs tree + **Hotkey flight deck** pocket + action pane (existing lab bodies). No **Open Flight Deck** button.
+- **Condensed:** same window shrinks on LOL / Observation (or **Preview condensed**); outside chords + status; expand when that mode ends.
+- Peer `FlightDeckWindow` still exists **withdrawn** for hotkey/runtime compatibility — not a user-facing surface.
+- Boot always opens **expanded** Lab (Settings “Flight Deck” boot preference ignored for now).
 - Contract: [REFRESH-RESTART.md](REFRESH-RESTART.md).
 
-### Flight Deck
+### Flight Deck (legacy runtime, not chrome)
 
-- Inactive → Activate `` ` ``; accordion **L/M/O/I/S** ([`automations/flight_deck.json`](../automations/flight_deck.json)).
-- **L** → Start · Toggle Console · Console Verbosity; **M** → Molecule Lab · Atom Lab · Create Atom; **O** → Observation float; **I** → Start (closes Flight Deck → Idle Lab); **S** → Open Settings · Set Deactivate Key · Boot Preferences.
-- Idle Lab chrome always has **Open Flight Deck** `(closes Idle Lab)` — surfaces never share the screen.
-- **M→2 Atom Lab** = lightweight Atom library/coverage float; **M→3 Create Atom** = kind gate (**Automation** | **Phase map**) + queue + drag-place on Deck. Phase map leaves: key groups, phases, targets, scroll defs (= Automation drag), regions; save expands targets to child automation atoms. Esc from Create asks to save then returns to Atom Lab. `` ` `` pauses Deck only (keeps Create).
-- Live overlay: object map, hold D describe, Esc exit. [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md), [OBJECT-MAP.md](OBJECT-MAP.md).
+- Accordion keymap / Atom Create-on-Deck paths still exist under the hood ([`automations/flight_deck.json`](../automations/flight_deck.json)).
+- **M→2 Atom Lab** float · **M→3 Create Atom** kind gate still Deck-modal until pocket maps land.
+- Live overlay: object map, hold D describe, Esc exit → Lab **expands**. [LIVE-CONTROL-OVERLAY.md](LIVE-CONTROL-OVERLAY.md).
 
 ### Idle Lab Labs
 
-| Tab | Ships |
+| Lab | Ships |
 | --- | --- |
-| **Info** | Nested outline + tab links |
-| **Live Overlay Lab** | Map list + Start live → Deck |
-| **Molecule Lab** | **Atom** library + LOL coverage · Atom Create (**B** Basic Gesture · **P** Playbook · **E** Edit + queue) · **Molecule** in-tab composer (+ Pop out) · **Trial** browse/run |
-| **Observation Lab** | **User** capture/review (date groups; Mark + rename-on-stop cut) · **AI mission** (Add feedback cut) |
+| **Info** | Nested outline + tree links |
+| **Live Overlay Lab** | Map list + Start live → **condenses** Lab |
+| **Molecule Lab** | **Atom** library + LOL coverage · Atom Create still via Deck path · **Molecule** composer · **Trial** |
+| **Observation Lab** | **User** capture/review · **AI mission** — start **condenses** Lab |
 
 ### Engines still callable
 
@@ -105,8 +105,7 @@ Phases **0–5** landed: exclusive surfaces, Info + Labs tabs, Deck **L/M/O/S**,
 
 ### Still not finished (honest stubs / parked)
 
-- **Active arc (docs):** one-window shell — expanded/condensed + hotkey pocket + skins ([CONTINUATION.md](CONTINUATION.md))  
-- Code still on exclusive peer Flight Deck until reshape lands  
-- Current State + C5 (soft-hold) · Atom Create OCR deep fields · package rename · in-app AI dispatch  
+- **Next slices:** LOL Esc confirm on glass · live pocket chord maps · retire peer Deck window · skins  
+- Atom Create still Deck-modal · Current State + C5 · package rename · in-app AI dispatch  
 - Process injection / stealth / in-process LLM  
 - Fully finished Tower buy-priority product loop · C5–C9  
