@@ -25,6 +25,7 @@ Status tags: `open` · `leaning` · `settled` · `parked`
 | D64 | leaning | Condensed@LOL = outside chords + status only | Glass owns LOL actions |
 | D65 | leaning | Lab **X** = hide to tray (withdraw); tray **Quit** = exit | Not a zombie taskbar park; peer Deck no longer needs mapped root |
 | D66 | leaning | Lab nav **only** on left rail; middle = active leaf | No Atom/Molecule/Trial or Obs tabs inside the middle pane; lazy desk |
+| D67 | leaning | Skin paints whole Lab | CTk ThemeManager + recursive pane paint; chrome / rail / desk / collapsed |
 
 ## Cut / keep / rename
 

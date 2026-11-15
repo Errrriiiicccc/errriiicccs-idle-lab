@@ -31,15 +31,9 @@ from idle_lab.composer.model import (
     build_palette,
     outputs_for_step,
 )
+from idle_lab.feel_lab.themes import Look, default_look
 from idle_lab.presets import project_root
-
-
-_BG = "#141A22"
-_PANEL = "#1B2330"
-_MUTED = "#7E8796"
-_ACCENT = "#9FD4F0"
-_TEXT = "#E8EEF6"
-_SELECT = "#3A5A78"
+from idle_lab.shell.paint import dormant_button_kwargs, paint_widget_tree, primary_button_kwargs
 
 
 class MoleculeComposerPane(ctk.CTkFrame):
@@ -49,6 +43,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
         self,
         master,
         *,
+        look: Look | None = None,
         automations_root: Path | None = None,
         project_root_path: Path | None = None,
         on_exported: Callable[[str], None] | None = None,
@@ -56,7 +51,8 @@ class MoleculeComposerPane(ctk.CTkFrame):
         on_lco_changed: Callable[[], None] | None = None,
         heading: str = "Molecule composer",
     ) -> None:
-        super().__init__(master, fg_color=_BG)
+        self._look = look or default_look()
+        super().__init__(master, fg_color=self._look.bg)
         self.automations_root = Path(automations_root or (project_root() / "automations"))
         self.project_root_path = Path(project_root_path or project_root())
         self.on_exported = on_exported
@@ -75,6 +71,15 @@ class MoleculeComposerPane(ctk.CTkFrame):
 
         self._build()
         self.refresh()
+        paint_widget_tree(self, self._look)
+
+    def apply_look(self, look: Look) -> None:
+        self._look = look
+        try:
+            self.configure(fg_color=look.bg)
+        except Exception:
+            pass
+        paint_widget_tree(self, look)
 
     def _emit(self, message: str, level: str = "info") -> None:
         if self.on_status:
@@ -93,10 +98,10 @@ class MoleculeComposerPane(ctk.CTkFrame):
             header,
             text=self._heading,
             font=ctk.CTkFont(size=20, weight="bold"),
-            text_color=_ACCENT,
+            text_color=self._look.live_key,
         ).pack(side="left")
         self.context_var = ctk.StringVar(value="Context: (choose a tab)")
-        ctk.CTkLabel(header, textvariable=self.context_var, text_color=_MUTED).pack(side="right")
+        ctk.CTkLabel(header, textvariable=self.context_var, text_color=self._look.muted).pack(side="right")
 
         ctk.CTkLabel(
             self,
@@ -104,7 +109,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
                 "Click palette items to add them. Select a step to edit conditions "
                 "(previous-step sources). Save as JSON. Library is grouped by phase."
             ),
-            text_color=_MUTED,
+            text_color=self._look.muted,
             anchor="w",
             justify="left",
         ).pack(fill="x", padx=14, pady=(0, 8))
@@ -124,7 +129,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
         self._build_footer()
 
     def _build_library(self, body: ctk.CTkFrame) -> None:
-        frame = ctk.CTkFrame(body, fg_color=_PANEL, corner_radius=8)
+        frame = ctk.CTkFrame(body, fg_color=self._look.panel, corner_radius=8)
         frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
         ctk.CTkLabel(frame, text="Library", font=ctk.CTkFont(weight="bold")).pack(
             anchor="w", padx=10, pady=(10, 4)
@@ -143,7 +148,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
         self.library_list.pack(fill="both", expand=True, padx=6, pady=(0, 10))
 
     def _build_palette(self, body: ctk.CTkFrame) -> None:
-        frame = ctk.CTkFrame(body, fg_color=_PANEL, corner_radius=8)
+        frame = ctk.CTkFrame(body, fg_color=self._look.panel, corner_radius=8)
         frame.grid(row=0, column=1, sticky="nsew", padx=6)
         ctk.CTkLabel(frame, text="Palette (click = add)", font=ctk.CTkFont(weight="bold")).pack(
             anchor="w", padx=10, pady=(10, 4)
@@ -152,7 +157,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
         self.palette_list.pack(fill="both", expand=True, padx=6, pady=(0, 10))
 
     def _build_draft(self, body: ctk.CTkFrame) -> None:
-        frame = ctk.CTkFrame(body, fg_color=_PANEL, corner_radius=8)
+        frame = ctk.CTkFrame(body, fg_color=self._look.panel, corner_radius=8)
         frame.grid(row=0, column=2, sticky="nsew", padx=6)
         ctk.CTkLabel(frame, text="Draft", font=ctk.CTkFont(weight="bold")).pack(
             anchor="w", padx=10, pady=(10, 4)
@@ -160,15 +165,15 @@ class MoleculeComposerPane(ctk.CTkFrame):
 
         meta = ctk.CTkFrame(frame, fg_color="transparent")
         meta.pack(fill="x", padx=10, pady=(0, 4))
-        ctk.CTkLabel(meta, text="Title", text_color=_MUTED, width=36).pack(side="left")
-        self.title_entry = ctk.CTkEntry(meta, text_color=_TEXT)
+        ctk.CTkLabel(meta, text="Title", text_color=self._look.muted, width=36).pack(side="left")
+        self.title_entry = ctk.CTkEntry(meta, text_color=self._look.line)
         self.title_entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
         self.title_entry.insert(0, self.draft.title)
         self.title_entry.bind("<KeyRelease>", lambda _e: self._sync_meta())
 
         meta2 = ctk.CTkFrame(frame, fg_color="transparent")
         meta2.pack(fill="x", padx=10, pady=(0, 6))
-        ctk.CTkLabel(meta2, text="Phase", text_color=_MUTED, width=36).pack(side="left")
+        ctk.CTkLabel(meta2, text="Phase", text_color=self._look.muted, width=36).pack(side="left")
         self.phase_var = ctk.StringVar(value=self.draft.phase)
         ctk.CTkOptionMenu(
             meta2,
@@ -177,7 +182,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
             width=110,
             command=lambda _v: self._sync_meta(),
         ).pack(side="left", padx=(4, 8))
-        ctk.CTkLabel(meta2, text="Kind", text_color=_MUTED).pack(side="left")
+        ctk.CTkLabel(meta2, text="Kind", text_color=self._look.muted).pack(side="left")
         self.kind_var = ctk.StringVar(value=self.draft.kind)
         ctk.CTkOptionMenu(
             meta2,
@@ -202,12 +207,12 @@ class MoleculeComposerPane(ctk.CTkFrame):
                 step_btns,
                 text=label,
                 width=w,
-                fg_color="#2A3140",
+                fg_color=self._look.dorm_bg, hover_color=self._look.live_hover, text_color=self._look.caption,
                 command=cmd,
             ).pack(side="left", padx=(0, 4))
 
     def _build_inspect(self, body: ctk.CTkFrame) -> None:
-        frame = ctk.CTkFrame(body, fg_color=_PANEL, corner_radius=8)
+        frame = ctk.CTkFrame(body, fg_color=self._look.panel, corner_radius=8)
         frame.grid(row=0, column=3, sticky="nsew", padx=(6, 0))
         ctk.CTkLabel(frame, text="Expansion preview", font=ctk.CTkFont(weight="bold")).pack(
             anchor="w", padx=10, pady=(10, 4)
@@ -216,8 +221,8 @@ class MoleculeComposerPane(ctk.CTkFrame):
             frame,
             wrap="word",
             font=ctk.CTkFont(family="Consolas", size=12),
-            text_color=_TEXT,
-            fg_color="#121820",
+            text_color=self._look.line,
+            fg_color=self._look.board,
             height=160,
         )
         self.preview.pack(fill="both", expand=True, padx=10, pady=(0, 8))
@@ -228,7 +233,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
         self.cond_hint = ctk.CTkLabel(
             frame,
             text="Select a draft step to edit its conditions.",
-            text_color=_MUTED,
+            text_color=self._look.muted,
             anchor="w",
             justify="left",
             wraplength=280,
@@ -240,7 +245,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
 
         pol = ctk.CTkFrame(self.cond_panel, fg_color="transparent")
         pol.pack(fill="x", pady=(0, 4))
-        ctk.CTkLabel(pol, text="When true", text_color=_MUTED, width=72).pack(side="left")
+        ctk.CTkLabel(pol, text="When true", text_color=self._look.muted, width=72).pack(side="left")
         self.cond_when = ctk.StringVar(value="perform")
         ctk.CTkOptionMenu(
             pol,
@@ -250,12 +255,12 @@ class MoleculeComposerPane(ctk.CTkFrame):
             command=lambda _v: self._apply_polarity(),
         ).pack(side="left", padx=(4, 0))
 
-        self.cond_list = ctk.CTkScrollableFrame(self.cond_panel, fg_color="#121820", height=180)
+        self.cond_list = ctk.CTkScrollableFrame(self.cond_panel, fg_color=self._look.board, height=180)
         self.cond_list.pack(fill="both", expand=True, pady=(0, 6))
 
         add_row = ctk.CTkFrame(self.cond_panel, fg_color="transparent")
         add_row.pack(fill="x", pady=(0, 4))
-        ctk.CTkLabel(add_row, text="Source", text_color=_MUTED, width=52).pack(side="left")
+        ctk.CTkLabel(add_row, text="Source", text_color=self._look.muted, width=52).pack(side="left")
         self.cond_source = ctk.StringVar(value="")
         self.cond_source_menu = ctk.CTkOptionMenu(
             add_row,
@@ -268,7 +273,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
 
         field_row = ctk.CTkFrame(self.cond_panel, fg_color="transparent")
         field_row.pack(fill="x", pady=2)
-        ctk.CTkLabel(field_row, text="Field", text_color=_MUTED, width=52).pack(side="left")
+        ctk.CTkLabel(field_row, text="Field", text_color=self._look.muted, width=52).pack(side="left")
         self.cond_field = ctk.StringVar(value="completed")
         self.cond_field_menu = ctk.CTkOptionMenu(
             field_row,
@@ -280,7 +285,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
 
         op_row = ctk.CTkFrame(self.cond_panel, fg_color="transparent")
         op_row.pack(fill="x", pady=2)
-        ctk.CTkLabel(op_row, text="Op", text_color=_MUTED, width=52).pack(side="left")
+        ctk.CTkLabel(op_row, text="Op", text_color=self._look.muted, width=52).pack(side="left")
         self.cond_op = ctk.StringVar(value="gte")
         ctk.CTkOptionMenu(
             op_row,
@@ -300,15 +305,14 @@ class MoleculeComposerPane(ctk.CTkFrame):
             btn_row,
             text="Add condition",
             width=110,
-            fg_color="#2F6F5E",
-            hover_color="#3A8A74",
+            fg_color=self._look.live_bg, hover_color=self._look.live_hover, text_color=self._look.live_text,
             command=self._add_condition_leaf,
         ).pack(side="left", padx=(0, 6))
         ctk.CTkButton(
             btn_row,
             text="Add OR group",
             width=110,
-            fg_color="#2A3140",
+            fg_color=self._look.dorm_bg, hover_color=self._look.live_hover, text_color=self._look.caption,
             command=self._add_or_group,
         ).pack(side="left")
 
@@ -316,7 +320,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
         ctk.CTkLabel(
             frame,
             textvariable=self.detail_var,
-            text_color=_MUTED,
+            text_color=self._look.muted,
             wraplength=280,
             justify="left",
             anchor="w",
@@ -326,22 +330,21 @@ class MoleculeComposerPane(ctk.CTkFrame):
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(fill="x", padx=14, pady=(0, 12))
         self.status_var = ctk.StringVar(value=f"Catalog: {self.catalog.source}")
-        ctk.CTkLabel(footer, textvariable=self.status_var, text_color=_MUTED, anchor="w").pack(
+        ctk.CTkLabel(footer, textvariable=self.status_var, text_color=self._look.muted, anchor="w").pack(
             side="left", fill="x", expand=True
         )
         ctk.CTkButton(
             footer,
             text="Save molecule",
             width=130,
-            fg_color="#2F6F5E",
-            hover_color="#3A8A74",
+            fg_color=self._look.live_bg, hover_color=self._look.live_hover, text_color=self._look.live_text,
             command=self._save,
         ).pack(side="right")
         ctk.CTkButton(
             footer,
             text="Refresh",
             width=90,
-            fg_color="#2A3140",
+            fg_color=self._look.dorm_bg, hover_color=self._look.live_hover, text_color=self._look.caption,
             command=self._reload_catalog,
         ).pack(side="right", padx=(0, 8))
 
@@ -406,11 +409,11 @@ class MoleculeComposerPane(ctk.CTkFrame):
             ctk.CTkLabel(
                 self.library_list,
                 text=PHASE_LABELS.get(phase, phase),
-                text_color=_ACCENT,
+                text_color=self._look.live_key,
                 font=ctk.CTkFont(size=12, weight="bold"),
             ).pack(anchor="w", padx=4, pady=(8, 2))
             if not moles:
-                ctk.CTkLabel(self.library_list, text="(empty)", text_color=_MUTED).pack(
+                ctk.CTkLabel(self.library_list, text="(empty)", text_color=self._look.muted).pack(
                     anchor="w", padx=8
                 )
                 continue
@@ -434,8 +437,9 @@ class MoleculeComposerPane(ctk.CTkFrame):
                     row,
                     text=f"{hk}{title}  ·  {KIND_LABELS.get(kind, kind)}",
                     anchor="w",
-                    fg_color="#243041",
-                    hover_color="#314257",
+                    fg_color=self._look.dorm_bg,
+                hover_color=self._look.live_hover,
+                text_color=self._look.caption,
                     command=lambda mid=mol_id: self._open_library_molecule(mid),
                 ).pack(side="left", fill="x", expand=True)
 
@@ -526,15 +530,16 @@ class MoleculeComposerPane(ctk.CTkFrame):
                 ctk.CTkLabel(
                     self.palette_list,
                     text=current_group,
-                    text_color=_ACCENT,
+                    text_color=self._look.live_key,
                     font=ctk.CTkFont(size=12, weight="bold"),
                 ).pack(anchor="w", padx=4, pady=(8, 2))
             ctk.CTkButton(
                 self.palette_list,
                 text=item.label,
                 anchor="w",
-                fg_color="#243041",
-                hover_color="#314257",
+                fg_color=self._look.dorm_bg,
+                hover_color=self._look.live_hover,
+                text_color=self._look.caption,
                 command=lambda idx=i: self._palette_clicked(idx),
             ).pack(fill="x", padx=4, pady=2)
 
@@ -623,7 +628,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
             ctk.CTkLabel(
                 self.steps_list,
                 text="Empty — click a tab, then upgrades.",
-                text_color=_MUTED,
+                text_color=self._look.muted,
             ).pack(anchor="w", padx=6, pady=8)
             return
         for i, step in enumerate(self.draft.steps):
@@ -632,8 +637,9 @@ class MoleculeComposerPane(ctk.CTkFrame):
                 self.steps_list,
                 text=f"{i + 1}. {step.display_label()}",
                 anchor="w",
-                fg_color=_SELECT if selected else "#243041",
-                hover_color="#314257",
+                fg_color=(self._look.live_bg if selected else self._look.dorm_bg),
+                hover_color=self._look.live_hover,
+                text_color=self._look.live_text if selected else self._look.caption,
                 command=lambda idx=i: self._select_step(idx),
             )
             btn.pack(fill="x", padx=4, pady=2)
@@ -850,7 +856,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
             ctk.CTkLabel(
                 self.cond_list,
                 text="No conditions — step always runs (until runtime C5).",
-                text_color=_MUTED,
+                text_color=self._look.muted,
                 anchor="w",
             ).pack(fill="x", padx=4, pady=4)
             return
@@ -866,7 +872,7 @@ class MoleculeComposerPane(ctk.CTkFrame):
                 row,
                 text=f"{prefix} {label}",
                 anchor="w",
-                text_color=_TEXT,
+                text_color=self._look.line,
                 wraplength=220,
                 justify="left",
             ).pack(side="left", fill="x", expand=True)
@@ -874,8 +880,9 @@ class MoleculeComposerPane(ctk.CTkFrame):
                 row,
                 text="×",
                 width=28,
-                fg_color="#3A2A2A",
-                hover_color="#5A3A3A",
+                fg_color=self._look.return_bg,
+                hover_color=self._look.live_hover,
+                text_color=self._look.esc_pop,
                 command=lambda idx=i: self._remove_clause(idx),
             ).pack(side="right")
 
@@ -968,15 +975,18 @@ class MoleculeLabWindow(ctk.CTkToplevel):
         on_status: Callable[[str, str], None] | None = None,
         on_lco_changed: Callable[[], None] | None = None,
         on_close: Callable[[], None] | None = None,
+        look: Look | None = None,
     ) -> None:
         super().__init__(master)
+        self._look = look or default_look()
         self.title("Molecule Lab")
         self.geometry("1280x860")
         self.minsize(1100, 720)
-        self.configure(fg_color=_BG)
+        self.configure(fg_color=self._look.bg)
         self.on_close = on_close
         self.pane = MoleculeComposerPane(
             self,
+            look=self._look,
             automations_root=automations_root,
             project_root_path=project_root_path,
             on_exported=on_exported,

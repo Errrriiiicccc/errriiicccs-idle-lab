@@ -6,12 +6,44 @@ import json
 from pathlib import Path
 
 from idle_lab.flight_deck.keys import DEFAULT_EXPAND_VK
+from idle_lab.flight_deck.window import parse_geometry
 from idle_lab.humanize import HUMANIZE_LEVELS, normalize_level
 from idle_lab.lab_mode import normalize_lab_mode
 from idle_lab.live_control.console import normalize_verbosity
 from idle_lab.models import Settings
+from idle_lab import win32_api
 from idle_lab.shell.settings_panel import normalize_boot_surface
 from idle_lab.shell.tabs import normalize_last_tab
+
+# Expanded Idle Lab minsize — do not persist collapsed costume footprints.
+_LAB_MIN_W = 900
+_LAB_MIN_H = 700
+
+
+def sanitize_lab_geometry(value: str | None) -> str | None:
+    """Clamp persisted Idle Lab WxH+X+Y onto the virtual desktop."""
+
+    parsed = parse_geometry(value)
+    if parsed is None:
+        return None
+    width, height, x, y = parsed
+    screen = win32_api.virtual_screen()
+    width = max(_LAB_MIN_W, min(int(width), max(screen.width, _LAB_MIN_W)))
+    height = max(_LAB_MIN_H, min(int(height), max(screen.height, _LAB_MIN_H)))
+    min_visible = 80
+    x = int(x)
+    y = int(y)
+    if x + width < screen.left + min_visible:
+        x = screen.left
+    if x > screen.right - min_visible:
+        x = screen.right - width
+    if y + height < screen.top + min_visible:
+        y = screen.top
+    if y > screen.bottom - min_visible:
+        y = screen.bottom - height
+    x = max(screen.left, min(x, screen.right - min_visible))
+    y = max(screen.top, min(y, screen.bottom - min_visible))
+    return f"{width}x{height}+{x}+{y}"
 
 
 def _parse_expand_vk(raw) -> int:
@@ -61,6 +93,9 @@ def load_settings(path: Path) -> tuple[Settings, str | None]:
     geometry = data.get("flight_deck_geometry")
     if geometry is not None:
         geometry = str(geometry).strip() or None
+    lab_geometry = sanitize_lab_geometry(
+        str(data.get("lab_geometry") or "").strip() or None
+    )
     return (
         Settings(
             click_method=method,
@@ -82,6 +117,8 @@ def load_settings(path: Path) -> tuple[Settings, str | None]:
                 str(data.get("last_anchor_title") or "").strip() or None
             ),
             last_tab=normalize_last_tab(data.get("last_tab")),
+            lab_geometry=lab_geometry,
+            lab_zoomed=bool(data.get("lab_zoomed", False)),
             boot_surface=normalize_boot_surface(data.get("boot_surface")),
             lco_console_enabled=bool(data.get("lco_console_enabled", False)),
             lco_console_verbosity=normalize_verbosity(
@@ -112,6 +149,8 @@ def save_settings(path: Path, settings: Settings) -> None:
         "flight_deck_user_hidden": bool(settings.flight_deck_user_hidden),
         "last_anchor_title": settings.last_anchor_title,
         "last_tab": normalize_last_tab(settings.last_tab),
+        "lab_geometry": sanitize_lab_geometry(settings.lab_geometry),
+        "lab_zoomed": bool(settings.lab_zoomed),
         "boot_surface": normalize_boot_surface(settings.boot_surface),
         "lco_console_enabled": bool(settings.lco_console_enabled),
         "lco_console_verbosity": normalize_verbosity(settings.lco_console_verbosity),

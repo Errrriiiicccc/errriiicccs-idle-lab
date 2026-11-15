@@ -63,9 +63,9 @@ Phases **0–5** shape-first shell plus costume skeleton + **Idle Lab–only** (
 - Single instance; tray; Anchor; Refresh / Restart / Deactivate (= Stop all); Activity + files-changed; Auto/Supervised; Humanize Off default.
 - **Expanded Idle Lab:** left Labs **tree** (roots + leaves) + hotkey pocket + **one** middle pane (lazy). No peer Flight Deck; **no lab tabs in the middle**.
 - **Collapsed:** same window shrinks on LOL / Observation (or **Preview collapsed**); outside chords + status; expand when that mode ends.
-- **Skins:** Feel Lab looks (default Type → Bracket) via chrome **Skin** menu; pinned in `feel/picks.json`.
+- **Skins:** Feel Lab looks (default Type → Bracket) via chrome **Skin** menu; pinned in `feel/picks.json`. Skin paints **chrome + left rail + middle desk + collapsed** (CTk theme + pane trees).
 - Peer `FlightDeckWindow` stays **withdrawn** (keymap host only) — never shown in normal use. Tray: Open Lab only. Window **X** → tray.
-- Boot always opens **expanded** Lab on the last left-rail path.
+- Boot always opens **expanded** Lab on the last left-rail path; **windowed size/position** (and maximized vs restored) persist in `settings.json`.
 - Contract: [REFRESH-RESTART.md](REFRESH-RESTART.md).
 
 ### Hotkeys / Create (in Lab)

@@ -22,13 +22,13 @@
 
 1. No separate Flight Deck window; tray has **Open Lab** only (no Show Flight Deck).
 2. Window **X** hides to tray (no zombie taskbar button); tray → **Open Lab** restores; tray → **Quit** exits.
-3. Cold boot should not sit ~5s on tray before first paint (tray starts after paint).
+3. Cold boot should not sit ~5s on tray before first paint (tray starts after paint). Resize/move the windowed Lab → Restart keeps size/position (maximized vs restored too).
 4. Left rail opens Molecule Lab → Atom / Molecule / Trial leaves; middle shows that leaf only (no inner tab strip).
 5. Observation Lab → User / AI mission on the left; middle follows.
 6. Molecule Lab · Atom → **Create Atom** — stays expanded; pocket shows 1/2 kind gate; Esc returns to Atom pane.
 7. LOL **Start live** → Lab **collapses**; Esc → **expanded**.
 8. Observation start → collapsed; stop → expanded.
-9. Skin menu still paints Type → Bracket (etc.).
+9. Skin menu paints Type → Bracket across shell **and** middle lab panes / collapsed face.
 
 ### Soft hold (next)
 

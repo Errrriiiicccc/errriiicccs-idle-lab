@@ -6,16 +6,21 @@ from typing import Any, Callable
 
 import customtkinter as ctk
 
+from idle_lab.feel_lab.themes import Look, default_look
+from idle_lab.shell.paint import dormant_button_kwargs, paint_widget_tree, primary_button_kwargs
+
 
 def build_molecule_atom_pane(
     parent,
     *,
+    look: Look | None = None,
     on_open_atom_create: Callable[[], None] | None = None,
     on_goto_molecule: Callable[[], None] | None = None,
     on_goto_trial: Callable[[], None] | None = None,
     host_atom_pane=None,
 ):
-    root = ctk.CTkFrame(parent, fg_color="transparent")
+    skin = look or default_look()
+    root = ctk.CTkFrame(parent, fg_color=skin.bg)
     root.pack(fill="both", expand=True)
 
     header = ctk.CTkFrame(root, fg_color="transparent")
@@ -24,6 +29,7 @@ def build_molecule_atom_pane(
         header,
         text="Molecule Lab · Atom",
         font=ctk.CTkFont(size=22, weight="bold"),
+        text_color=skin.line,
         anchor="w",
     ).pack(side="left")
 
@@ -35,29 +41,28 @@ def build_molecule_atom_pane(
         width=120,
         command=(on_open_atom_create or (lambda: None)),
         state="normal" if on_open_atom_create else "disabled",
+        **primary_button_kwargs(skin),
     ).pack(side="left")
     ctk.CTkButton(
         bar,
         text="Compose molecules →",
         width=160,
-        fg_color="#2A3140",
-        hover_color="#3A4558",
         command=(on_goto_molecule or (lambda: None)),
         state="normal" if on_goto_molecule else "disabled",
+        **dormant_button_kwargs(skin),
     ).pack(side="left", padx=(8, 0))
     ctk.CTkButton(
         bar,
         text="Trial →",
         width=80,
-        fg_color="#2A3140",
-        hover_color="#3A4558",
         command=(on_goto_trial or (lambda: None)),
         state="normal" if on_goto_trial else "disabled",
+        **dormant_button_kwargs(skin),
     ).pack(side="left", padx=(8, 0))
     ctk.CTkLabel(
         bar,
         text="LOL actuations must show as atoms below — no silent gaps",
-        text_color="#7E8796",
+        text_color=skin.muted,
     ).pack(side="left", padx=(12, 0))
 
     host = ctk.CTkFrame(root, fg_color="transparent")
@@ -68,7 +73,7 @@ def build_molecule_atom_pane(
         ctk.CTkLabel(
             host,
             text="Atom library mounts when App wires this pane.",
-            text_color="#9AA4B2",
+            text_color=skin.muted,
         ).pack(anchor="w", pady=12)
     return root
 
@@ -76,11 +81,13 @@ def build_molecule_atom_pane(
 def build_molecule_compose_pane(
     parent,
     *,
+    look: Look | None = None,
     on_open_composer: Callable[[], None] | None = None,
     on_goto_trial: Callable[[], None] | None = None,
     host_composer=None,
 ):
-    root = ctk.CTkFrame(parent, fg_color="transparent")
+    skin = look or default_look()
+    root = ctk.CTkFrame(parent, fg_color=skin.bg)
     root.pack(fill="both", expand=True)
 
     header = ctk.CTkFrame(root, fg_color="transparent")
@@ -89,6 +96,7 @@ def build_molecule_compose_pane(
         header,
         text="Molecule Lab · Molecule",
         font=ctk.CTkFont(size=22, weight="bold"),
+        text_color=skin.line,
         anchor="w",
     ).pack(side="left")
 
@@ -100,20 +108,20 @@ def build_molecule_compose_pane(
         width=140,
         command=(on_open_composer or (lambda: None)),
         state="normal" if on_open_composer else "disabled",
+        **primary_button_kwargs(skin),
     ).pack(side="left")
     ctk.CTkButton(
         toolbar,
         text="Trial →",
         width=80,
-        fg_color="#2A3140",
-        hover_color="#3A4558",
         command=(on_goto_trial or (lambda: None)),
         state="normal" if on_goto_trial else "disabled",
+        **dormant_button_kwargs(skin),
     ).pack(side="left", padx=(8, 0))
     ctk.CTkLabel(
         toolbar,
         text="Compose here · Trial runs packs · Pop out for a floating Lab",
-        text_color="#7E8796",
+        text_color=skin.muted,
     ).pack(side="left", padx=(12, 0))
 
     host = ctk.CTkFrame(root, fg_color="transparent")
@@ -124,13 +132,14 @@ def build_molecule_compose_pane(
         ctk.CTkLabel(
             host,
             text="Composer mounts when App wires this pane.",
-            text_color="#9AA4B2",
+            text_color=skin.muted,
         ).pack(anchor="w", pady=12)
     return root
 
 
-def build_molecule_trial_pane(parent, *, host_automations=None):
-    root = ctk.CTkFrame(parent, fg_color="transparent")
+def build_molecule_trial_pane(parent, *, look: Look | None = None, host_automations=None):
+    skin = look or default_look()
+    root = ctk.CTkFrame(parent, fg_color=skin.bg)
     root.pack(fill="both", expand=True)
 
     header = ctk.CTkFrame(root, fg_color="transparent")
@@ -139,12 +148,13 @@ def build_molecule_trial_pane(parent, *, host_automations=None):
         header,
         text="Molecule Lab · Trial",
         font=ctk.CTkFont(size=22, weight="bold"),
+        text_color=skin.line,
         anchor="w",
     ).pack(side="left")
     ctk.CTkLabel(
         header,
         text="Run selected atoms / molecules · Dry-run · Walkthrough",
-        text_color="#7E8796",
+        text_color=skin.muted,
         anchor="e",
     ).pack(side="right")
 
@@ -156,7 +166,7 @@ def build_molecule_trial_pane(parent, *, host_automations=None):
         ctk.CTkLabel(
             host,
             text="Trial panel mounts when App wires this pane.",
-            text_color="#9AA4B2",
+            text_color=skin.muted,
         ).pack(anchor="w", pady=12)
     return root
 
@@ -168,6 +178,7 @@ class AtomLabPane(ctk.CTkFrame):
         self,
         master,
         *,
+        look: Look | None = None,
         get_library_rows: Callable[[], list[dict[str, Any]]],
         get_coverage_rows: Callable[[], list[Any]],
         on_refresh: Callable[[], None],
@@ -175,6 +186,7 @@ class AtomLabPane(ctk.CTkFrame):
         on_run_atom: Callable[[str], None],
         on_create_stub: Callable[[str], None] | None = None,
     ) -> None:
+        self._look = look or default_look()
         super().__init__(master, fg_color="transparent")
         self.get_library_rows = get_library_rows
         self.get_coverage_rows = get_coverage_rows
@@ -186,19 +198,27 @@ class AtomLabPane(ctk.CTkFrame):
         self._build()
         self.refresh()
 
+    def apply_look(self, look: Look) -> None:
+        self._look = look
+        paint_widget_tree(self, look)
+
     def _build(self) -> None:
+        skin = self._look
         tools = ctk.CTkFrame(self, fg_color="transparent")
         tools.pack(fill="x", pady=(0, 6))
-        ctk.CTkButton(tools, text="Refresh", width=90, command=self._refresh_clicked).pack(
-            side="left"
-        )
+        ctk.CTkButton(
+            tools,
+            text="Refresh",
+            width=90,
+            command=self._refresh_clicked,
+            **primary_button_kwargs(skin),
+        ).pack(side="left")
         ctk.CTkButton(
             tools,
             text="Seed missing LOL wrappers",
             width=180,
-            fg_color="#2A3140",
-            hover_color="#3A4558",
             command=self._seed_clicked,
+            **dormant_button_kwargs(skin),
         ).pack(side="left", padx=(8, 0))
         self.run_btn = ctk.CTkButton(
             tools,
@@ -206,6 +226,7 @@ class AtomLabPane(ctk.CTkFrame):
             width=140,
             command=self._run_clicked,
             state="disabled",
+            **primary_button_kwargs(skin),
         )
         self.run_btn.pack(side="right")
 
@@ -215,26 +236,39 @@ class AtomLabPane(ctk.CTkFrame):
         body.grid_columnconfigure(1, weight=1, uniform="ml")
         body.grid_rowconfigure(0, weight=1)
 
-        left = ctk.CTkFrame(body)
+        left = ctk.CTkFrame(body, **{"fg_color": skin.panel, "border_width": 1 if skin.style == "type" else 0, "border_color": skin.desc_border})
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
-        ctk.CTkLabel(left, text="Atom library", font=ctk.CTkFont(weight="bold"), anchor="w").pack(
-            anchor="w", padx=8, pady=(8, 2)
-        )
-        self.lib_list = ctk.CTkScrollableFrame(left, height=360)
+        ctk.CTkLabel(
+            left,
+            text="Atom library",
+            font=ctk.CTkFont(weight="bold"),
+            text_color=skin.line,
+            anchor="w",
+        ).pack(anchor="w", padx=8, pady=(8, 2))
+        self.lib_list = ctk.CTkScrollableFrame(left, height=360, fg_color=skin.board)
         self.lib_list.pack(fill="both", expand=True, padx=8, pady=(0, 8))
 
-        right = ctk.CTkFrame(body)
+        right = ctk.CTkFrame(
+            body,
+            fg_color=skin.panel,
+            border_width=1 if skin.style == "type" else 0,
+            border_color=skin.desc_border,
+        )
         right.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         ctk.CTkLabel(
-            right, text="LOL coverage", font=ctk.CTkFont(weight="bold"), anchor="w"
+            right,
+            text="LOL coverage",
+            font=ctk.CTkFont(weight="bold"),
+            text_color=skin.line,
+            anchor="w",
         ).pack(anchor="w", padx=8, pady=(8, 2))
         ctk.CTkLabel(
             right,
             text="Green = atom exists · Amber = seed · Gray = LOL-only chrome",
-            text_color="#7E8796",
+            text_color=skin.muted,
             anchor="w",
         ).pack(anchor="w", padx=8)
-        self.cov_list = ctk.CTkScrollableFrame(right, height=360)
+        self.cov_list = ctk.CTkScrollableFrame(right, height=360, fg_color=skin.board)
         self.cov_list.pack(fill="both", expand=True, padx=8, pady=(0, 8))
 
     def _refresh_clicked(self) -> None:
@@ -261,6 +295,7 @@ class AtomLabPane(ctk.CTkFrame):
         self.run_btn.configure(state="normal" if self._selected_id else "disabled")
 
     def _pack_library_row(self, row: dict[str, Any]) -> None:
+        skin = self._look
         eid = str(row.get("id") or "")
         title = str(row.get("title") or eid)
         tags = ", ".join(row.get("tags") or ())
@@ -273,7 +308,11 @@ class AtomLabPane(ctk.CTkFrame):
             frame,
             text=f"{title}",
             anchor="w",
-            fg_color="#1F2A3A" if selected else "transparent",
+            fg_color=skin.live_bg if selected else "transparent",
+            hover_color=skin.live_hover,
+            text_color=skin.live_text if selected else skin.line,
+            border_width=1 if skin.style == "type" and selected else 0,
+            border_color=skin.live_border,
             command=lambda i=eid: self._select(i),
         )
         btn.pack(fill="x")
@@ -281,7 +320,7 @@ class AtomLabPane(ctk.CTkFrame):
             frame,
             text=f"{eid} · {enabled} · {tags}{ghost}",
             anchor="w",
-            text_color="#9AA4B2",
+            text_color=skin.muted,
             font=ctk.CTkFont(size=11),
         ).pack(fill="x", padx=6)
 

@@ -7,7 +7,9 @@ from typing import Any
 
 import customtkinter as ctk
 
+from idle_lab.feel_lab.themes import Look, default_look
 from idle_lab.shell.nav import normalize_nav_path
+from idle_lab.shell.paint import paint_widget_tree
 
 
 PaneBuilder = Callable[[ctk.CTkFrame], Any]
@@ -25,12 +27,23 @@ class ActionDesk(ctk.CTkFrame):
         master,
         *,
         builders: dict[str, PaneBuilder],
+        look: Look | None = None,
         **kwargs,
     ) -> None:
-        super().__init__(master, fg_color="transparent", **kwargs)
+        self._look = look or default_look()
+        super().__init__(master, fg_color=self._look.bg, **kwargs)
         self._builders = dict(builders)
         self._panes: dict[str, ctk.CTkFrame] = {}
         self._active: str | None = None
+
+    def apply_look(self, look: Look) -> None:
+        self._look = look
+        try:
+            self.configure(fg_color=look.bg)
+        except Exception:
+            pass
+        for pane in self._panes.values():
+            paint_widget_tree(pane, look)
 
     @property
     def active_path(self) -> str | None:
@@ -41,7 +54,7 @@ class ActionDesk(ctk.CTkFrame):
         if key == self._active and key in self._panes:
             return key
         if key not in self._panes:
-            holder = ctk.CTkFrame(self, fg_color="transparent")
+            holder = ctk.CTkFrame(self, fg_color=self._look.bg)
             builder = self._builders.get(key)
             if builder is not None:
                 builder(holder)
@@ -49,9 +62,10 @@ class ActionDesk(ctk.CTkFrame):
                 ctk.CTkLabel(
                     holder,
                     text=f"No pane for {key}",
-                    text_color="#E7C36A",
+                    text_color=self._look.esc_pop,
                     anchor="w",
                 ).pack(anchor="w", padx=12, pady=12)
+            paint_widget_tree(holder, self._look)
             try:
                 holder.place(relx=0, rely=0, relwidth=1, relheight=1)
             except Exception:

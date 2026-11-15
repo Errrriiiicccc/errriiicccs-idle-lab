@@ -99,6 +99,7 @@ from idle_lab.shell.costume import (
     paint_collapsed_chords,
 )
 from idle_lab.shell.desk import ActionDesk
+from idle_lab.shell.paint import paint_lab_surfaces
 from idle_lab.shell.skins import active_look, choose_skin, list_skin_choices
 from idle_lab.shell.floating import FloatingLabWindow
 from idle_lab.shell.nav import normalize_nav_path
@@ -150,7 +151,7 @@ from idle_lab.screen_map.catalog import BatchSummary, list_batches as list_scree
 from idle_lab.screen_map.manifest import load_manifest, save_manifest
 from idle_lab.screen_map.ui import ScreenMapPanel
 from idle_lab.scroll_memory import ScrollMemory
-from idle_lab.settings_store import load_settings, save_settings
+from idle_lab.settings_store import load_settings, sanitize_lab_geometry, save_settings
 from idle_lab import win32_api
 
 _HUMANIZE_LABELS = {
@@ -181,12 +182,15 @@ class App(ctk.CTk):
         super().__init__()
         self._auto_anchor_on_boot = bool(auto_anchor)
         self.title("Errriiiccc's Idle Lab")
-        self.geometry("1100x920")
         self.minsize(900, 700)
         root = project_root()
         self.store = PresetStore(root / "presets")
         self.settings_path = root / "settings.json"
         self.settings, settings_error = load_settings(self.settings_path)
+        # Restored windowed size/position (maximized is separate — not F11 fullscreen).
+        self._lab_geometry_job: str | None = None
+        boot_geo = sanitize_lab_geometry(self.settings.lab_geometry) or "1100x920"
+        self.geometry(boot_geo)
         self.auto_store = AutomationStore(root / "automations")
         auto_errors = self.auto_store.load_all()
         (root / "automations" / "templates").mkdir(parents=True, exist_ok=True)
@@ -264,13 +268,19 @@ class App(ctk.CTk):
         self._disk_fingerprint = dir_fingerprint(self._watch_paths)
         self._costume_mode = "expanded"  # expanded | collapsed (before _build)
         self._costume_reason = ""
-        self._expanded_geometry: str | None = None
+        boot_geo = sanitize_lab_geometry(self.settings.lab_geometry) or str(self.geometry() or "1100x920")
+        self._expanded_geometry: str | None = boot_geo
         self._look = active_look()  # default Type → Bracket from feel/picks
+        from idle_lab.shell.paint import apply_ctk_theme
+
+        apply_ctk_theme(self._look)  # before _build so panes inherit shell colors
         self._begin_load()
         self._build()
         self._end_load()
         self._apply_skin(self._look, persist=False)
         self.update_idletasks()
+        self.bind("<Configure>", self._on_lab_configure)
+        self.after(0, self._restore_lab_window_placement)
         self.overlay = Overlay(self, self._on_marker_moved, self._on_marker_released)
         self.live_control_overlay = LiveControlOverlay(self)
         self._live_control_owns_observation = False
@@ -320,7 +330,9 @@ class App(ctk.CTk):
         self._boot_offer_title: str | None = None
         self._lab_visible = False
         self._tray: TrayController | None = None
-        self._lab_saved_geometry: str | None = None
+        self._lab_saved_geometry: str | None = sanitize_lab_geometry(
+            self.settings.lab_geometry
+        ) or boot_geo
         self._sync_flight_deck_expand_vk()
         errors = self.store.load_all()
         # Phase 0: clicker UI is not mounted — keep preset selection in memory only.
@@ -422,15 +434,20 @@ class App(ctk.CTk):
         # Middle desk = one lazy pane. Left rail is the only lab/leaf switcher.
         self.tabs = ActionDesk(
             self._action_pane,
+            look=self._look,
             builders={
-                "Info": lambda p: build_info_tab(p, on_open_tab=self._goto_lab_tab),
+                "Info": lambda p: build_info_tab(
+                    p, look=self._look, on_open_tab=self._goto_lab_tab
+                ),
                 "Live Overlay Lab": lambda p: build_lol_tab(
                     p,
+                    look=self._look,
                     on_start_live=self._start_live_overlay_from_lab,
                     on_open_atom_create=self._open_atom_create_from_lab,
                 ),
                 "Molecule Lab/Atom": lambda p: build_molecule_atom_pane(
                     p,
+                    look=self._look,
                     on_open_atom_create=self._open_atom_create_from_lab,
                     on_goto_molecule=self._goto_molecule_subtab,
                     on_goto_trial=self._goto_trial_subtab,
@@ -438,20 +455,24 @@ class App(ctk.CTk):
                 ),
                 "Molecule Lab/Molecule": lambda p: build_molecule_compose_pane(
                     p,
+                    look=self._look,
                     on_open_composer=self._open_molecule_composer,
                     on_goto_trial=self._goto_trial_subtab,
                     host_composer=self._host_molecule_composer_pane,
                 ),
                 "Molecule Lab/Trial": lambda p: build_molecule_trial_pane(
                     p,
+                    look=self._look,
                     host_automations=self._host_trial_automations,
                 ),
                 "Observation Lab/User": lambda p: build_observation_user_pane(
                     p,
+                    look=self._look,
                     host_user=self._host_observation_user,
                 ),
                 "Observation Lab/AI mission": lambda p: build_observation_ai_pane(
                     p,
+                    look=self._look,
                     host_ai_mission=self._host_observation_ai,
                 ),
             },
@@ -876,6 +897,69 @@ class App(ctk.CTk):
 
     def _save_settings(self) -> None:
         save_settings(self.settings_path, self.settings)
+
+    def _restore_lab_window_placement(self) -> None:
+        """Apply saved windowed geometry, then maximize if that was last state."""
+
+        geo = sanitize_lab_geometry(self.settings.lab_geometry)
+        if geo:
+            try:
+                self.geometry(geo)
+            except Exception:
+                pass
+            self._expanded_geometry = geo
+            self._lab_saved_geometry = geo
+        if self.settings.lab_zoomed:
+            try:
+                self.state("zoomed")
+            except Exception:
+                pass
+
+    def _on_lab_configure(self, _event=None) -> None:
+        """Debounced persist of restored size/position (skip collapsed / zoomed size)."""
+
+        if getattr(self, "_costume_mode", "expanded") != "expanded":
+            return
+        if not getattr(self, "_lab_visible", True):
+            return
+        if self._lab_geometry_job is not None:
+            try:
+                self.after_cancel(self._lab_geometry_job)
+            except Exception:
+                pass
+
+        def persist() -> None:
+            self._lab_geometry_job = None
+            self._persist_lab_window_placement()
+
+        self._lab_geometry_job = self.after(450, persist)
+
+    def _persist_lab_window_placement(self) -> None:
+        if getattr(self, "_costume_mode", "expanded") != "expanded":
+            return
+        if not getattr(self, "_lab_visible", True):
+            return
+        try:
+            state = str(self.state() or "normal")
+        except Exception:
+            state = "normal"
+        if state == "zoomed":
+            if not self.settings.lab_zoomed:
+                self.settings.lab_zoomed = True
+                self._save_settings()
+            return
+        if state != "normal":
+            return
+        geo = sanitize_lab_geometry(str(self.geometry() or ""))
+        if not geo:
+            return
+        changed = geo != self.settings.lab_geometry or self.settings.lab_zoomed
+        self.settings.lab_geometry = geo
+        self.settings.lab_zoomed = False
+        self._expanded_geometry = geo
+        self._lab_saved_geometry = geo
+        if changed:
+            self._save_settings()
 
     def _humanize_profile(self) -> HumanizeProfile:
         return HumanizeProfile.from_level(self.settings.humanize_level)
@@ -1937,10 +2021,20 @@ class App(ctk.CTk):
 
         if self._costume_mode == "expanded":
             try:
-                geo = str(self.geometry() or "").strip()
-                if geo and "x" in geo:
+                state = str(self.state() or "normal")
+            except Exception:
+                state = "normal"
+            if state == "zoomed":
+                self.settings.lab_zoomed = True
+            else:
+                geo = sanitize_lab_geometry(str(self.geometry() or ""))
+                if geo:
                     self._expanded_geometry = geo
                     self._lab_saved_geometry = geo
+                    self.settings.lab_geometry = geo
+                    self.settings.lab_zoomed = False
+            try:
+                self._save_settings()
             except Exception:
                 pass
         self._costume_mode = "collapsed"
@@ -2003,8 +2097,15 @@ class App(ctk.CTk):
                     pass
         try:
             self.minsize(900, 700)
-            geo = self._expanded_geometry or self._lab_saved_geometry or "1100x920"
+            geo = (
+                sanitize_lab_geometry(self._expanded_geometry)
+                or sanitize_lab_geometry(self._lab_saved_geometry)
+                or sanitize_lab_geometry(self.settings.lab_geometry)
+                or "1100x920"
+            )
             self.geometry(geo)
+            if self.settings.lab_zoomed:
+                self.state("zoomed")
         except Exception:
             pass
         if self.hotkey_pocket is not None and self._deck_mode is not DeckMode.ATOM_CREATE:
@@ -2175,6 +2276,11 @@ class App(ctk.CTk):
                 self.hotkey_pocket.apply_look(look)
             except Exception:
                 pass
+        if getattr(self, "tabs", None) is not None and hasattr(self.tabs, "apply_look"):
+            try:
+                self.tabs.apply_look(look)
+            except Exception:
+                pass
         if getattr(self, "_condensed_panel", None) is not None:
             try:
                 self._condensed_panel.configure(
@@ -2211,6 +2317,11 @@ class App(ctk.CTk):
                     self.skin_menu.set(label)
                 except Exception:
                     pass
+        # Fold look into CTk defaults + every mounted lab pane (incl. collapsed).
+        try:
+            paint_lab_surfaces(self, look)
+        except Exception:
+            pass
 
     def _preview_condensed_costume(self) -> None:
         self._morph_to_collapsed(reason="preview")
@@ -3345,6 +3456,12 @@ class App(ctk.CTk):
         )
         self.auto_panel.pack(fill="both", expand=True)
         try:
+            from idle_lab.shell.paint import paint_widget_tree
+
+            paint_widget_tree(self.auto_panel, self._look)
+        except Exception:
+            pass
+        try:
             self._shared_console.unsubscribe(self._fanout_shared_console_to_panel)
         except Exception:
             pass
@@ -3379,6 +3496,7 @@ class App(ctk.CTk):
 
         self._molecule_composer_pane = MoleculeComposerPane(
             parent,
+            look=self._look,
             automations_root=project_root() / "automations",
             project_root_path=project_root(),
             on_exported=_on_exported,
@@ -3406,6 +3524,7 @@ class App(ctk.CTk):
                 pass
         self.atom_lab_pane = AtomLabPane(
             parent,
+            look=self._look,
             get_library_rows=self._atom_library_rows,
             get_coverage_rows=self._lol_coverage_rows,
             on_refresh=self._reload_automations,
@@ -3489,6 +3608,12 @@ class App(ctk.CTk):
             scroll=self.scroll_memory,
         )
         self.screen_map_panel.pack(fill="both", expand=True)
+        try:
+            from idle_lab.shell.paint import paint_widget_tree
+
+            paint_widget_tree(self.screen_map_panel, self._look)
+        except Exception:
+            pass
         self._refresh_screen_map_catalog()
 
     def _host_observation_ai(self, parent) -> None:
@@ -3514,6 +3639,12 @@ class App(ctk.CTk):
             comments=self.comment_store,
         )
         self.ai_batch_panel.pack(fill="both", expand=True)
+        try:
+            from idle_lab.shell.paint import paint_widget_tree
+
+            paint_widget_tree(self.ai_batch_panel, self._look)
+        except Exception:
+            pass
         try:
             self.ai_batch_panel.refresh_list()
         except Exception:

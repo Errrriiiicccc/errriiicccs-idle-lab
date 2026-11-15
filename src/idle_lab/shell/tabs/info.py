@@ -6,12 +6,21 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from idle_lab.feel_lab.themes import Look, default_look
 from idle_lab.shell.feel_tray import build_feel_tray
 from idle_lab.shell.info_content import INFO_OUTLINE, InfoSection
 
 
-def build_info_tab(parent, *, on_open_tab: Callable[[str], None] | None = None):
-    outer = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+def build_info_tab(
+    parent,
+    *,
+    look: Look | None = None,
+    on_open_tab: Callable[[str], None] | None = None,
+):
+    skin = look or default_look()
+    shell = ctk.CTkFrame(parent, fg_color=skin.bg)
+    shell.pack(fill="both", expand=True)
+    outer = ctk.CTkScrollableFrame(shell, fg_color=skin.bg)
     outer.pack(fill="both", expand=True, padx=8, pady=8)
 
     build_feel_tray(outer)
@@ -20,12 +29,13 @@ def build_info_tab(parent, *, on_open_tab: Callable[[str], None] | None = None):
         outer,
         text="More (optional depth)",
         font=ctk.CTkFont(size=16, weight="bold"),
+        text_color=skin.line,
         anchor="w",
     ).pack(anchor="w", padx=8, pady=(16, 2))
     ctk.CTkLabel(
         outer,
         text="Purpose, Labs, running — collapse when you don’t need it. Live status stays in chrome.",
-        text_color="#9AA4B2",
+        text_color=skin.muted,
         wraplength=720,
         justify="left",
         anchor="w",
@@ -33,7 +43,7 @@ def build_info_tab(parent, *, on_open_tab: Callable[[str], None] | None = None):
 
     for section in INFO_OUTLINE:
         _mount_section(outer, section, on_open_tab=on_open_tab, depth=0)
-    return outer
+    return shell
 
 
 def _mount_section(
