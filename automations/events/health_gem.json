@@ -1,0 +1,30 @@
+{
+  "id": "health_gem",
+  "title": "Health+Gem",
+  "version": 1,
+  "enabled": false,
+  "priority": 50,
+  "timing": {
+    "type": "interval",
+    "every_ms": 60000
+  },
+  "kind": "automation",
+  "description": "Authored via Atom Create (Molecule Lab).",
+  "notes": "enabled:false by default \u2014 Run selected once from Molecule Lab Atom tab.",
+  "actions": [
+    {
+      "type": "click",
+      "nx": 0.35353535353535354,
+      "ny": 0.7041707080504365,
+      "mode": "single",
+      "description": "Normalized click (Atom Create)."
+    },
+    {
+      "type": "click",
+      "nx": 0.10437710437710437,
+      "ny": 0.49757516973811833,
+      "mode": "single",
+      "description": "Normalized click (Atom Create)."
+    }
+  ]
+}

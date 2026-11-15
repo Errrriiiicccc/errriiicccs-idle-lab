@@ -319,6 +319,11 @@ class ObjectMap:
                 if isinstance(raw_steps, list):
                     steps = [str(step).strip() for step in raw_steps if str(step).strip()]
                 break
+            event_id: str | None = None
+            for effect in obj.effects.get("world") or []:
+                if isinstance(effect, dict) and effect.get("type") == "run_event" and effect.get("event"):
+                    event_id = str(effect["event"]).strip() or None
+                    break
             icon = str(obj.raw.get("icon") or "▸▸").strip() or "▸▸"
             routines.append(
                 RoutineMark(
@@ -328,6 +333,7 @@ class ObjectMap:
                     ny=obj.hit[1],
                     icon=icon,
                     steps=tuple(steps),
+                    event=event_id,
                 )
             )
 

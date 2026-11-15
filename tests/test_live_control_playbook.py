@@ -48,12 +48,15 @@ class LiveControlPlaybookTests(unittest.TestCase):
         self.assertEqual(pb.action_for_token("D"), "describe")
         self.assertEqual(pb.action_for_token("C"), "claim_gem")
         self.assertEqual(pb.action_for_token("A"), "routine_health_damage_claim")
+        self.assertEqual(pb.action_for_token("H"), "routine_health_gem")
         self.assertIsNone(pb.action_for_token("Y"))
-        self.assertIsNone(pb.action_for_token("H"))
-        self.assertEqual(len(pb.routines), 1)
-        self.assertEqual(pb.routines[0].action, "routine_health_damage_claim")
-        self.assertEqual(pb.routines[0].steps[0], "tab_defense")
-        self.assertAlmostEqual(pb.routines[0].nx, 0.08, places=2)
+        self.assertEqual(len(pb.routines), 2)
+        by_action = {r.action: r for r in pb.routines}
+        self.assertEqual(by_action["routine_health_damage_claim"].steps[0], "tab_defense")
+        self.assertAlmostEqual(by_action["routine_health_damage_claim"].nx, 0.08, places=2)
+        self.assertEqual(by_action["routine_health_gem"].event, "health_gem")
+        self.assertEqual(by_action["routine_health_gem"].steps, ())
+        self.assertAlmostEqual(by_action["routine_health_gem"].nx, 0.08, places=2)
         self.assertAlmostEqual(float(pb.chrome.get("claim_badge_nx") or 0), 0.20, places=2)
         self.assertAlmostEqual(float(pb.chrome.get("claim_badge_ny") or 0), 0.50, places=2)
         self.assertEqual(len(pb.buy_slots("attack")), 6)
@@ -190,6 +193,14 @@ class LiveControlScrollModelTests(unittest.TestCase):
             ["tab_defense", "buy_1", "tab_attack", "buy_1", "tab_defense", "claim_gem"],
         )
 
+    def test_routine_runs_event_when_no_sequence(self) -> None:
+        ctrl = self._controller()
+        events: list[str] = []
+        ctrl.run_event_once = events.append
+        with patch.object(ctrl, "_repaint"), patch.object(ctrl, "_emit_evidence"):
+            ctrl._do_routine("routine_health_gem")
+        self.assertEqual(events, ["health_gem"])
+
     def test_a_key_toggles_routine_loop(self) -> None:
         ctrl = self._controller()
         posts: list[tuple] = []
@@ -205,6 +216,20 @@ class LiveControlScrollModelTests(unittest.TestCase):
             self.assertTrue(ctrl.handle_key("A", phase="up"))
             self.assertEqual(ctrl._toggled_action, "routine_health_damage_claim")
             self.assertTrue(ctrl.handle_key("A", phase="down"))
+            self.assertIsNone(ctrl._toggled_action)
+
+    def test_h_key_toggles_health_gem_routine(self) -> None:
+        ctrl = self._controller()
+        posts: list[tuple] = []
+        ctrl.post_event = posts.append
+        with (
+            patch.object(ctrl, "_do_routine"),
+            patch.object(ctrl, "_repaint"),
+        ):
+            self.assertTrue(ctrl.handle_key("H", phase="down"))
+            self.assertEqual(ctrl._toggled_action, "routine_health_gem")
+            self.assertTrue(any(item[0] == "live_control_repeat" for item in posts))
+            self.assertTrue(ctrl.handle_key("H", phase="down"))
             self.assertIsNone(ctrl._toggled_action)
 
     def test_spam_hold_repeats_buy_single_does_not(self) -> None:

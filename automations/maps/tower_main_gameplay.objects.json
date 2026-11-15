@@ -22,7 +22,8 @@
     "claim_gem": "C",
     "refresh": "B",
     "describe": "D",
-    "routine_health_damage_claim": "A"
+    "routine_health_damage_claim": "A",
+    "routine_health_gem": "H"
   },
   "kind_templates": {
     "button": {
@@ -865,6 +866,18 @@
           }
         ],
         "world": [{ "type": "run_event", "event": "health_damage_claim" }]
+      }
+    },
+    {
+      "id": "routine.health_gem",
+      "kind": "button",
+      "label": "Health+Gem",
+      "hit": { "nx": 0.08, "ny": 0.48 },
+      "icon": "♥◆",
+      "hotkey_action": "routine_health_gem",
+      "notes": "Left-rail toggle — runs automations/events/health_gem.json (authored clicks). Press H again to stop.",
+      "effects": {
+        "world": [{ "type": "run_event", "event": "health_gem" }]
       }
     }
   ]

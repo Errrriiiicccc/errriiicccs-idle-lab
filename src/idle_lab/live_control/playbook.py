@@ -87,6 +87,8 @@ class RoutineMark:
     ny: float
     icon: str = "▸▸"
     steps: tuple[str, ...] = ()
+    # Optional atom id — used when the mark has no LCO run_sequence (raw authored clicks).
+    event: str | None = None
 
 
 @dataclass(frozen=True)

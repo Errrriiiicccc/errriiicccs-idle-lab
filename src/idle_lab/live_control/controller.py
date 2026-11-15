@@ -1414,11 +1414,17 @@ class LiveControlController:
         )
         self._repaint(f"{label} {direction}")
 
-    def _routine_steps(self, action: str) -> list[str]:
+    def _routine_mark(self, action: str):
         assert self.playbook is not None
         for routine in self.playbook.routines:
             if routine.action == action:
-                return list(routine.steps)
+                return routine
+        return None
+
+    def _routine_steps(self, action: str) -> list[str]:
+        mark = self._routine_mark(action)
+        if mark is not None and mark.steps:
+            return list(mark.steps)
         object_map = self._object_map()
         button = object_map.button_for_action(action) if object_map is not None else None
         if button is not None:
@@ -1428,17 +1434,52 @@ class LiveControlController:
                 raw_steps = effect.get("actions") or []
                 if isinstance(raw_steps, list):
                     return [str(step).strip() for step in raw_steps if str(step).strip()]
-        raise LiveControlError(f"no sequence for routine {action}")
+        return []
+
+    def _routine_event_id(self, action: str) -> str | None:
+        mark = self._routine_mark(action)
+        if mark is not None and mark.event:
+            return mark.event
+        object_map = self._object_map()
+        button = object_map.button_for_action(action) if object_map is not None else None
+        if button is not None:
+            for effect in button.effects.get("world") or []:
+                if isinstance(effect, dict) and effect.get("type") == "run_event" and effect.get("event"):
+                    return str(effect["event"]).strip() or None
+        return None
 
     def _do_routine(self, action: str) -> None:
         """Run a named left-rail pack inline on this session (Esc / ` abort between steps)."""
 
         steps = self._routine_steps(action)
-        if not steps:
-            raise LiveControlError(f"routine {action} has no steps")
+        event_id = self._routine_event_id(action)
         object_map = self._object_map()
         button = object_map.button_for_action(action) if object_map is not None else None
         label = button.label if button is not None else action
+        if not steps:
+            if not event_id:
+                raise LiveControlError(f"routine {action} has no steps or event")
+            if self.run_event_once is None:
+                raise LiveControlError(f"routine {action} needs run_event but none is wired")
+            self._log(f"Routine → {label} (atom {event_id})", "run")
+            self._emit_evidence(
+                action,
+                "before",
+                detail=label,
+                meta={"object_id": button.id if button else None, "event": event_id},
+                capture=False,
+            )
+            self.run_event_once(event_id)
+            self._emit_evidence(
+                action,
+                "after",
+                detail=label,
+                meta={"object_id": button.id if button else None, "event": event_id},
+                capture=False,
+            )
+            self._log(f"Routine ✔ {label}", "ok")
+            self._repaint(f"Routine {label}")
+            return
         self._log(f"Routine → {label} ({len(steps)} steps)", "run")
         self._emit_evidence(
             action,
