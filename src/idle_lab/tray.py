@@ -199,21 +199,28 @@ class TrayController:
     def active(self) -> bool:
         return bool(self._started and self._hwnd)
 
-    def start(self) -> str | None:
+    def start(self, *, wait_s: float = 0.0) -> str | None:
+        """Start the tray message thread.
+
+        Default ``wait_s=0`` is non-blocking so App init / first paint is not
+        stalled. A positive wait is only for harnesses that need the icon up.
+        Failures surface via ``on_error`` when the thread finishes setup.
+        """
+
         if self._started:
             return None
         self._started = True
         self._ready.clear()
+        self._last_error = None
         self._thread = threading.Thread(target=self._thread_main, name="idle-lab-tray", daemon=True)
         self._thread.start()
-        if not self._ready.wait(timeout=5.0):
-            self._started = False
+        atexit.register(self.stop)
+        if wait_s <= 0:
+            return None
+        if not self._ready.wait(timeout=float(wait_s)):
             err = self._last_error or "Tray thread failed to become ready."
             return err
-        if self._last_error:
-            return self._last_error
-        atexit.register(self.stop)
-        return None
+        return self._last_error
 
     def stop(self) -> None:
         hwnd = self._hwnd
@@ -346,7 +353,7 @@ class TrayController:
             return
 
         # Balloon so the new icon is findable under overflow.
-        self._balloon(hwnd, "Idle Lab is running — click to open Lab.")
+        self._balloon(hwnd, "Idle Lab is running — click tray icon to Open Lab.")
         self._ready.set()
 
         msg = wintypes.MSG()
@@ -355,6 +362,13 @@ class TrayController:
             user32.DispatchMessageW(ctypes.byref(msg))
 
         self._hwnd = 0
+
+    def wait_ready(self, timeout: float = 5.0) -> str | None:
+        """Optional sync for tests — returns error string or None."""
+
+        if not self._ready.wait(timeout=float(timeout)):
+            return self._last_error or "Tray thread failed to become ready."
+        return self._last_error
 
     def _nid(self, hwnd: int, *, flags: int) -> NOTIFYICONDATAW:
         nid = NOTIFYICONDATAW()

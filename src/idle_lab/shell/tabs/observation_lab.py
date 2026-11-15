@@ -1,26 +1,17 @@
-"""Observation Lab — User + AI mission tabs (Phase 4)."""
+"""Observation Lab panes — User + AI mission (left-rail leaves, not inner tabs)."""
 
 from __future__ import annotations
-
-from typing import Callable
 
 import customtkinter as ctk
 
 
-def build_observation_lab_tab(
-    parent,
-    *,
-    host_user=None,
-    host_ai_mission=None,
-):
-    """host_*: optional callback(parent_frame) packing ScreenMapPanel / AiBatchPanel."""
-
+def build_observation_user_pane(parent, *, host_user=None):
     root = ctk.CTkFrame(parent, fg_color="transparent")
     root.pack(fill="both", expand=True)
 
     ctk.CTkLabel(
         root,
-        text="Observation Lab",
+        text="Observation Lab · User",
         font=ctk.CTkFont(size=22, weight="bold"),
         anchor="w",
     ).pack(anchor="w", padx=12, pady=(12, 2))
@@ -31,29 +22,43 @@ def build_observation_lab_tab(
         anchor="w",
     ).pack(anchor="w", padx=12, pady=(0, 8))
 
-    tabs = ctk.CTkTabview(root)
-    tabs.pack(fill="both", expand=True, padx=8, pady=(0, 8))
-    user = tabs.add("User")
-    mission = tabs.add("AI mission")
-
-    user_host = ctk.CTkFrame(user, fg_color="transparent")
-    user_host.pack(fill="both", expand=True)
+    host = ctk.CTkFrame(root, fg_color="transparent")
+    host.pack(fill="both", expand=True, padx=8, pady=(0, 8))
     if host_user is not None:
-        host_user(user_host)
+        host_user(host)
     else:
         _stub(
-            user_host,
+            host,
             "User capture / review",
             "Catalog groups Today · Yesterday · Last 7 Days · The Past mount with the panel.",
         )
+    return root
 
-    mission_host = ctk.CTkFrame(mission, fg_color="transparent")
-    mission_host.pack(fill="both", expand=True)
+
+def build_observation_ai_pane(parent, *, host_ai_mission=None):
+    root = ctk.CTkFrame(parent, fg_color="transparent")
+    root.pack(fill="both", expand=True)
+
+    ctk.CTkLabel(
+        root,
+        text="Observation Lab · AI mission",
+        font=ctk.CTkFont(size=22, weight="bold"),
+        anchor="w",
+    ).pack(anchor="w", padx=12, pady=(12, 2))
+    ctk.CTkLabel(
+        root,
+        text="Start · Mission view · Results. Stop with Deactivate (`).",
+        text_color="#9AA4B2",
+        anchor="w",
+    ).pack(anchor="w", padx=12, pady=(0, 8))
+
+    host = ctk.CTkFrame(root, fg_color="transparent")
+    host.pack(fill="both", expand=True, padx=8, pady=(0, 8))
     if host_ai_mission is not None:
-        host_ai_mission(mission_host)
+        host_ai_mission(host)
     else:
         _stub(
-            mission_host,
+            host,
             "AI mission",
             "Start · Mission view · Results panes come from the missions panel.",
         )

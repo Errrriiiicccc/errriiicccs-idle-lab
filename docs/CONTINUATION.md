@@ -13,19 +13,22 @@
 
 | Costume | When |
 | --- | --- |
-| **Expanded** | Normal desk — left Labs tree + hotkey pocket + action pane |
+| **Expanded** | Left **Labs tree** (roots + leaves) · hotkey pocket · **one** middle pane |
 | **Collapsed** | LOL live or Observation running (also Preview collapsed) |
 
-`` ` `` = **Deactivate = Stop all**. Atom Create runs **in expanded Lab** (Molecule Lab · Atom → Create Atom); pocket shows kind/create leaves. Peer `FlightDeckWindow` stays withdrawn for keymap helpers only.
+`` ` `` = **Deactivate = Stop all**. Atom Create runs **in expanded Lab** (Molecule Lab → Atom → Create Atom). **No lab tabs in the middle** — Atom / Molecule / Trial and Observation User / AI mission live on the left rail. Middle desk lazy-mounts the active leaf. Peer `FlightDeckWindow` stays withdrawn for keymap helpers only.
 
 ### Smoke (Restart)
 
 1. No separate Flight Deck window; tray has **Open Lab** only (no Show Flight Deck).
-2. Tree → Labs work in the action pane; pocket tracks focus.
-3. Molecule Lab · Atom → **Create Atom** — stays expanded; pocket shows 1/2 kind gate; Esc returns to Atom pane.
-4. LOL **Start live** → Lab **collapses**; Esc → **expanded**.
-5. Observation start → collapsed; stop → expanded.
-6. Skin menu still paints Type → Bracket (etc.).
+2. Window **X** hides to tray (no zombie taskbar button); tray → **Open Lab** restores; tray → **Quit** exits.
+3. Cold boot should not sit ~5s on tray before first paint (tray starts after paint).
+4. Left rail opens Molecule Lab → Atom / Molecule / Trial leaves; middle shows that leaf only (no inner tab strip).
+5. Observation Lab → User / AI mission on the left; middle follows.
+6. Molecule Lab · Atom → **Create Atom** — stays expanded; pocket shows 1/2 kind gate; Esc returns to Atom pane.
+7. LOL **Start live** → Lab **collapses**; Esc → **expanded**.
+8. Observation start → collapsed; stop → expanded.
+9. Skin menu still paints Type → Bracket (etc.).
 
 ### Soft hold (next)
 

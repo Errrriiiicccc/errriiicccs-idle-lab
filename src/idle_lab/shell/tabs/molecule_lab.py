@@ -1,4 +1,4 @@
-"""Molecule Lab tab — Atom library, Molecule composer, Trial browse/run."""
+"""Molecule Lab panes — Atom / Molecule / Trial (left-rail leaves, not inner tabs)."""
 
 from __future__ import annotations
 
@@ -7,143 +7,93 @@ from typing import Any, Callable
 import customtkinter as ctk
 
 
-def find_ml_root(widget) -> Any | None:
-    """Walk ancestors for the Molecule Lab root that owns `_ml_tabs`."""
-
-    cur = widget
-    for _ in range(16):
-        if cur is None:
-            return None
-        if getattr(cur, "_ml_tabs", None) is not None:
-            return cur
-        cur = getattr(cur, "master", None)
-    return None
-
-
-def select_ml_subtab(root_or_descendant, name: str) -> bool:
-    """Switch Atom / Molecule / Trial. Accepts ML root or any descendant."""
-
-    root = root_or_descendant
-    tabs = getattr(root, "_ml_tabs", None)
-    if tabs is None:
-        root = find_ml_root(root_or_descendant)
-        tabs = getattr(root, "_ml_tabs", None) if root is not None else None
-    if tabs is None:
-        return False
-    try:
-        tabs.set(str(name))
-        return True
-    except Exception:
-        return False
-
-
-def select_molecule_subtab(root) -> None:
-    select_ml_subtab(root, "Molecule")
-
-
-def select_atom_subtab(root) -> None:
-    select_ml_subtab(root, "Atom")
-
-
-def select_trial_subtab(root) -> None:
-    select_ml_subtab(root, "Trial")
-
-
-def build_molecule_lab_tab(
+def build_molecule_atom_pane(
     parent,
     *,
     on_open_atom_create: Callable[[], None] | None = None,
-    on_open_composer: Callable[[], None] | None = None,
-    host_automations=None,
-    host_composer=None,
+    on_goto_molecule: Callable[[], None] | None = None,
+    on_goto_trial: Callable[[], None] | None = None,
     host_atom_pane=None,
-    on_goto_molecule_tab: Callable[[], None] | None = None,
-    on_goto_trial_tab: Callable[[], None] | None = None,
-    on_register_root: Callable[[Any], None] | None = None,
 ):
-    """host_* callbacks: App packs live panes into the given parent frames."""
-
     root = ctk.CTkFrame(parent, fg_color="transparent")
     root.pack(fill="both", expand=True)
-    if on_register_root is not None:
-        try:
-            on_register_root(root)
-        except Exception:
-            pass
 
     header = ctk.CTkFrame(root, fg_color="transparent")
     header.pack(fill="x", padx=12, pady=(12, 4))
     ctk.CTkLabel(
         header,
-        text="Molecule Lab",
+        text="Molecule Lab · Atom",
         font=ctk.CTkFont(size=22, weight="bold"),
         anchor="w",
     ).pack(side="left")
-    ctk.CTkLabel(
-        header,
-        text="Atom · Compose · Trial",
-        text_color="#7E8796",
-        anchor="e",
-    ).pack(side="right")
 
-    tabs = ctk.CTkTabview(root)
-    tabs.pack(fill="both", expand=True, padx=8, pady=(0, 8))
-    atom = tabs.add("Atom")
-    molecule = tabs.add("Molecule")
-    trial = tabs.add("Trial")
-    root._ml_tabs = tabs  # type: ignore[attr-defined]
-
-    # Atom
-    atom_frame = ctk.CTkFrame(atom, fg_color="transparent")
-    atom_frame.pack(fill="both", expand=True, padx=8, pady=8)
-    atom_bar = ctk.CTkFrame(atom_frame, fg_color="transparent")
-    atom_bar.pack(fill="x", pady=(0, 6))
+    bar = ctk.CTkFrame(root, fg_color="transparent")
+    bar.pack(fill="x", padx=12, pady=(0, 6))
     ctk.CTkButton(
-        atom_bar,
+        bar,
         text="Create Atom",
         width=120,
         command=(on_open_atom_create or (lambda: None)),
         state="normal" if on_open_atom_create else "disabled",
     ).pack(side="left")
     ctk.CTkButton(
-        atom_bar,
+        bar,
         text="Compose molecules →",
         width=160,
         fg_color="#2A3140",
         hover_color="#3A4558",
-        command=(on_goto_molecule_tab or (lambda: None)),
-        state="normal" if on_goto_molecule_tab else "disabled",
+        command=(on_goto_molecule or (lambda: None)),
+        state="normal" if on_goto_molecule else "disabled",
     ).pack(side="left", padx=(8, 0))
     ctk.CTkButton(
-        atom_bar,
+        bar,
         text="Trial →",
         width=80,
         fg_color="#2A3140",
         hover_color="#3A4558",
-        command=(on_goto_trial_tab or (lambda: None)),
-        state="normal" if on_goto_trial_tab else "disabled",
+        command=(on_goto_trial or (lambda: None)),
+        state="normal" if on_goto_trial else "disabled",
     ).pack(side="left", padx=(8, 0))
     ctk.CTkLabel(
-        atom_bar,
+        bar,
         text="LOL actuations must show as atoms below — no silent gaps",
         text_color="#7E8796",
     ).pack(side="left", padx=(12, 0))
-    atom_host = ctk.CTkFrame(atom_frame, fg_color="transparent")
-    atom_host.pack(fill="both", expand=True)
+
+    host = ctk.CTkFrame(root, fg_color="transparent")
+    host.pack(fill="both", expand=True, padx=8, pady=(0, 8))
     if host_atom_pane is not None:
-        host_atom_pane(atom_host)
+        host_atom_pane(host)
     else:
         ctk.CTkLabel(
-            atom_host,
-            text="Atom library + LOL coverage mounts when App wires Molecule Lab.",
+            host,
+            text="Atom library mounts when App wires this pane.",
             text_color="#9AA4B2",
         ).pack(anchor="w", pady=12)
+    return root
 
-    # Molecule — in-tab composer (float still available)
-    mol_frame = ctk.CTkFrame(molecule, fg_color="transparent")
-    mol_frame.pack(fill="both", expand=True, padx=8, pady=8)
-    toolbar = ctk.CTkFrame(mol_frame, fg_color="transparent")
-    toolbar.pack(fill="x", pady=(0, 6))
+
+def build_molecule_compose_pane(
+    parent,
+    *,
+    on_open_composer: Callable[[], None] | None = None,
+    on_goto_trial: Callable[[], None] | None = None,
+    host_composer=None,
+):
+    root = ctk.CTkFrame(parent, fg_color="transparent")
+    root.pack(fill="both", expand=True)
+
+    header = ctk.CTkFrame(root, fg_color="transparent")
+    header.pack(fill="x", padx=12, pady=(12, 4))
+    ctk.CTkLabel(
+        header,
+        text="Molecule Lab · Molecule",
+        font=ctk.CTkFont(size=22, weight="bold"),
+        anchor="w",
+    ).pack(side="left")
+
+    toolbar = ctk.CTkFrame(root, fg_color="transparent")
+    toolbar.pack(fill="x", padx=12, pady=(0, 6))
     ctk.CTkButton(
         toolbar,
         text="Pop out composer",
@@ -157,44 +107,55 @@ def build_molecule_lab_tab(
         width=80,
         fg_color="#2A3140",
         hover_color="#3A4558",
-        command=(on_goto_trial_tab or (lambda: None)),
-        state="normal" if on_goto_trial_tab else "disabled",
+        command=(on_goto_trial or (lambda: None)),
+        state="normal" if on_goto_trial else "disabled",
     ).pack(side="left", padx=(8, 0))
     ctk.CTkLabel(
         toolbar,
         text="Compose here · Trial runs packs · Pop out for a floating Lab",
         text_color="#7E8796",
     ).pack(side="left", padx=(12, 0))
-    composer_host = ctk.CTkFrame(mol_frame, fg_color="transparent")
-    composer_host.pack(fill="both", expand=True)
+
+    host = ctk.CTkFrame(root, fg_color="transparent")
+    host.pack(fill="both", expand=True, padx=8, pady=(0, 8))
     if host_composer is not None:
-        host_composer(composer_host)
+        host_composer(host)
     else:
         ctk.CTkLabel(
-            composer_host,
-            text="In-tab composer mounts when App wires Molecule Lab.",
+            host,
+            text="Composer mounts when App wires this pane.",
             text_color="#9AA4B2",
         ).pack(anchor="w", pady=12)
+    return root
 
-    # Trial — browse / Start / Dry-run / Walkthrough
-    trial_frame = ctk.CTkFrame(trial, fg_color="transparent")
-    trial_frame.pack(fill="both", expand=True, padx=8, pady=8)
-    trial_bar = ctk.CTkFrame(trial_frame, fg_color="transparent")
-    trial_bar.pack(fill="x", pady=(0, 6))
+
+def build_molecule_trial_pane(parent, *, host_automations=None):
+    root = ctk.CTkFrame(parent, fg_color="transparent")
+    root.pack(fill="both", expand=True)
+
+    header = ctk.CTkFrame(root, fg_color="transparent")
+    header.pack(fill="x", padx=12, pady=(12, 4))
     ctk.CTkLabel(
-        trial_bar,
-        text="Run selected atoms / molecules · Dry-run · Walkthrough",
-        text_color="#7E8796",
+        header,
+        text="Molecule Lab · Trial",
+        font=ctk.CTkFont(size=22, weight="bold"),
         anchor="w",
     ).pack(side="left")
-    trial_host = ctk.CTkFrame(trial_frame, fg_color="transparent")
-    trial_host.pack(fill="both", expand=True)
+    ctk.CTkLabel(
+        header,
+        text="Run selected atoms / molecules · Dry-run · Walkthrough",
+        text_color="#7E8796",
+        anchor="e",
+    ).pack(side="right")
+
+    host = ctk.CTkFrame(root, fg_color="transparent")
+    host.pack(fill="both", expand=True, padx=8, pady=(0, 8))
     if host_automations is not None:
-        host_automations(trial_host)
+        host_automations(host)
     else:
         ctk.CTkLabel(
-            trial_host,
-            text="Trial panel mounts when App wires Molecule Lab.",
+            host,
+            text="Trial panel mounts when App wires this pane.",
             text_color="#9AA4B2",
         ).pack(anchor="w", pady=12)
     return root

@@ -8,25 +8,24 @@ import customtkinter as ctk
 
 from idle_lab.feel_lab.themes import Look, default_look
 from idle_lab.shell.skins import format_key_label
-from idle_lab.shell.tabs import IDLE_LAB_TABS
+from idle_lab.shell.nav import LAB_BRANCHES, normalize_nav_path, path_root
 
 POCKET_TOGGLE_LABEL = "F1"  # Settings-remappable later
 
-# Stub expected-action maps per lab root (key, label) — pocket formats via skin.
+# Stub expected-action maps keyed by nav path (or root) — pocket formats via skin.
 POCKET_STUB_LEAVES: dict[str, tuple[tuple[str, str], ...]] = {
     "Info": (("1", "Jump to a Lab"), ("`", "Deactivate = Stop all")),
     "Live Overlay Lab": (("Enter", "Start live"), ("`", "Deactivate = Stop all")),
-    "Molecule Lab": (
-        ("A", "Atom area"),
-        ("M", "Molecule area"),
-        ("T", "Trial"),
+    "Molecule Lab/Atom": (
+        ("C", "Create Atom"),
+        ("M", "Molecule leaf"),
+        ("T", "Trial leaf"),
         ("`", "Deactivate"),
     ),
-    "Observation Lab": (
-        ("U", "User capture"),
-        ("A", "AI mission"),
-        ("`", "Deactivate"),
-    ),
+    "Molecule Lab/Molecule": (("T", "Trial leaf"), ("`", "Deactivate")),
+    "Molecule Lab/Trial": (("`", "Deactivate = Stop all"),),
+    "Observation Lab/User": (("A", "AI mission leaf"), ("`", "Deactivate")),
+    "Observation Lab/AI mission": (("`", "Deactivate = Stop all"),),
 }
 
 # User-facing name is collapsed; keep CONDENSED_* alias for older imports.
@@ -137,10 +136,14 @@ class HotkeyPocket(ctk.CTkFrame):
             self._min_btn.configure(text="+")
 
     def set_focus_lab(self, lab: str) -> None:
-        name = lab if lab in IDLE_LAB_TABS else "Info"
-        self._focus_lab = name
-        leaves = POCKET_STUB_LEAVES.get(name, (("`", "Deactivate = Stop all"),))
-        self.set_chords(f"Focus: {name}", leaves)
+        path = normalize_nav_path(lab)
+        if path == getattr(self, "_focus_lab", None) and self._leaf_labels:
+            return
+        self._focus_lab = path
+        leaves = POCKET_STUB_LEAVES.get(path) or POCKET_STUB_LEAVES.get(
+            path_root(path), (("`", "Deactivate = Stop all"),)
+        )
+        self.set_chords(f"Focus: {path}", leaves)
 
     def set_atom_create_phase(self, phase: str) -> None:
         key = str(phase or "create").strip().lower() or "create"
@@ -172,7 +175,7 @@ class HotkeyPocket(ctk.CTkFrame):
 
 
 class LabTreeRail(ctk.CTkFrame):
-    """Left-rail lab roots; one open path (sibling click collapses the other)."""
+    """Left-rail file tree: lab roots + leaves. One open branch; middle desk follows."""
 
     def __init__(
         self,
@@ -187,7 +190,10 @@ class LabTreeRail(ctk.CTkFrame):
         self.pack_propagate(False)
         self._on_select = on_select
         self._selected = "Info"
-        self._buttons: dict[str, ctk.CTkButton] = {}
+        self._expanded_root: str | None = None
+        self._root_buttons: dict[str, ctk.CTkButton] = {}
+        self._leaf_buttons: dict[str, ctk.CTkButton] = {}
+        self._leaf_hosts: dict[str, ctk.CTkFrame] = {}
 
         self._heading = ctk.CTkLabel(
             self,
@@ -201,22 +207,41 @@ class LabTreeRail(ctk.CTkFrame):
         self._roots = ctk.CTkFrame(self, fg_color="transparent")
         self._roots.pack(fill="both", expand=True, padx=6, pady=(0, 6))
 
-        for name in IDLE_LAB_TABS:
-            row = ctk.CTkFrame(self._roots, fg_color="transparent")
-            row.pack(fill="x", pady=2)
-            btn = ctk.CTkButton(
-                row,
-                text=name,
+        for branch in LAB_BRANCHES:
+            block = ctk.CTkFrame(self._roots, fg_color="transparent")
+            block.pack(fill="x", pady=2)
+            root_btn = ctk.CTkButton(
+                block,
+                text=branch.name,
                 anchor="w",
                 height=self._look.btn_height + 4,
                 fg_color="transparent",
                 hover_color=self._look.live_hover,
                 text_color=self._look.dorm_text,
                 border_width=0,
-                command=lambda n=name: self.select(n),
+                command=lambda n=branch.name: self._click_root(n),
             )
-            btn.pack(fill="x")
-            self._buttons[name] = btn
+            root_btn.pack(fill="x")
+            self._root_buttons[branch.name] = root_btn
+            if branch.children:
+                leaf_host = ctk.CTkFrame(block, fg_color="transparent")
+                self._leaf_hosts[branch.name] = leaf_host
+                for child in branch.children:
+                    path = f"{branch.name}/{child}"
+                    leaf_btn = ctk.CTkButton(
+                        leaf_host,
+                        text=f"  {child}",
+                        anchor="w",
+                        height=self._look.btn_height,
+                        fg_color="transparent",
+                        hover_color=self._look.live_hover,
+                        text_color=self._look.dorm_text,
+                        border_width=0,
+                        command=lambda p=path: self.select(p),
+                    )
+                    leaf_btn.pack(fill="x", padx=(10, 0), pady=1)
+                    self._leaf_buttons[path] = leaf_btn
+
         self._open_hint = ctk.CTkLabel(
             self._roots,
             text="",
@@ -232,51 +257,70 @@ class LabTreeRail(ctk.CTkFrame):
         self.configure(fg_color=look.board)
         self._heading.configure(text_color=look.muted)
         self._open_hint.configure(text_color=look.muted)
-        for btn in self._buttons.values():
-            btn.configure(
-                height=look.btn_height + 4,
-                hover_color=look.live_hover,
-            )
+        for btn in self._root_buttons.values():
+            btn.configure(height=look.btn_height + 4, hover_color=look.live_hover)
+        for btn in self._leaf_buttons.values():
+            btn.configure(height=look.btn_height, hover_color=look.live_hover)
         self._paint()
 
-    def select(self, name: str, *, notify: bool = True) -> None:
-        if name not in IDLE_LAB_TABS:
+    def _click_root(self, root: str) -> None:
+        branch = next((b for b in LAB_BRANCHES if b.name == root), None)
+        if branch is None:
             return
-        self._selected = name
+        if branch.children:
+            # Expand this branch (collapse siblings) and open default / remembered leaf.
+            self._expanded_root = root
+            if self._selected.startswith(root + "/"):
+                self.select(self._selected)
+            else:
+                self.select(f"{root}/{branch.children[0]}")
+            return
+        self._expanded_root = None
+        self.select(root)
+
+    def select(self, name: str, *, notify: bool = True) -> None:
+        path = normalize_nav_path(name)
+        root = path_root(path)
+        branch = next((b for b in LAB_BRANCHES if b.name == root), None)
+        if branch is None:
+            return
+        self._selected = path
+        self._expanded_root = root if branch.children else None
         self._paint()
         if notify:
-            self._on_select(name)
+            self._on_select(path)
 
     def _paint(self) -> None:
         look = self._look
-        for name, btn in self._buttons.items():
-            if name == self._selected:
-                btn.configure(
-                    fg_color=look.live_bg,
-                    text_color=look.live_text,
-                    border_width=1 if look.style == "type" else 0,
-                    border_color=look.live_border,
-                )
+        selected_root = path_root(self._selected)
+        for name, btn in self._root_buttons.items():
+            active = name == selected_root
+            btn.configure(
+                fg_color=look.live_bg if active and "/" not in self._selected else (
+                    look.panel if active else "transparent"
+                ),
+                text_color=look.live_text if active else look.dorm_text,
+                border_width=1 if look.style == "type" and active else 0,
+                border_color=look.live_border,
+            )
+        for root, host in self._leaf_hosts.items():
+            if root == self._expanded_root:
+                if not host.winfo_ismapped():
+                    # Pack under the root button (first child of block).
+                    host.pack(fill="x", after=self._root_buttons[root])
             else:
-                btn.configure(
-                    fg_color="transparent",
-                    text_color=look.dorm_text,
-                    border_width=0,
-                )
+                if host.winfo_ismapped():
+                    host.pack_forget()
+        for path, btn in self._leaf_buttons.items():
+            active = path == self._selected
+            btn.configure(
+                fg_color=look.live_bg if active else "transparent",
+                text_color=look.live_text if active else look.dorm_text,
+                border_width=1 if look.style == "type" and active else 0,
+                border_color=look.live_border,
+            )
         if self._open_hint is not None:
             self._open_hint.configure(text=f"Open path · {self._selected}")
-
-
-def hide_tabview_segment(tabs: ctk.CTkTabview) -> None:
-    """Drive tabs from the left rail; hide the built-in segmented control."""
-
-    try:
-        tabs._segmented_button.grid_remove()  # type: ignore[attr-defined]
-    except Exception:
-        try:
-            tabs._segmented_button.pack_forget()  # type: ignore[attr-defined]
-        except Exception:
-            pass
 
 
 def paint_collapsed_chords(parent, look: Look) -> list[ctk.CTkLabel]:

@@ -23,6 +23,8 @@ Status tags: `open` · `leaning` · `settled` · `parked`
 | D62 | leaning | Tree: one open path; mouse teleport OK; keys Esc-peel | |
 | D63 | leaning | LOL Esc → big confirm on anchored screen | Esc cancel · Enter exit |
 | D64 | leaning | Condensed@LOL = outside chords + status only | Glass owns LOL actions |
+| D65 | leaning | Lab **X** = hide to tray (withdraw); tray **Quit** = exit | Not a zombie taskbar park; peer Deck no longer needs mapped root |
+| D66 | leaning | Lab nav **only** on left rail; middle = active leaf | No Atom/Molecule/Trial or Obs tabs inside the middle pane; lazy desk |
 
 ## Cut / keep / rename
 

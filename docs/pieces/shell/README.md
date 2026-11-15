@@ -48,7 +48,7 @@ Peer Flight Deck as a second exclusive surface is **out**. Fold that job into Id
 
 ## Ships today vs this direction
 
-**Ships:** expanded rail + pocket + action pane; **collapsed** on LOL/Obs; Atom Create in expanded Lab; peer Deck never shown (withdrawn keymap host). Still missing: Esc confirm on glass, richer pocket maps, delete `flight_deck/` package. [FEATURES.md](../../FEATURES.md) · [CONTINUATION.md](../../CONTINUATION.md).
+**Ships:** left-rail tree (Molecule Atom/Molecule/Trial · Observation User/AI mission) drives a **single lazy middle pane** — no inner lab Tabviews; collapsed on LOL/Obs; Atom Create in-Lab; peer Deck sealed. Still missing: Esc confirm on glass, richer pocket maps, delete `flight_deck/` package. [FEATURES.md](../../FEATURES.md) · [CONTINUATION.md](../../CONTINUATION.md).
 
 ## Implementation
 

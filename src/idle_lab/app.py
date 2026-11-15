@@ -96,12 +96,12 @@ from idle_lab.shell.console import SharedConsole
 from idle_lab.shell.costume import (
     HotkeyPocket,
     LabTreeRail,
-    hide_tabview_segment,
     paint_collapsed_chords,
 )
+from idle_lab.shell.desk import ActionDesk
 from idle_lab.shell.skins import active_look, choose_skin, list_skin_choices
 from idle_lab.shell.floating import FloatingLabWindow
-from idle_lab.shell.idle_lab_window import build_tab_host
+from idle_lab.shell.nav import normalize_nav_path
 from idle_lab.shell.resume import resume_prompt
 from idle_lab.shell.settings_panel import (
     BOOT_FLIGHT_DECK,
@@ -110,7 +110,16 @@ from idle_lab.shell.settings_panel import (
     normalize_boot_surface,
 )
 from idle_lab.shell.surfaces import SurfaceKind, can_show_idle_lab, ensure_exclusive
-from idle_lab.shell.tabs import normalize_last_tab
+from idle_lab.shell.tabs import (
+    build_info_tab,
+    build_lol_tab,
+    build_molecule_atom_pane,
+    build_molecule_compose_pane,
+    build_molecule_trial_pane,
+    build_observation_ai_pane,
+    build_observation_user_pane,
+    normalize_last_tab,
+)
 from idle_lab.taxonomy import (
     TaxonomyError,
     default_taxonomy_path,
@@ -320,7 +329,7 @@ class App(ctk.CTk):
         self._sync_lco_console_deck_labels()
         self._sync_settings_deck_labels()
         self._refresh_screen_map_catalog()
-        # Lab X → hide to tray (peer Deck is not a user-facing surface in slice 1).
+        # Lab X → hide to tray (not quit). Tray → Open Lab / Quit.
         self.protocol("WM_DELETE_WINDOW", self._withdraw_idle_lab_hide)
         try:
             self.hooks.start()
@@ -334,7 +343,7 @@ class App(ctk.CTk):
         self.after(100, self._drain_ai_batch_runner)
         self.after(1500, self._poll_disk_watch)
         self.after(500, self._poll_activity)
-        tray_error = self._start_tray()
+        # Tray starts after first paint — blocking wait here cost ~5s on cold boot.
         start_wake_watcher(self._schedule_ui, self._on_single_instance_wake)
         if settings_error:
             self._status(settings_error, "warn")
@@ -344,16 +353,14 @@ class App(ctk.CTk):
             self._status("Skipped automation files: " + "; ".join(auto_errors), "error")
         elif ai_errors:
             self._status("Skipped AI batch files: " + "; ".join(ai_errors), "error")
-        elif tray_error:
-            self._status(tray_error, "warn")
         else:
             self._status(
                 "Idle Lab · expanded costume. Left rail + hotkey pocket.",
                 "info",
             )
-        # Slice 1: always boot expanded Idle Lab (peer Deck boot preference ignored).
         self._lab_visible = True
         self.after(0, self._start_boot)
+        self.after(0, self._start_tray_deferred)
 
     def _build(self) -> None:
         self.status_label = ctk.CTkLabel(
@@ -412,25 +419,47 @@ class App(ctk.CTk):
         self._action_pane = ctk.CTkFrame(self._workspace, fg_color=self._look.bg, corner_radius=8)
         self._action_pane.pack(side="left", fill="both", expand=True)
 
-        self.tabs, self._current_tab = build_tab_host(
+        # Middle desk = one lazy pane. Left rail is the only lab/leaf switcher.
+        self.tabs = ActionDesk(
             self._action_pane,
-            on_tab_changed=self._on_tab_changed,
-            last_tab=self.settings.last_tab,
-            on_open_tab=self._goto_lab_tab,
-            on_start_live_overlay=self._start_live_overlay_from_lab,
-            on_open_atom_create=self._open_atom_create_from_lab,
-            on_open_composer=self._open_molecule_composer,
-            host_automations=self._host_trial_automations,
-            host_composer=self._host_molecule_composer_pane,
-            host_atom_pane=self._host_molecule_atom_pane,
-            on_goto_molecule_tab=self._goto_molecule_subtab,
-            on_goto_trial_tab=self._goto_trial_subtab,
-            on_register_molecule_lab_root=self._register_molecule_lab_root,
-            host_observation_user=self._host_observation_user,
-            host_observation_ai=self._host_observation_ai,
+            builders={
+                "Info": lambda p: build_info_tab(p, on_open_tab=self._goto_lab_tab),
+                "Live Overlay Lab": lambda p: build_lol_tab(
+                    p,
+                    on_start_live=self._start_live_overlay_from_lab,
+                    on_open_atom_create=self._open_atom_create_from_lab,
+                ),
+                "Molecule Lab/Atom": lambda p: build_molecule_atom_pane(
+                    p,
+                    on_open_atom_create=self._open_atom_create_from_lab,
+                    on_goto_molecule=self._goto_molecule_subtab,
+                    on_goto_trial=self._goto_trial_subtab,
+                    host_atom_pane=self._host_molecule_atom_pane,
+                ),
+                "Molecule Lab/Molecule": lambda p: build_molecule_compose_pane(
+                    p,
+                    on_open_composer=self._open_molecule_composer,
+                    on_goto_trial=self._goto_trial_subtab,
+                    host_composer=self._host_molecule_composer_pane,
+                ),
+                "Molecule Lab/Trial": lambda p: build_molecule_trial_pane(
+                    p,
+                    host_automations=self._host_trial_automations,
+                ),
+                "Observation Lab/User": lambda p: build_observation_user_pane(
+                    p,
+                    host_user=self._host_observation_user,
+                ),
+                "Observation Lab/AI mission": lambda p: build_observation_ai_pane(
+                    p,
+                    host_ai_mission=self._host_observation_ai,
+                ),
+            },
         )
-        hide_tabview_segment(self.tabs)
+        self.tabs.pack(fill="both", expand=True, padx=4, pady=4)
+        self._current_tab = normalize_nav_path(self.settings.last_tab)
         self.settings.last_tab = self._current_tab
+        self.tabs.show(self._current_tab)
         try:
             self.lab_tree.select(self._current_tab, notify=False)
             if self.hotkey_pocket is not None:
@@ -1202,14 +1231,7 @@ class App(ctk.CTk):
     def _start_boot(self) -> None:
         """Slice 1: always boot expanded Idle Lab (peer Deck boot preference ignored)."""
 
-        tab = normalize_last_tab(self.settings.last_tab)
-        try:
-            self.tabs.set(tab)
-        except Exception:
-            tab = "Info"
-            self.tabs.set(tab)
-        self._current_tab = tab
-        self.settings.last_tab = tab
+        tab = self._navigate_lab(self.settings.last_tab)
         self._clear_resume_handle()
         self._exit_deck_mode(quiet=True)
         self.update_idletasks()
@@ -1221,7 +1243,7 @@ class App(ctk.CTk):
         self._shell_phase = ShellPhase.INACTIVE
         self._hide_flight_deck(user_hidden=False)
         self._sync_shell_hook_flags()
-        self._status(f"Idle Lab · {tab} (expanded). Hotkey pocket on the left rail.", "info")
+        self._status(f"Idle Lab · {tab} (expanded). Left rail navigates Labs.", "info")
 
     def _try_auto_anchor_on_boot(self) -> None:
         """Restart path: rebind last title; stay on expanded Idle Lab."""
@@ -1495,7 +1517,14 @@ class App(ctk.CTk):
             on_quit=self._on_close,
             on_error=lambda msg: self._status(msg, "warn"),
         )
-        return self._tray.start()
+        return self._tray.start(wait_s=0.0)
+
+    def _start_tray_deferred(self) -> None:
+        """Non-blocking tray after first paint so boot is not gated on NotifyIcon."""
+
+        err = self._start_tray()
+        if err:
+            self._status(err, "warn")
 
     def _on_single_instance_wake(self) -> None:
         """Another launch attempted — surface Idle Lab instead of a second process."""
@@ -1511,27 +1540,34 @@ class App(ctk.CTk):
         self._show_lab()
 
     def _hide_lab(self, *, quiet: bool = False) -> None:
-        """Hide Lab UI but keep HWND mapped so the flight-deck Toplevel can show.
+        """Hide Idle Lab to the tray (true withdraw — no zombie taskbar button).
 
-        On Windows, ``withdraw`` / ``iconify`` on the root also hide child Toplevels
-        (the flight deck). Alpha-0 + park off-screen keeps a taskbar button.
+        Peer Flight Deck no longer needs a mapped root; alpha-0 off-screen park
+        left a dead taskbar entry that could not be restored by clicking it.
         """
 
         try:
-            if self._lab_saved_geometry is None:
-                geo = str(self.geometry() or "").strip()
-                if geo and "x" in geo:
-                    self._lab_saved_geometry = geo
-            screen = win32_api.virtual_screen()
-            self.geometry(f"1100x920+{screen.right + 120}+{screen.bottom + 120}")
-            self.attributes("-alpha", 0.0)
-            self.state("normal")
-            self.deiconify()
-            self.update_idletasks()
+            geo = str(self.geometry() or "").strip()
+            if geo and "x" in geo and (self._lab_saved_geometry is None or self._lab_visible):
+                self._lab_saved_geometry = geo
+                if self._costume_mode == "expanded":
+                    self._expanded_geometry = geo
+        except Exception:
+            pass
+        try:
+            self.attributes("-alpha", 1.0)
+        except Exception:
+            pass
+        try:
+            self.withdraw()
         except Exception:
             pass
         self._lab_visible = False
-        self.flight_deck.set_lab_visible(False)
+        try:
+            self.flight_deck.hide_deck()
+            self.flight_deck.set_lab_visible(False)
+        except Exception:
+            pass
         if self._shell_phase is ShellPhase.ACTIVE and not self._is_anchored():
             prompt = self._active_unanchored_prompt_text()
             self.flight_deck.set_shell_phase(
@@ -1543,7 +1579,7 @@ class App(ctk.CTk):
         self._sync_shell_hook_flags()
         if not quiet:
             self._status(
-                "Idle Lab hidden — tray → Open Lab.",
+                "Idle Lab hidden — tray → Open Lab (or Quit).",
                 "info",
             )
 
@@ -1556,13 +1592,15 @@ class App(ctk.CTk):
         """Map Idle Lab HWND (alpha/geometry). Caller enforces exclusivity."""
 
         try:
+            self.flight_deck.hide_deck()
             self.flight_deck._orphan_from_owner()
         except Exception:
             pass
         try:
             self.attributes("-alpha", 1.0)
-            if self._lab_saved_geometry:
-                self.geometry(self._lab_saved_geometry)
+            geo = self._lab_saved_geometry or self._expanded_geometry
+            if geo:
+                self.geometry(geo)
             else:
                 screen = win32_api.virtual_screen()
                 self.geometry(f"1100x920+{screen.left + 80}+{screen.top + 60}")
@@ -1571,6 +1609,11 @@ class App(ctk.CTk):
             self.lift()
             self.focus_force()
             self.update_idletasks()
+        except Exception:
+            pass
+        try:
+            # Root deiconify can rematerialize child Toplevels — reseal peer Deck.
+            self.flight_deck.hide_deck()
         except Exception:
             pass
         try:
@@ -1813,33 +1856,64 @@ class App(ctk.CTk):
         self._withdraw_idle_lab_hide()
 
     def _withdraw_idle_lab_hide(self) -> None:
-        """Window X — park Lab; peer Deck stays withdrawn (tray can reopen)."""
+        """Window X — hide to tray (not quit). Tray → Open Lab or Quit Idle Lab."""
 
         if self.live_control.active:
             self._exit_live_control(reason="operator")
-        self._morph_to_expanded()
+        if self.observation.active:
+            try:
+                self.observation.stop(reason="lab_hide")
+            except Exception:
+                pass
+            self._morph_to_expanded()
+        elif self._is_collapsed():
+            self._morph_to_expanded()
         self._hide_lab(quiet=True)
-        try:
-            self.flight_deck.hide_deck()
-        except Exception:
-            pass
-        self._status("Idle Lab hidden — use tray to Open Lab.", "info")
+        self._status("Idle Lab hidden — tray icon → Open Lab (Quit exits).", "info")
 
     def _on_lab_tree_select(self, name: str) -> None:
-        """Left rail → action pane + pocket focus."""
+        """Left rail → middle desk (sole lab/leaf switcher)."""
 
-        lab = normalize_last_tab(name)
-        try:
-            self.tabs.set(lab)
-        except Exception:
-            self._status(f"Could not open “{lab}”.", "warn")
+        path = normalize_nav_path(name)
+        if path == normalize_nav_path(self._current_tab):
             return
-        self._current_tab = lab
-        self.settings.last_tab = lab
-        self._save_settings()
+        self._navigate_lab(path, status=True)
+
+    def _navigate_lab(self, name: str, *, status: bool = False) -> str:
+        """Show one desk pane; sync tree + pocket + last_tab."""
+
+        previous = self._current_tab
+        path = normalize_nav_path(name)
+        try:
+            path = self.tabs.show(path)
+        except Exception:
+            self._status(f"Could not open “{name}”.", "warn")
+            return self._current_tab
+        if path != normalize_nav_path(previous):
+            self.scroll_memory.remember_prefix(self._tab_scroll_prefix(previous))
+        self._current_tab = path
+        self.settings.last_tab = path
+        if getattr(self, "_last_tab_save_job", None) is not None:
+            try:
+                self.after_cancel(self._last_tab_save_job)
+            except Exception:
+                pass
+        self._last_tab_save_job = self.after(400, self._save_settings)
+        if self.lab_tree is not None and getattr(self.lab_tree, "_selected", None) != path:
+            try:
+                self.lab_tree.select(path, notify=False)
+            except Exception:
+                pass
         if self.hotkey_pocket is not None:
-            self.hotkey_pocket.set_focus_lab(lab)
-        self._status(f"Opened {lab}.", "ok")
+            try:
+                self.hotkey_pocket.set_focus_lab(path)
+            except Exception:
+                pass
+        prefix = self._tab_scroll_prefix(path)
+        self.after(80, lambda p=prefix: self.scroll_memory.restore_prefix(p))
+        if status:
+            self._status(f"Opened {path}.", "ok")
+        return path
 
     def _desk_geometry_xy(self) -> tuple[int, int]:
         geo = str(self.geometry() or "")
@@ -2152,29 +2226,13 @@ class App(ctk.CTk):
         self._status("Expanded Idle Lab.", "ok")
 
     def _goto_lab_tab(self, tab_name: str) -> None:
-        """Info checklist link → switch Idle Lab tab."""
+        """Info checklist / shortcut → left-rail path + middle desk."""
 
-        name = normalize_last_tab(tab_name)
-        try:
-            self.tabs.set(name)
-        except Exception:
-            self._status(f"Could not open tab “{tab_name}”.", "warn")
-            return
-        self._current_tab = name
-        self.settings.last_tab = name
-        self._save_settings()
-        if self.lab_tree is not None:
-            try:
-                self.lab_tree.select(name, notify=False)
-            except Exception:
-                pass
-        if self.hotkey_pocket is not None:
-            self.hotkey_pocket.set_focus_lab(name)
         if not self._is_lab_visible():
             self._show_idle_lab_surface()
         if self._costume_mode != "expanded":
             self._morph_to_expanded()
-        self._status(f"Opened {name}.", "ok")
+        self._navigate_lab(tab_name, status=True)
 
     def _start_live_overlay_from_lab(self) -> None:
         """Live Overlay Lab → condense Lab + live enter (peer Deck stays withdrawn)."""
@@ -2209,14 +2267,7 @@ class App(ctk.CTk):
         self._close_atom_lab_float(quiet=True)
         self._morph_to_expanded()
         self._show_lab_window(quiet=True)
-        self._goto_lab_tab("Molecule Lab")
-        try:
-            from idle_lab.shell.tabs.molecule_lab import select_ml_subtab
-
-            if self._molecule_lab_root is not None:
-                select_ml_subtab(self._molecule_lab_root, "Atom")
-        except Exception:
-            pass
+        self._navigate_lab("Molecule Lab/Atom")
         self._atom_draft = AtomDraft()
         self._atom_create_phase = AtomCreatePhase.KIND
         self._enter_deck_mode(DeckMode.ATOM_CREATE)
@@ -2238,16 +2289,7 @@ class App(ctk.CTk):
     def _return_to_molecule_atom_tab(self) -> None:
         self._morph_to_expanded()
         self._show_lab_window(quiet=True)
-        self._goto_lab_tab("Molecule Lab")
-        try:
-            from idle_lab.shell.tabs.molecule_lab import select_ml_subtab
-
-            if self._molecule_lab_root is not None:
-                select_ml_subtab(self._molecule_lab_root, "Atom")
-        except Exception:
-            pass
-        if self.hotkey_pocket is not None:
-            self.hotkey_pocket.set_focus_lab("Molecule Lab")
+        self._navigate_lab("Molecule Lab/Atom")
         self._sync_shell_hook_flags()
 
     def _open_atom_lab_float(self) -> None:
@@ -3354,15 +3396,9 @@ class App(ctk.CTk):
         except Exception:
             pass
 
-    def _register_molecule_lab_root(self, root) -> None:
-        self._molecule_lab_root = root
-
     def _host_molecule_atom_pane(self, parent) -> None:
-        from idle_lab.shell.tabs.molecule_lab import AtomLabPane, find_ml_root
+        from idle_lab.shell.tabs.molecule_lab import AtomLabPane
 
-        found = find_ml_root(parent)
-        if found is not None:
-            self._molecule_lab_root = found
         if self.atom_lab_pane is not None:
             try:
                 self.atom_lab_pane.destroy()
@@ -3380,35 +3416,14 @@ class App(ctk.CTk):
         self.atom_lab_pane.pack(fill="both", expand=True)
 
     def _goto_trial_subtab(self) -> None:
-        from idle_lab.shell.tabs.molecule_lab import select_ml_subtab
-
         if not self._is_lab_visible():
             self._show_lab()
-        if self._molecule_lab_root is None:
-            self._goto_lab_tab("Molecule Lab")
-        if select_ml_subtab(self._molecule_lab_root, "Trial"):
-            self._status("Molecule Lab → Trial", "ok")
-        else:
-            self._status("Could not open Trial tab.", "warn")
+        self._navigate_lab("Molecule Lab/Trial", status=True)
 
     def _goto_molecule_subtab(self) -> None:
-        from idle_lab.shell.tabs.molecule_lab import select_ml_subtab
-
         if not self._is_lab_visible():
             self._show_idle_lab_surface()
-        try:
-            self.tabs.set("Molecule Lab")
-        except Exception:
-            pass
-        self._current_tab = "Molecule Lab"
-        self.settings.last_tab = "Molecule Lab"
-        self._save_settings()
-        target = self._molecule_lab_root or self.atom_lab_pane
-        ok = bool(target is not None and select_ml_subtab(target, "Molecule"))
-        if ok:
-            self._status("Molecule Lab → Molecule (compose / run).", "ok")
-        else:
-            self._status("Molecule Lab → Molecule jump failed (sub-tab not found).", "warn")
+        self._navigate_lab("Molecule Lab/Molecule", status=True)
 
     def _atom_library_rows(self):
         from idle_lab.automations.lol_coverage import classify_library
@@ -4603,42 +4618,23 @@ class App(ctk.CTk):
         self.scroll_memory.around_rebuild("clicker.presets", rebuild)
 
     def _on_tab_changed(self) -> None:
-        previous = self._current_tab
-        self.scroll_memory.remember_prefix(self._tab_scroll_prefix(previous))
-        self._current_tab = self.tabs.get()
-        self.settings.last_tab = normalize_last_tab(self._current_tab)
-        self._save_settings()
-        lab = normalize_last_tab(self._current_tab)
-        if self.lab_tree is not None and getattr(self.lab_tree, "_selected", None) != lab:
-            try:
-                self.lab_tree.select(lab, notify=False)
-            except Exception:
-                pass
-        if self.hotkey_pocket is not None:
-            try:
-                self.hotkey_pocket.set_focus_lab(lab)
-            except Exception:
-                pass
-        prefix = self._tab_scroll_prefix(self._current_tab)
-        self.after(80, lambda p=prefix: self.scroll_memory.restore_prefix(p))
+        """Legacy hook — desk has no Tabview command; sync from current path."""
+
+        self._navigate_lab(self.tabs.get() if self.tabs is not None else self._current_tab)
 
     def _tab_scroll_prefix(self, tab_name: str) -> str:
+        path = normalize_nav_path(tab_name)
         return {
             "Info": "info.",
             "Live Overlay Lab": "live_overlay_lab.",
+            "Molecule Lab/Atom": "molecule_lab.atom.",
+            "Molecule Lab/Molecule": "molecule_lab.molecule.",
+            "Molecule Lab/Trial": "molecule_lab.trial.",
+            "Observation Lab/User": "observation_lab.user.",
+            "Observation Lab/AI mission": "observation_lab.ai.",
             "Molecule Lab": "molecule_lab.",
             "Observation Lab": "observation_lab.",
-            "LOL": "live_overlay_lab.",
-            # Legacy mega-tab names
-            "Bench": "clicker.",
-            "Observe": "screen_map.",
-            "Missions": "ai.",
-            "Loops": "automations.",
-            "Clicker": "clicker.",
-            "Automations": "automations.",
-            "Screen Map": "screen_map.",
-            "AI Batches": "ai.",
-        }.get(tab_name, tab_name.lower().replace(" ", "_") + ".")
+        }.get(path, path.lower().replace(" ", "_").replace("/", ".") + ".")
 
     def _select(self, preset: Preset) -> None:
         if self.recorder.active:
@@ -5536,8 +5532,7 @@ class App(ctk.CTk):
         self._refresh_screen_map_catalog()
         if self.screen_map_panel is not None:
             self.screen_map_panel.focus_batch(slug)
-        self.tabs.set("Observe")
-        self._on_tab_changed()
+        self._navigate_lab("Observation Lab/User", status=False)
         self._status(f"Opened Observe batch: {slug}", "info")
 
     def _screen_map_space(self) -> None:
