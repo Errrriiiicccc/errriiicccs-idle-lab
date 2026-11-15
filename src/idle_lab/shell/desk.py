@@ -18,8 +18,9 @@ PaneBuilder = Callable[[ctk.CTkFrame], Any]
 class ActionDesk(ctk.CTkFrame):
     """Single middle host. Left rail drives ``show(path)``; no inner lab tabs.
 
-    Panes build lazily on first visit, then stay stacked via ``place`` + ``lift``
-    so return trips do not re-run pack geometry on hundreds of widgets.
+    Panes build lazily and stay cached, but only the active pane stays mapped.
+    Mapping every visited pane with ``place`` made window resize drag every
+    lab's widget tree at once (thousands of CTk nodes) — feel laggy.
     """
 
     def __init__(
@@ -49,10 +50,27 @@ class ActionDesk(ctk.CTkFrame):
     def active_path(self) -> str | None:
         return self._active
 
+    def _map_only(self, key: str) -> None:
+        """Map the active pane; unmap the rest so resize only lays out one tree."""
+
+        for path, pane in self._panes.items():
+            try:
+                if path == key:
+                    pane.place(relx=0, rely=0, relwidth=1, relheight=1)
+                    pane.lift()
+                else:
+                    pane.place_forget()
+            except Exception:
+                try:
+                    if path == key:
+                        pane.pack(fill="both", expand=True)
+                    else:
+                        pane.pack_forget()
+                except Exception:
+                    pass
+
     def show(self, path: str) -> str:
         key = normalize_nav_path(path)
-        if key == self._active and key in self._panes:
-            return key
         if key not in self._panes:
             holder = ctk.CTkFrame(self, fg_color=self._look.bg)
             builder = self._builders.get(key)
@@ -66,17 +84,17 @@ class ActionDesk(ctk.CTkFrame):
                     anchor="w",
                 ).pack(anchor="w", padx=12, pady=12)
             paint_widget_tree(holder, self._look)
-            try:
-                holder.place(relx=0, rely=0, relwidth=1, relheight=1)
-            except Exception:
-                holder.pack(fill="both", expand=True)
             self._panes[key] = holder
-        try:
-            self._panes[key].lift()
-            self._panes[key].tkraise()
-        except Exception:
-            pass
-        self._active = key
+        if key != self._active:
+            self._map_only(key)
+            self._active = key
+        elif key in self._panes:
+            # Ensure active stays mapped (e.g. after skin paint).
+            try:
+                if not self._panes[key].winfo_ismapped():
+                    self._map_only(key)
+            except Exception:
+                self._map_only(key)
         return key
 
     def get(self) -> str:

@@ -189,6 +189,9 @@ class App(ctk.CTk):
         self.settings, settings_error = load_settings(self.settings_path)
         # Restored windowed size/position (maximized is separate — not F11 fullscreen).
         self._lab_geometry_job: str | None = None
+        self._resize_hold_job: str | None = None
+        self._resize_holding = False
+        self._resize_hold_armed = False  # arm after first paint so boot geometry doesn't blank the desk
         boot_geo = sanitize_lab_geometry(self.settings.lab_geometry) or "1100x920"
         self.geometry(boot_geo)
         self.auto_store = AutomationStore(root / "automations")
@@ -281,6 +284,7 @@ class App(ctk.CTk):
         self.update_idletasks()
         self.bind("<Configure>", self._on_lab_configure)
         self.after(0, self._restore_lab_window_placement)
+        self.after(800, self._arm_resize_hold)
         self.overlay = Overlay(self, self._on_marker_moved, self._on_marker_released)
         self.live_control_overlay = LiveControlOverlay(self)
         self._live_control_owns_observation = False
@@ -915,24 +919,71 @@ class App(ctk.CTk):
             except Exception:
                 pass
 
-    def _on_lab_configure(self, _event=None) -> None:
-        """Debounced persist of restored size/position (skip collapsed / zoomed size)."""
+    def _on_lab_configure(self, event=None) -> None:
+        """Keep resize drags light; persist geometry after the drag settles."""
 
+        # Only the root window — child Configure spam during drag is pure noise.
+        if event is not None and getattr(event, "widget", None) is not self:
+            return
         if getattr(self, "_costume_mode", "expanded") != "expanded":
             return
         if not getattr(self, "_lab_visible", True):
             return
+        # Park the heavy desk while the edge is dragged — CTk reflows every
+        # Atom/Obs widget on each pixel otherwise.
+        self._begin_resize_hold()
+        if self._resize_hold_job is not None:
+            try:
+                self.after_cancel(self._resize_hold_job)
+            except Exception:
+                pass
         if self._lab_geometry_job is not None:
             try:
                 self.after_cancel(self._lab_geometry_job)
             except Exception:
                 pass
 
-        def persist() -> None:
+        def settle() -> None:
+            self._resize_hold_job = None
+            self._end_resize_hold()
             self._lab_geometry_job = None
             self._persist_lab_window_placement()
 
-        self._lab_geometry_job = self.after(450, persist)
+        self._resize_hold_job = self.after(120, settle)
+        self._lab_geometry_job = self._resize_hold_job
+
+    def _arm_resize_hold(self) -> None:
+        self._resize_hold_armed = True
+
+    def _begin_resize_hold(self) -> None:
+        if not getattr(self, "_resize_hold_armed", False):
+            return
+        if self._resize_holding:
+            return
+        if getattr(self, "_costume_mode", "expanded") != "expanded":
+            return
+        desk = getattr(self, "tabs", None)
+        if desk is None:
+            return
+        self._resize_holding = True
+        try:
+            desk.pack_forget()
+        except Exception:
+            self._resize_holding = False
+
+    def _end_resize_hold(self) -> None:
+        if not self._resize_holding:
+            return
+        self._resize_holding = False
+        desk = getattr(self, "tabs", None)
+        pane = getattr(self, "_action_pane", None)
+        if desk is None or pane is None:
+            return
+        try:
+            if not desk.winfo_ismapped():
+                desk.pack(fill="both", expand=True, padx=4, pady=4)
+        except Exception:
+            pass
 
     def _persist_lab_window_placement(self) -> None:
         if getattr(self, "_costume_mode", "expanded") != "expanded":
