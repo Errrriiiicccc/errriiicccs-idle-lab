@@ -9,8 +9,9 @@ High-level map of Idle Lab. Purpose: [VISION.md](../VISION.md).
 1. [VISION.md](../VISION.md) — purpose  
 2. This tree — parts + decisions  
 3. [FEATURES.md](../FEATURES.md) — target shell vs POC  
-4. [CONTINUATION.md](../CONTINUATION.md) — next focus  
-5. Shape-first code when Eric greenlights  
+4. [WORKBOARD.md](../WORKBOARD.md) — active / next / archive  
+5. [CONTINUATION.md](../CONTINUATION.md) — tonight’s smoke  
+6. Shape-first code when Eric greenlights  
 
 ## Piece map
 
@@ -18,7 +19,7 @@ High-level map of Idle Lab. Purpose: [VISION.md](../VISION.md).
 | --- | --- | --- |
 | **Shell** | One Idle Lab · expanded/condensed · hotkey pocket (**active**) | [shell/](shell/README.md) |
 | **Hands** | LOL + overlays (Create moves into Lab) | [hands/](hands/README.md) |
-| **Molecules** | Atom + Molecule Lab | [molecules/](molecules/README.md) |
+| **Molecules** | Atom + Molecule Lab | [molecules/](molecules/README.md) · [feel](molecules/FEEL.md) |
 | **State** | Current State (core; soft-hold vs shell reshape) | [state/](state/README.md) |
 | **Sense** | Source → native → OCR | [sense/](sense/README.md) |
 | **Authoring** | Files + AI dispatch (parked) | [authoring/](authoring/README.md) |

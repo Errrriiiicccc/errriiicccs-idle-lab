@@ -1,23 +1,29 @@
 # Molecules
 
 **Job:** Compose and run gated policies — Molecule Lab authoring + atom/molecule runtime.  
-**Decisions:** [decisions.md](decisions.md) · feature board [MOLECULE-LAB-CONDITIONALS.md](../../MOLECULE-LAB-CONDITIONALS.md)
+**Feel:** [FEEL.md](FEEL.md) · **Decisions:** [decisions.md](decisions.md) · **Board:** [WORKBOARD.md](../../WORKBOARD.md) · conditionals [MOLECULE-LAB-CONDITIONALS.md](../../MOLECULE-LAB-CONDITIONALS.md)
 
-## Current
+## Current (ships)
 
 - **Atoms** = `automations/events/*.json`; **Molecules** = `automations/collections/*.json`.
-- Atom Create kind gate: **Automation** (clicks / drags / keys / OCR) or **Phase map** (key groups, phases, targets, scrolls, regions; expand-on-save → child automation atoms). Sample: `phase_map_cards`.
-- Loops UI: browse, Start selected (atom once / molecule once|interval), Run pack, queue, console, Validate / Dry-run.
-- **Molecule Lab** (`composer/`): drafts, selection-gated conditions (C1–C4 + C10), expand to disk; **runtime skip (C5) not done** (soft-hold vs shell reshape).
-- LCO/Hands marks can be placed from Molecule Lab.
+- Atom Create kind gate: **Automation** or **Phase map** (in-Lab; still Deck-keymap DNA — **unblock** on board).
+- Loops UI leftovers: browse, Start selected, Run pack, queue, console, Validate / Dry-run.
+- **Molecule Lab** (`composer/`): drafts, conditions C1–C4 + C10; **C5 runtime skip not done**.
 - Schema: [automation-schema.md](../../automation-schema.md).
 
-## Proposed
+## Agreed feel (not all coded)
 
-- Shell direction: authoring in **expanded** Idle Lab with hotkey pocket (not peer Deck Create) — [../shell/README.md](../shell/README.md), [../shell/molecule-lab.md](../shell/molecule-lab.md) (needs rewrite pass).
-- Autoclicker Lab not a separate top-level tab.
-- Molecules compose Automation + Phase map atoms; gates should eventually read **Current State** (soft-hold).
+- **Trial = mode** on Atom + Molecule (drop Trial as a third leaf).
+- Create = Idle Lab three-pane desk + glass; pocket last.
+- **Sense:** Collect \| Check; soft/hard changes; molecules hide softs and auto-route.
+- Atoms can be rich phase maps; molecules compose them.
+- Full narrative: [FEEL.md](FEEL.md).
+
+## Proposed / next
+
+- Unblock Create → three-pane + soft model → Atom Lab first-open → molecule router → LOL costumes.
+- Molecules eventually read **Current State** (parked with C5).
 
 ## Fit to vision
 
-Translate → habits. Molecules are the durable policy language.
+Translate → habits. Molecules are the durable policy language; atoms are the teachable surface units.

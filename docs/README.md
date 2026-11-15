@@ -10,7 +10,8 @@ CONTRACTS        LAYOUT · HARNESS · REFRESH-RESTART · automation-schema · pr
 OPERATOR HOW-TO  README.md · USAGE · AI-BATCH-USAGE · SCREEN-MAP-USAGE · smoke tests
 TARGET KNOWLEDGE docs/knowledge/*          (Tower compounds; not purpose)
 RESEARCH         docs/research/*           (cite analogues; do not own status)
-EPHEMERAL        CONTINUATION · HANDOFF-*  (next-chat only; cite VISION)
+WORKBOARD        docs/WORKBOARD.md         (active/next/parked/done — start-of-chat)
+EPHEMERAL        CONTINUATION · HANDOFF-*  (next-chat smoke; cite VISION + WORKBOARD)
 ARCHIVE          archive/                  (deprecated docs/demos; app does not load)
 ```
 
@@ -23,7 +24,8 @@ ARCHIVE          archive/                  (deprecated docs/demos; app does not 
 | **How-to** | How an operator runs things | North-star rewrites |
 | **Knowledge** | Calibrated Tower facts that compound | App chrome design |
 | **Research** | Lanes, analogues, prompt templates | Live “ships today” status (→ FEATURES) |
-| **Ephemeral** | Active focus for the next chat | Durable purpose |
+| **Workboard** | Current / upcoming / parked / done across Labs | Purpose (→ VISION) |
+| **Ephemeral** | Tonight’s smoke + soft-hold | Durable purpose |
 
 **Planning status:** shell + hygiene **agreed**; FEATURES shows **target vs ships-today**. Shape-first plan: [pieces/shell/SHAPE-FIRST-PLAN.md](pieces/shell/SHAPE-FIRST-PLAN.md). Code when Eric greenlights a phase — not more north-star invention unless purpose drifts.
 

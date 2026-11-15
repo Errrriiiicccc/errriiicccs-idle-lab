@@ -81,6 +81,7 @@ Title-native hooks on the sense ladder; not Tower-now.
 
 | Date | What folded | Where |
 | --- | --- | --- |
+| 2026-11-15 | Molecule/Atom Create feel: trial-as-mode, three-pane Create, Sense Collect\|Check, soft/hard, atom complexity | [molecules/FEEL.md](molecules/FEEL.md) · [WORKBOARD.md](../WORKBOARD.md) · M8–M18 |
 | 2026-11-13 | Shell reshape talk: one window, expanded/condensed, hotkey pocket, themes→skins; break D1/D4; re-park D22 | CONTINUATION + shell README/FEEL + this file |
 | 2026-11-13 | *(superseded)* Accidental “state-loop next” handoff from unread plan implement | Replaced by shell reshape above |
 | 2026-11-09 | Sense ladder; Tower proving-ground; Deactivate; archive mine | VISION + pieces created |
