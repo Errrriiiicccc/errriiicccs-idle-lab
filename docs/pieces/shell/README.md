@@ -48,7 +48,7 @@ Peer Flight Deck as a second exclusive surface is **out**. Fold that job into Id
 
 ## Ships today vs this direction
 
-**Slice 1 (costume skeleton) ships:** expanded rail + pocket + action pane; condensed morph; peer Deck not user-facing (withdrawn runtime). Still missing: Esc confirm on glass, live pocket maps, Deck retirement, skins. [FEATURES.md](../../FEATURES.md) · [CONTINUATION.md](../../CONTINUATION.md).
+**Ships:** expanded rail + pocket + action pane; **collapsed** on LOL/Obs; Atom Create in expanded Lab; peer Deck never shown (withdrawn keymap host). Still missing: Esc confirm on glass, richer pocket maps, delete `flight_deck/` package. [FEATURES.md](../../FEATURES.md) · [CONTINUATION.md](../../CONTINUATION.md).
 
 ## Implementation
 

@@ -47,8 +47,8 @@ def build_lol_tab(
     ).pack(side="left")
     ctk.CTkButton(
         toolbar,
-        text="Atom Create (Deck)",
-        width=150,
+        text="Create Atom",
+        width=120,
         fg_color="#2A3140",
         hover_color="#3A4558",
         command=(on_open_atom_create or (lambda: None)),
@@ -56,7 +56,7 @@ def build_lol_tab(
     ).pack(side="left", padx=(8, 0))
     ctk.CTkLabel(
         toolbar,
-        text="Anchor required · Esc exits live · Deactivate stops all",
+        text="Anchor required · Start live collapses Lab · Esc expands",
         text_color="#7E8796",
         anchor="w",
     ).pack(side="left", padx=(12, 0))

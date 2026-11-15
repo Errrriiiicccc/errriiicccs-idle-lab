@@ -145,12 +145,16 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._placed_once = False
         self._geometry_job: str | None = None
         self._collapsed_pos: tuple[int, int] | None = None
+        # Peer OS window is retired — Idle Lab owns the desk. Keep this Toplevel
+        # as a withdrawn keymap/chrome host; geometry/pack must never rematerialize it.
+        self._peer_mapped = False
 
         self._build()
         self.bind("<Configure>", self._on_configure)
         self.withdraw()
-        # Break Win32 owner link to Lab so showing Lab does not unmap this deck.
+        # Break Win32 owner link so Lab show/lift cannot fight withdraw.
         self.after(0, self._orphan_from_owner)
+        self.after(50, self._seal_withdrawn)
 
     def _build(self) -> None:
         self._pad = ctk.CTkFrame(self, fg_color="transparent")
@@ -272,7 +276,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
         key = vk_label(self._expand_vk)
         if self._shell_phase is ShellPhase.INACTIVE:
             self.activate_button.configure(
-                text=f"Activate Flight Deck [{key}]",
+                text=f"Activate [{key}]",
                 state="normal",
             )
         elif self._live_control_active:
@@ -483,50 +487,34 @@ class FlightDeckWindow(ctk.CTkToplevel):
         self._render_chrome()
 
     def show_deck(self, *, beside: Rect | None = None, geometry: str | None = None) -> None:
-        placed = sanitize_geometry(geometry)
-        if placed:
-            try:
-                # Prefer saved x/y; force collapsed height until expand.
-                parsed = parse_geometry(placed)
-                if parsed:
-                    _w, _h, x, y = parsed
-                    self.geometry(clamp_geometry(_COLLAPSED_W, _COLLAPSED_H, x, y))
-                    self._collapsed_pos = (x, y)
-                else:
-                    self.geometry(placed)
-                self._placed_once = True
-            except Exception:
-                placed = None
-        if not placed and beside is not None:
-            self._place_beside(beside)
-            self._placed_once = True
-        elif not placed and not self._placed_once:
-            screen = win32_api.virtual_screen()
-            self.geometry(clamp_geometry(_COLLAPSED_W, _COLLAPSED_H, screen.left + 40, screen.top + 80))
-            self._placed_once = True
-        self.ensure_onscreen()
-        self.deiconify()
-        self.lift()
-        try:
-            self.attributes("-topmost", True)
-        except Exception:
-            pass
-        self._orphan_from_owner()
-        self._render_chrome()
+        """Peer Deck is not user-facing — refuse to map; keep withdrawn host state."""
+
+        _ = beside, geometry
+        self._peer_mapped = False
+        self._seal_withdrawn()
 
     def hide_deck(self) -> None:
-        self.collapse_menu()
-        self.withdraw()
+        """Seal the peer HWND. Does not clear accordion state (poller calls this often)."""
+
+        self._peer_mapped = False
+        self._seal_withdrawn()
 
     def focus_deck(self) -> None:
+        # No peer surface to focus — Idle Lab is the desk.
+        return
+
+    def _seal_withdrawn(self) -> None:
+        """Force withdraw after chrome/geometry so Tk/Win32 cannot rematerialize us."""
+
+        if self._peer_mapped:
+            return
         try:
-            self.lift()
-            self.focus_force()
+            self.withdraw()
         except Exception:
             pass
 
     def _orphan_from_owner(self) -> None:
-        """Detach from Lab's Win32 owner so Lab show/lift cannot unmap this deck."""
+        """Detach from Lab's Win32 owner so Lab show/lift cannot rematerialize us."""
 
         try:
             self.update_idletasks()
@@ -534,11 +522,15 @@ class FlightDeckWindow(ctk.CTkToplevel):
             win32_api.clear_window_owner(hwnd)
         except Exception:
             pass
+        self._seal_withdrawn()
 
     def current_geometry(self) -> str:
         return self.geometry()
 
     def ensure_onscreen(self) -> None:
+        if not self._peer_mapped:
+            self._seal_withdrawn()
+            return
         sanitized = sanitize_geometry(self.geometry())
         if sanitized and sanitized != self.geometry():
             try:
@@ -581,6 +573,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
             return screen.left + 40, screen.top + 80
 
     def _fit_collapsed_size(self) -> None:
+        if not self._peer_mapped:
+            return
         x, y = self._xy()
         self._collapsed_pos = (x, y)
         height = _COLLAPSED_H
@@ -596,6 +590,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
             pass
 
     def _fit_expanded_size(self) -> None:
+        if not self._peer_mapped:
+            return
         if self._live_control_active or self._molecule_lab_active:
             self._fit_live_control_size()
             return
@@ -620,6 +616,8 @@ class FlightDeckWindow(ctk.CTkToplevel):
             pass
 
     def _fit_live_control_size(self) -> None:
+        if not self._peer_mapped:
+            return
         x, y = self._xy()
         try:
             self.geometry(clamp_geometry(_EXPANDED_W, _LIVE_CONTROL_H, x, y))
@@ -627,6 +625,9 @@ class FlightDeckWindow(ctk.CTkToplevel):
             pass
 
     def _on_configure(self, _event=None) -> None:
+        if not self._peer_mapped:
+            self._seal_withdrawn()
+            return
         if self._on_geometry is None or not self.winfo_viewable():
             return
         if self._geometry_job is not None:
@@ -637,7 +638,7 @@ class FlightDeckWindow(ctk.CTkToplevel):
 
         def save() -> None:
             self._geometry_job = None
-            if self._on_geometry is None or not self.winfo_viewable():
+            if not self._peer_mapped or self._on_geometry is None or not self.winfo_viewable():
                 return
             # Persist position; prefer collapsed footprint so reopen stays compact.
             x, y = self._xy()
@@ -651,6 +652,10 @@ class FlightDeckWindow(ctk.CTkToplevel):
         shell = self._shell_phase
         self._sync_close_button_label()
         self._sync_activate_button_label()
+        if not self._peer_mapped:
+            # Keep accordion state warm for keymap helpers; never size/map the peer.
+            self._seal_withdrawn()
+            return
 
         if shell is ShellPhase.INACTIVE:
             if self.close_button.winfo_ismapped():

@@ -100,8 +100,8 @@ def build_molecule_lab_tab(
     atom_bar.pack(fill="x", pady=(0, 6))
     ctk.CTkButton(
         atom_bar,
-        text="Open Atom Create (Deck)",
-        width=180,
+        text="Create Atom",
+        width=120,
         command=(on_open_atom_create or (lambda: None)),
         state="normal" if on_open_atom_create else "disabled",
     ).pack(side="left")

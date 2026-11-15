@@ -94,11 +94,12 @@ from idle_lab.shell.atom_phase_map import (
 from idle_lab.shell.atom_create_overlay import AtomCreateOverlay
 from idle_lab.shell.console import SharedConsole
 from idle_lab.shell.costume import (
-    CONDENSED_OUTSIDE_CHORDS,
     HotkeyPocket,
     LabTreeRail,
     hide_tabview_segment,
+    paint_collapsed_chords,
 )
+from idle_lab.shell.skins import active_look, choose_skin, list_skin_choices
 from idle_lab.shell.floating import FloatingLabWindow
 from idle_lab.shell.idle_lab_window import build_tab_host
 from idle_lab.shell.resume import resume_prompt
@@ -252,12 +253,14 @@ class App(ctk.CTk):
             root / "lab-comments.json",
         ]
         self._disk_fingerprint = dir_fingerprint(self._watch_paths)
-        self._costume_mode = "expanded"  # expanded | condensed (before _build)
+        self._costume_mode = "expanded"  # expanded | collapsed (before _build)
         self._costume_reason = ""
         self._expanded_geometry: str | None = None
+        self._look = active_look()  # default Type → Bracket from feel/picks
         self._begin_load()
         self._build()
         self._end_load()
+        self._apply_skin(self._look, persist=False)
         self.update_idletasks()
         self.overlay = Overlay(self, self._on_marker_moved, self._on_marker_released)
         self.live_control_overlay = LiveControlOverlay(self)
@@ -353,8 +356,19 @@ class App(ctk.CTk):
         self.after(0, self._start_boot)
 
     def _build(self) -> None:
-        self.status_label = ctk.CTkLabel(self, text="", anchor="w", justify="left", wraplength=980)
+        self.status_label = ctk.CTkLabel(
+            self,
+            text="",
+            anchor="w",
+            justify="left",
+            wraplength=980,
+            text_color=self._look.caption,
+        )
         self.status_label.pack(side="bottom", fill="x", padx=12, pady=(4, 10))
+        try:
+            self.configure(fg_color=self._look.bg)
+        except Exception:
+            pass
 
         self._build_chrome()
 
@@ -376,17 +390,26 @@ class App(ctk.CTk):
         self._workspace = ctk.CTkFrame(self, fg_color="transparent")
         self._workspace.pack(fill="both", expand=True, padx=8, pady=(4, 0))
 
-        left_rail = ctk.CTkFrame(self._workspace, fg_color="#141820", width=240, corner_radius=10)
-        left_rail.pack(side="left", fill="y", padx=(0, 8))
-        left_rail.pack_propagate(False)
+        self._left_rail = ctk.CTkFrame(
+            self._workspace,
+            fg_color=self._look.board,
+            width=240,
+            corner_radius=10,
+            border_width=1 if self._look.style == "type" else 0,
+            border_color=self._look.desc_border,
+        )
+        self._left_rail.pack(side="left", fill="y", padx=(0, 8))
+        self._left_rail.pack_propagate(False)
 
-        self.lab_tree = LabTreeRail(left_rail, on_select=self._on_lab_tree_select)
+        self.lab_tree = LabTreeRail(
+            self._left_rail, on_select=self._on_lab_tree_select, look=self._look
+        )
         self.lab_tree.pack(fill="both", expand=True, padx=4, pady=(4, 0))
 
-        self.hotkey_pocket = HotkeyPocket(left_rail)
+        self.hotkey_pocket = HotkeyPocket(self._left_rail, look=self._look)
         self.hotkey_pocket.pack(fill="x", padx=4, pady=8, side="bottom")
 
-        self._action_pane = ctk.CTkFrame(self._workspace, fg_color="transparent")
+        self._action_pane = ctk.CTkFrame(self._workspace, fg_color=self._look.bg, corner_radius=8)
         self._action_pane.pack(side="left", fill="both", expand=True)
 
         self.tabs, self._current_tab = build_tab_host(
@@ -416,49 +439,69 @@ class App(ctk.CTk):
             pass
 
         # Condensed face (hidden until morph).
-        self._condensed_panel = ctk.CTkFrame(self, fg_color="#141820", corner_radius=10)
-        ctk.CTkLabel(
+        self._condensed_panel = ctk.CTkFrame(
+            self,
+            fg_color=self._look.board,
+            corner_radius=10,
+            border_width=1 if self._look.style == "type" else 0,
+            border_color=self._look.desc_border,
+        )
+        self._condensed_title = ctk.CTkLabel(
             self._condensed_panel,
-            text="Idle Lab · condensed",
+            text="Idle Lab · collapsed",
             font=ctk.CTkFont(size=16, weight="bold"),
             anchor="w",
-        ).pack(fill="x", padx=12, pady=(12, 4))
+            text_color=self._look.line,
+        )
+        self._condensed_title.pack(fill="x", padx=12, pady=(12, 4))
         self._condensed_status = ctk.CTkLabel(
             self._condensed_panel,
             text="Status: Idle",
             anchor="w",
-            text_color="#8EE0C2",
+            text_color=self._look.esc_pop,
             font=ctk.CTkFont(size=13, weight="bold"),
         )
         self._condensed_status.pack(fill="x", padx=12, pady=(0, 8))
-        for line in CONDENSED_OUTSIDE_CHORDS:
-            ctk.CTkLabel(
-                self._condensed_panel,
-                text=line,
-                anchor="w",
-                text_color="#A8B4C4",
-                font=ctk.CTkFont(size=13),
-            ).pack(fill="x", padx=12, pady=1)
-        ctk.CTkButton(
+        self._condensed_chord_host = ctk.CTkFrame(self._condensed_panel, fg_color="transparent")
+        self._condensed_chord_host.pack(fill="x")
+        self._condensed_chord_labels = paint_collapsed_chords(
+            self._condensed_chord_host, self._look
+        )
+        self._condensed_expand_btn = ctk.CTkButton(
             self._condensed_panel,
             text="Expand Idle Lab",
             width=140,
+            fg_color=self._look.live_bg,
+            hover_color=self._look.live_hover,
+            text_color=self._look.live_text,
+            border_width=1 if self._look.style == "type" else 0,
+            border_color=self._look.live_border,
             command=self._preview_expand_costume,
-        ).pack(anchor="w", padx=12, pady=(12, 12))
+        )
+        self._condensed_expand_btn.pack(anchor="w", padx=12, pady=(12, 12))
 
     def _build_chrome(self) -> None:
         """Thin global chrome: brand, Anchor, Refresh/Restart/Deactivate, costume preview."""
 
-        self._chrome = ctk.CTkFrame(self, corner_radius=12)
+        look = self._look
+        self._chrome = ctk.CTkFrame(
+            self,
+            corner_radius=12,
+            fg_color=look.panel,
+            border_width=1 if look.style == "type" else 0,
+            border_color=look.desc_border,
+        )
         self._chrome.pack(fill="x", padx=8, pady=(8, 4))
 
         left = ctk.CTkFrame(self._chrome, fg_color="transparent")
         left.pack(side="left", fill="y", padx=(12, 8), pady=8)
-        ctk.CTkLabel(
+        self._brand_label = ctk.CTkLabel(
             left,
             text="Errriiiccc's Idle Lab",
             font=ctk.CTkFont(size=16, weight="bold"),
-        ).pack(anchor="w")
+            text_color=look.line,
+        )
+        self._brand_label.pack(anchor="w")
 
         self.header_actions = ctk.CTkFrame(self._chrome, fg_color="transparent")
         self.header_actions.pack(side="right", padx=(8, 12), pady=8)
@@ -466,8 +509,9 @@ class App(ctk.CTk):
             self.header_actions,
             text="Settings",
             width=88,
-            fg_color="#2A3140",
-            hover_color="#3A4558",
+            fg_color=look.dorm_bg,
+            hover_color=look.live_hover,
+            text_color=look.caption,
             command=self._open_settings_from_lab,
         )
         self.settings_button.pack(side="right", padx=(6, 0))
@@ -475,8 +519,11 @@ class App(ctk.CTk):
             self.header_actions,
             text="Deactivate",
             width=100,
-            fg_color="#5A3030",
-            hover_color="#7A4040",
+            fg_color=look.return_bg,
+            hover_color=look.live_hover,
+            text_color=look.esc_pop,
+            border_width=1,
+            border_color=look.return_border,
             command=self._deactivate_from_idle_lab,
         )
         self.stop_all_button.pack(side="right", padx=(6, 0))
@@ -484,8 +531,9 @@ class App(ctk.CTk):
             self.header_actions,
             text="Restart",
             width=88,
-            fg_color="#2A3140",
-            hover_color="#3A4558",
+            fg_color=look.dorm_bg,
+            hover_color=look.live_hover,
+            text_color=look.caption,
             command=self._restart_lab,
         )
         self.restart_button.pack(side="right", padx=(6, 0))
@@ -493,18 +541,41 @@ class App(ctk.CTk):
             self.header_actions,
             text="Refresh",
             width=88,
+            fg_color=look.live_bg,
+            hover_color=look.live_hover,
+            text_color=look.live_text,
+            border_width=1 if look.style == "type" else 0,
+            border_color=look.live_border,
             command=self._refresh_lab,
         )
         self.refresh_button.pack(side="right", padx=(6, 0))
         self.preview_condensed_button = ctk.CTkButton(
             self.header_actions,
-            text="Preview condensed",
+            text="Preview collapsed",
             width=130,
-            fg_color="#1E3A4A",
-            hover_color="#2A5568",
+            fg_color=self._look.live_bg,
+            hover_color=self._look.live_hover,
+            text_color=self._look.live_text,
+            border_width=1 if self._look.style == "type" else 0,
+            border_color=self._look.live_border,
             command=self._preview_condensed_costume,
         )
         self.preview_condensed_button.pack(side="right", padx=(6, 0))
+        self._skin_choices = list_skin_choices()
+        self._skin_labels = [label for _id, label in self._skin_choices]
+        self._skin_by_label = {label: lid for lid, label in self._skin_choices}
+        self.skin_menu = ctk.CTkOptionMenu(
+            self.header_actions,
+            values=self._skin_labels or ["Type · Bracket"],
+            width=150,
+            command=self._on_skin_menu,
+        )
+        current_label = next(
+            (label for lid, label in self._skin_choices if lid == self._look.id),
+            self._skin_labels[0] if self._skin_labels else "Type · Bracket",
+        )
+        self.skin_menu.set(current_label)
+        self.skin_menu.pack(side="right", padx=(6, 0))
         self.mode_menu = ctk.CTkOptionMenu(
             self.header_actions,
             values=["Auto", "Supervised"],
@@ -524,6 +595,11 @@ class App(ctk.CTk):
             text="Anchor",
             width=88,
             height=28,
+            fg_color=look.live_bg,
+            hover_color=look.live_hover,
+            text_color=look.live_text,
+            border_width=1 if look.style == "type" else 0,
+            border_color=look.live_border,
             command=self._toggle_anchor_mode,
         )
         self.anchor_button.pack(side="left")
@@ -533,12 +609,12 @@ class App(ctk.CTk):
             width=28,
             height=28,
             fg_color="transparent",
-            hover_color="#3A2030",
-            text_color="#E25C5C",
+            hover_color=look.return_bg,
+            text_color=look.esc_pop,
             command=self._clear_anchor,
         )
         self.clear_button.pack(side="left", padx=(2, 0))
-        self.anchor_dot = ctk.CTkLabel(anchor_row, text="●", text_color="#5A6474", width=16)
+        self.anchor_dot = ctk.CTkLabel(anchor_row, text="●", text_color=look.muted, width=16)
         self.anchor_dot.pack(side="left", padx=(6, 0))
 
         self.anchor_label = ctk.CTkLabel(
@@ -546,7 +622,7 @@ class App(ctk.CTk):
             text="No window",
             anchor="w",
             justify="left",
-            text_color="#7E8796",
+            text_color=look.muted,
             font=ctk.CTkFont(size=11),
         )
         self.anchor_label.pack(anchor="w", pady=(2, 0))
@@ -557,7 +633,7 @@ class App(ctk.CTk):
             pulse,
             text="Mode: Auto",
             anchor="w",
-            text_color="#A8B4C4",
+            text_color=look.caption,
             font=ctk.CTkFont(size=11),
         )
         self.mode_chip.pack(side="left")
@@ -565,7 +641,7 @@ class App(ctk.CTk):
             pulse,
             text="Activity: Idle",
             anchor="w",
-            text_color="#8EE0C2",
+            text_color=look.esc_pop,
             font=ctk.CTkFont(size=11, weight="bold"),
         )
         self.activity_label.pack(side="left", padx=(10, 0))
@@ -573,7 +649,7 @@ class App(ctk.CTk):
             pulse,
             text="",
             anchor="w",
-            text_color="#E7C36A",
+            text_color=look.new,
             font=ctk.CTkFont(size=11),
         )
         self.files_badge.pack(side="left", padx=(10, 0))
@@ -1011,18 +1087,16 @@ class App(ctk.CTk):
             return False
 
     def _show_flight_deck(self, *, allow_unanchored: bool = True) -> None:
-        status, _hwnd, rect, _title = self.anchor_target.snapshot()
-        anchored = status in ("ok", "minimized")
-        if not anchored and not allow_unanchored and self._shell_phase is ShellPhase.INACTIVE:
-            # Inactive chrome is always allowed; activate handles anchoring next.
-            pass
+        """Peer Deck is not user-facing — keep withdrawn; arm virtual hotkey surface only."""
+
+        _ = allow_unanchored
         self.settings.flight_deck_user_hidden = False
         self._save_settings()
         self._sync_flight_deck_expand_vk()
-        self.flight_deck.show_deck(
-            beside=rect if status == "ok" else None,
-            geometry=self.settings.flight_deck_geometry,
-        )
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
         self.hooks.state.flight_deck_open = True
         self.hooks.state.flight_deck_expand_armed = True
         self._sync_flight_deck_run_state()
@@ -1071,33 +1145,31 @@ class App(ctk.CTk):
             lab_open and getattr(self, "_molecule_lab_close_confirm", False)
         )
         self.hooks.state.lab_visible = bool(self._lab_visible)
-        # Expanded desk owns mouse/buttons; condensed yields to overlay / mode hotkeys.
+        # Expanded desk owns mouse; collapsed / Atom Create yield chords to hotkeys.
         desk = self._desk_owns_input()
+        collapsed = self._is_collapsed()
+        creating = self._deck_mode is DeckMode.ATOM_CREATE
         self.hooks.state.resume_handle = bool(self._resume_handle) and desk
         self.hooks.state.deck_mode_active = bool(mode_abandons_menu(self._deck_mode) and (not desk))
-        self.hooks.state.atom_create_active = bool(
-            self._deck_mode is DeckMode.ATOM_CREATE and (not desk)
-        )
-        # Peer Deck window may stay withdrawn; condensed LOL still needs mode flags.
-        condensed = self._costume_mode == "condensed"
-        self.hooks.state.flight_deck_open = (bool(deck_visible) and (not desk)) or condensed
-        self.hooks.state.flight_deck_expand_armed = (not desk) or condensed
-        self.hooks.state.flight_deck_active = bool(
-            (active and deck_visible and not desk) or (active and condensed)
-        )
-        self.hooks.state.flight_deck_anchored = bool(
-            anchored and ((active and deck_visible and not desk) or (active and condensed))
-        )
-        self.hooks.state.flight_deck_expanded = bool(
-            active
-            and anchored
-            and ((deck_visible and not desk) or condensed)
-            and (self.flight_deck.expanded or condensed)
-        )
+        self.hooks.state.atom_create_active = bool(creating)
+        # Virtual Deck surface (withdrawn window) when collapsed, creating, or legacy visible.
+        virtual = collapsed or creating or (not desk)
+        self.hooks.state.flight_deck_open = (bool(deck_visible) and (not desk)) or virtual
+        self.hooks.state.flight_deck_expand_armed = virtual or (not desk)
+        self.hooks.state.flight_deck_active = bool(active and virtual)
+        self.hooks.state.flight_deck_anchored = bool(anchored and active and virtual)
+        self.hooks.state.flight_deck_expanded = bool(active and anchored and virtual)
+
+    def _is_collapsed(self) -> bool:
+        return self._costume_mode in {"collapsed", "condensed"}
 
     def _desk_owns_input(self) -> bool:
-        """Expanded Idle Lab is the mouse desk; condensed yields hotkeys to live modes."""
+        """Expanded Idle Lab mouse desk — not while collapsed or Atom Create owns chords."""
 
+        if self._is_collapsed():
+            return False
+        if self._deck_mode is DeckMode.ATOM_CREATE:
+            return False
         return bool(self._lab_visible) and self._costume_mode == "expanded"
 
     def _is_lab_visible(self) -> bool:
@@ -1179,46 +1251,41 @@ class App(ctk.CTk):
             lab_visible=self._is_lab_visible(),
             anchored=self._is_anchored(),
         )
-        self._show_flight_deck(allow_unanchored=True)
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
+        if not self.live_control.active and not self.observation.active:
+            self._morph_to_expanded()
+            self._show_lab_window(quiet=True)
         self._sync_shell_hook_flags()
         self._status(prompt, "info")
 
     def _activate_flight_deck(self) -> None:
+        """Arm hotkeys without a peer Deck window — Idle Lab stays the desk."""
+
         self._clear_resume_handle()
-        self._ensure_deck_only_surface()
         self._shell_phase = ShellPhase.ACTIVE
         anchored = self._is_anchored()
-        if anchored:
-            status, _hwnd, rect, _title = self.anchor_target.snapshot()
-            self.flight_deck.set_shell_phase(
-                ShellPhase.ACTIVE,
-                prompt="",
-                lab_visible=False,
-                anchored=True,
-            )
-            self.flight_deck.set_expanded(True)
-            self._show_flight_deck()
-            self._status("Flight deck active.", "ok")
-            _ = status, rect
-        else:
-            prompt = self._active_unanchored_prompt_text()
-            self.flight_deck.set_shell_phase(
-                ShellPhase.ACTIVE,
-                prompt=prompt,
-                lab_visible=False,
-                anchored=False,
-            )
-            self._show_flight_deck(allow_unanchored=True)
-            self._status(prompt, "info")
-        self.flight_deck.focus_deck()
+        self.flight_deck.set_shell_phase(
+            ShellPhase.ACTIVE,
+            prompt="" if anchored else self._active_unanchored_prompt_text(),
+            lab_visible=True,
+            anchored=anchored,
+        )
         try:
-            hwnd = win32_api.widget_hwnd(self.flight_deck)
-            if hwnd:
-                win32_api.focus_window(hwnd)
+            self.flight_deck.hide_deck()
+            self.flight_deck.set_expanded(True)
         except Exception:
             pass
+        if not self._is_collapsed():
+            self._show_lab_window(quiet=True)
         self._sync_shell_hook_flags()
         self._update_flight_deck_lab_button()
+        if anchored:
+            self._status("Hotkeys armed — Idle Lab desk.", "ok")
+        else:
+            self._status(self._active_unanchored_prompt_text(), "info")
 
     def _deactivate_flight_deck(self) -> None:
         """Deactivate = pause/stop runners; deck stays up with resume handle."""
@@ -1276,11 +1343,12 @@ class App(ctk.CTk):
         self._deactivate_flight_deck()
 
     def _pause_atom_create_deck(self) -> None:
-        """Deactivate while Atom Create is open — pause FD, keep create session."""
+        """`` ` `` while Atom Create is open — pause hotkeys; Lab + draft stay."""
 
         key = vk_label(self._flight_deck_expand_vk_for_anchor())
         self.flight_deck.collapse_menu()
         try:
+            self.flight_deck.hide_deck()
             self.flight_deck.set_deck_lab_mode(
                 True,
                 prompt=(
@@ -1297,16 +1365,13 @@ class App(ctk.CTk):
         self.flight_deck.set_shell_phase(
             ShellPhase.INACTIVE,
             prompt=f"Atom Create paused · {key} = resume",
-            lab_visible=False,
+            lab_visible=True,
             anchored=self._is_anchored(),
         )
-        self._show_flight_deck(allow_unanchored=True)
+        self._show_lab_window(quiet=True)
         self.hooks.state.deck_mode_active = True
         self.hooks.state.atom_create_active = True
         self._sync_shell_hook_flags()
-        # Keep deck_mode_active true so Esc still peels Create while paused.
-        self.hooks.state.deck_mode_active = True
-        self.hooks.state.atom_create_active = True
         self._status(f"Atom Create paused — {key} resumes; Esc saves → Atom Lab.", "warn")
 
     def _resume_atom_create_deck(self) -> None:
@@ -1350,22 +1415,23 @@ class App(ctk.CTk):
         )
 
     def _ensure_deck_only_surface(self) -> None:
-        """Hard rule: never show Idle Lab with Flight Deck; running → Deck only."""
+        """Legacy exclusivity — peer Deck never shown; Idle Lab stays up."""
 
-        surface = ensure_exclusive(
+        _ = ensure_exclusive(
             want=SurfaceKind.FLIGHT_DECK,
             anything_running=self._anything_running(),
         )
-        _ = surface
-        # Always park Idle Lab when Deck owns the surface (flag can lag first paint).
-        self._hide_lab(quiet=True)
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
 
     def _show_idle_lab_surface(self, *, quiet: bool = False) -> None:
-        """Show Idle Lab; peer Deck stays withdrawn. Condensed may stay while LOL runs."""
+        """Show Idle Lab desk (expanded unless collapsed for LOL/Obs)."""
 
         if (
             not can_show_idle_lab(anything_running=self._anything_running())
-            and self._costume_mode != "condensed"
+            and not self._is_collapsed()
             and not self.live_control.active
         ):
             self._status("Something is running — Deactivate to return to the desk.", "warn")
@@ -1375,16 +1441,19 @@ class App(ctk.CTk):
             self.flight_deck.hide_deck()
         except Exception:
             pass
-        if self._costume_mode != "condensed":
+        if not self._is_collapsed():
             self._shell_phase = ShellPhase.INACTIVE
         self._show_lab_window(quiet=quiet)
         self._sync_shell_hook_flags()
         self._update_flight_deck_lab_button()
 
     def _switch_to_flight_deck_surface(self, *, activate: bool = False) -> None:
-        """Idle Lab chrome → Deck. Deck starts deactivated unless activate=True."""
+        """Legacy name — keep Idle Lab; optionally arm hotkeys."""
 
-        self._ensure_deck_only_surface()
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
         if activate:
             self._activate_flight_deck()
             return
@@ -1392,19 +1461,23 @@ class App(ctk.CTk):
         self._update_flight_deck_lab_button()
 
     def _leave_boot_into_deck(self, *, status: str, rect) -> None:
-        """After a successful anchor while active: show hotkey deck."""
+        """After a successful anchor while active: arm hotkeys on Idle Lab."""
 
         self._shell_phase = ShellPhase.ACTIVE
         self.flight_deck.set_shell_phase(
             ShellPhase.ACTIVE,
             prompt="",
-            lab_visible=self._is_lab_visible(),
+            lab_visible=True,
             anchored=True,
         )
-        self.flight_deck.set_expanded(True)
-        self._show_flight_deck()
+        try:
+            self.flight_deck.set_expanded(True)
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
+        self._show_lab_window(quiet=True)
         self._sync_shell_hook_flags()
-        self._status("Anchored — flight deck hotkeys ready.", "ok")
+        self._status("Anchored — Idle Lab hotkeys ready.", "ok")
         _ = status, rect
 
     def _schedule_ui(self, fn) -> None:
@@ -1419,31 +1492,23 @@ class App(ctk.CTk):
         self._tray = TrayController(
             schedule=self._schedule_ui,
             on_open_lab=self._show_lab,
-            on_show_deck=self._tray_show_flight_deck,
             on_quit=self._on_close,
             on_error=lambda msg: self._status(msg, "warn"),
         )
         return self._tray.start()
 
     def _on_single_instance_wake(self) -> None:
-        """Another launch attempted — surface Lab + deck instead of a second process."""
+        """Another launch attempted — surface Idle Lab instead of a second process."""
 
+        self._morph_to_expanded()
         self._show_lab()
-        try:
-            self._tray_show_flight_deck()
-        except Exception:
-            pass
         self._status("Already running — brought Idle Lab to the front.", "info")
 
     def _tray_show_flight_deck(self) -> None:
-        if self._shell_phase is ShellPhase.CLOSE_CONFIRM:
-            self._show_flight_deck(allow_unanchored=True)
-            return
-        if self._shell_phase is ShellPhase.INACTIVE:
-            self._activate_flight_deck()
-            return
-        self._show_flight_deck(allow_unanchored=True)
-        self.flight_deck.focus_deck()
+        """Legacy tray hook — peer Deck is gone; open expanded Lab."""
+
+        self._morph_to_expanded()
+        self._show_lab()
 
     def _hide_lab(self, *, quiet: bool = False) -> None:
         """Hide Lab UI but keep HWND mapped so the flight-deck Toplevel can show.
@@ -1478,7 +1543,7 @@ class App(ctk.CTk):
         self._sync_shell_hook_flags()
         if not quiet:
             self._status(
-                "Idle Lab closed — Flight Deck only. I→1 opens Idle Lab again.",
+                "Idle Lab hidden — tray → Open Lab.",
                 "info",
             )
 
@@ -1529,14 +1594,11 @@ class App(ctk.CTk):
             lab_visible=self._is_lab_visible(),
             anchored=self._is_anchored(),
         )
-        self._show_flight_deck(allow_unanchored=True)
-        self.flight_deck.focus_deck()
         try:
-            hwnd = win32_api.widget_hwnd(self.flight_deck)
-            if hwnd:
-                win32_api.focus_window(hwnd)
+            self.flight_deck.hide_deck()
         except Exception:
             pass
+        self._show_lab_window(quiet=True)
         self._sync_shell_hook_flags()
         self._status(prompt, "warn")
 
@@ -1548,13 +1610,19 @@ class App(ctk.CTk):
         self._status("Close cancelled.", "info")
 
     def _confirm_close_flight_deck(self) -> None:
-        """Enter on close-confirm: quit app if Lab hidden; else withdraw deck only."""
+        """Enter on close-confirm: quit if Lab hidden; else cancel to expanded Lab."""
 
         if self._shell_phase is not ShellPhase.CLOSE_CONFIRM:
             return
         if self._is_lab_visible():
-            self._hide_flight_deck(user_hidden=True)
-            self._status("Flight deck closed. Activate deck from Lab or tray to reopen.", "info")
+            self._shell_phase = ShellPhase.INACTIVE
+            try:
+                self.flight_deck.hide_deck()
+            except Exception:
+                pass
+            self._morph_to_expanded()
+            self._sync_shell_hook_flags()
+            self._status("Close cancelled — Idle Lab stays open.", "info")
             return
         self._on_close()
 
@@ -1679,9 +1747,10 @@ class App(ctk.CTk):
                 self._hide_atom_create_overlay()
                 self._atom_create_phase = AtomCreatePhase.IDLE
                 self.hooks.state.atom_create_active = False
+                self.hooks.state.deck_mode_active = False
                 self._deck_mode = DeckMode.MENU
                 self._restore_menu_keymap()
-                self._open_atom_lab_from_deck()
+                self._return_to_molecule_atom_tab()
                 self._status("Left Atom Create.", "info")
                 return
             self._exit_atom_create_to_atom_lab()
@@ -1713,7 +1782,7 @@ class App(ctk.CTk):
                 self.hooks.state.deck_mode_active = False
             self._morph_to_expanded()
             self._sync_shell_hook_flags()
-            self._status("Live Overlay Lab closed — Idle Lab expanded.", "info")
+            self._status("Live Overlay Lab closed — Idle Lab expanded.", "ok")
         elif action is EscAction.STOP_LAB_RUNNERS:
             self._stop_lab_runners()
         elif action is EscAction.CLOSE_MOLECULE_LAB:
@@ -1785,7 +1854,12 @@ class App(ctk.CTk):
         return screen.left + 80, screen.top + 60
 
     def _morph_to_condensed(self, *, reason: str) -> None:
-        """Same window → skinny status + outside chords."""
+        """Alias — user-facing name is collapsed."""
+
+        self._morph_to_collapsed(reason=reason)
+
+    def _morph_to_collapsed(self, *, reason: str) -> None:
+        """Same window → skinny status + outside chords (LOL / Observation)."""
 
         if self._costume_mode == "expanded":
             try:
@@ -1795,7 +1869,7 @@ class App(ctk.CTk):
                     self._lab_saved_geometry = geo
             except Exception:
                 pass
-        self._costume_mode = "condensed"
+        self._costume_mode = "collapsed"
         self._costume_reason = str(reason or "")
         self._show_lab_window(quiet=True)
         if self._workspace is not None:
@@ -1821,7 +1895,7 @@ class App(ctk.CTk):
             pass
         self._refresh_condensed_status()
         self._sync_shell_hook_flags()
-        self._status(f"Condensed · {self._costume_reason or 'live'}.", "info")
+        self._status(f"Collapsed · {self._costume_reason or 'live'}.", "info")
 
     def _morph_to_expanded(self) -> None:
         if self._costume_mode == "expanded" and (
@@ -1859,6 +1933,11 @@ class App(ctk.CTk):
             self.geometry(geo)
         except Exception:
             pass
+        if self.hotkey_pocket is not None and self._deck_mode is not DeckMode.ATOM_CREATE:
+            try:
+                self.hotkey_pocket.set_focus_lab(normalize_last_tab(self._current_tab))
+            except Exception:
+                pass
         self._sync_shell_hook_flags()
 
     def _refresh_condensed_status(self) -> None:
@@ -1879,8 +1958,188 @@ class App(ctk.CTk):
             pass
         self._condensed_status.configure(text=" · ".join(parts))
 
+    def _on_skin_menu(self, label: str) -> None:
+        look_id = self._skin_by_label.get(str(label) or "")
+        if not look_id:
+            return
+        look = choose_skin(look_id)
+        self._apply_skin(look, persist=True)
+        self._status(f"Skin · {label}.", "ok")
+
+    def _apply_skin(self, look, *, persist: bool = True) -> None:
+        """Paint Idle Lab chrome from a Feel Lab look (Type → Bracket default)."""
+
+        self._look = look
+        if persist:
+            choose_skin(look.id)
+        try:
+            self.configure(fg_color=look.bg)
+        except Exception:
+            pass
+        try:
+            ctk.set_appearance_mode("dark" if look.style in {"type", "rail"} else "system")
+        except Exception:
+            pass
+        if getattr(self, "status_label", None) is not None:
+            try:
+                self.status_label.configure(text_color=look.caption)
+            except Exception:
+                pass
+        if getattr(self, "_chrome", None) is not None:
+            try:
+                self._chrome.configure(
+                    fg_color=look.panel,
+                    border_width=1 if look.style == "type" else 0,
+                    border_color=look.desc_border,
+                )
+            except Exception:
+                pass
+        for attr, kwargs in (
+            ("_brand_label", {"text_color": look.line}),
+            ("anchor_label", {"text_color": look.muted}),
+            ("mode_chip", {"text_color": look.caption}),
+            ("activity_label", {"text_color": look.esc_pop}),
+            ("files_badge", {"text_color": look.new}),
+            ("anchor_dot", {"text_color": look.muted}),
+        ):
+            widget = getattr(self, attr, None)
+            if widget is None:
+                continue
+            try:
+                widget.configure(**kwargs)
+            except Exception:
+                pass
+        for attr, kwargs in (
+            (
+                "settings_button",
+                {
+                    "fg_color": look.dorm_bg,
+                    "hover_color": look.live_hover,
+                    "text_color": look.caption,
+                },
+            ),
+            (
+                "stop_all_button",
+                {
+                    "fg_color": look.return_bg,
+                    "hover_color": look.live_hover,
+                    "text_color": look.esc_pop,
+                    "border_color": look.return_border,
+                },
+            ),
+            (
+                "restart_button",
+                {
+                    "fg_color": look.dorm_bg,
+                    "hover_color": look.live_hover,
+                    "text_color": look.caption,
+                },
+            ),
+            (
+                "refresh_button",
+                {
+                    "fg_color": look.live_bg,
+                    "hover_color": look.live_hover,
+                    "text_color": look.live_text,
+                    "border_width": 1 if look.style == "type" else 0,
+                    "border_color": look.live_border,
+                },
+            ),
+            (
+                "preview_condensed_button",
+                {
+                    "fg_color": look.live_bg,
+                    "hover_color": look.live_hover,
+                    "text_color": look.live_text,
+                    "border_width": 1 if look.style == "type" else 0,
+                    "border_color": look.live_border,
+                },
+            ),
+            (
+                "anchor_button",
+                {
+                    "fg_color": look.live_bg,
+                    "hover_color": look.live_hover,
+                    "text_color": look.live_text,
+                    "border_width": 1 if look.style == "type" else 0,
+                    "border_color": look.live_border,
+                },
+            ),
+            (
+                "clear_button",
+                {"hover_color": look.return_bg, "text_color": look.esc_pop},
+            ),
+        ):
+            widget = getattr(self, attr, None)
+            if widget is None:
+                continue
+            try:
+                widget.configure(**kwargs)
+            except Exception:
+                pass
+        if getattr(self, "_left_rail", None) is not None:
+            try:
+                self._left_rail.configure(
+                    fg_color=look.board,
+                    border_width=1 if look.style == "type" else 0,
+                    border_color=look.desc_border,
+                )
+            except Exception:
+                pass
+        if getattr(self, "_action_pane", None) is not None:
+            try:
+                self._action_pane.configure(fg_color=look.bg)
+            except Exception:
+                pass
+        if self.lab_tree is not None:
+            try:
+                self.lab_tree.apply_look(look)
+            except Exception:
+                pass
+        if self.hotkey_pocket is not None:
+            try:
+                self.hotkey_pocket.apply_look(look)
+            except Exception:
+                pass
+        if getattr(self, "_condensed_panel", None) is not None:
+            try:
+                self._condensed_panel.configure(
+                    fg_color=look.board,
+                    border_width=1 if look.style == "type" else 0,
+                    border_color=look.desc_border,
+                )
+                self._condensed_title.configure(text_color=look.line)
+                self._condensed_status.configure(text_color=look.esc_pop)
+                self._condensed_expand_btn.configure(
+                    fg_color=look.live_bg,
+                    hover_color=look.live_hover,
+                    text_color=look.live_text,
+                    border_width=1 if look.style == "type" else 0,
+                    border_color=look.live_border,
+                )
+                for lbl in getattr(self, "_condensed_chord_labels", []) or []:
+                    try:
+                        lbl.destroy()
+                    except Exception:
+                        pass
+                self._condensed_chord_labels = paint_collapsed_chords(
+                    self._condensed_chord_host, look
+                )
+            except Exception:
+                pass
+        if getattr(self, "skin_menu", None) is not None:
+            label = next(
+                (lbl for lid, lbl in self._skin_choices if lid == look.id),
+                None,
+            )
+            if label:
+                try:
+                    self.skin_menu.set(label)
+                except Exception:
+                    pass
+
     def _preview_condensed_costume(self) -> None:
-        self._morph_to_condensed(reason="preview")
+        self._morph_to_collapsed(reason="preview")
 
     def _preview_expand_costume(self) -> None:
         if self.live_control.active:
@@ -1924,7 +2183,7 @@ class App(ctk.CTk):
         self._shell_phase = ShellPhase.ACTIVE
         self._deck_mode = DeckMode.LOL
         self.hooks.state.deck_mode_active = True
-        self._morph_to_condensed(reason="lol")
+        self._morph_to_collapsed(reason="lol")
         self._sync_shell_hook_flags()
         try:
             self.flight_deck.hide_deck()
@@ -1937,37 +2196,59 @@ class App(ctk.CTk):
             self._morph_to_expanded()
             return
         self._refresh_condensed_status()
-        self._status("Live Overlay Lab — Lab condensed. Esc exits.", "run")
+        self._status("Live Overlay Lab — Lab collapsed. Esc expands.", "run")
 
     def _open_atom_create_from_lab(self) -> None:
-        """Idle Lab / Atom Lab button → Create Atom on Deck (same as M→3)."""
+        """Molecule / LOL Create Atom — stay on expanded Idle Lab."""
 
         self._open_atom_create_from_deck()
 
     def _open_atom_create_from_deck(self) -> None:
-        self._ensure_deck_only_surface()
-        if self._shell_phase is ShellPhase.INACTIVE:
-            self._activate_flight_deck()
-        # Leaving Atom Lab float for Create — close the float, keep create session.
+        """Start Atom Create without peer Deck chrome."""
+
         self._close_atom_lab_float(quiet=True)
+        self._morph_to_expanded()
+        self._show_lab_window(quiet=True)
+        self._goto_lab_tab("Molecule Lab")
+        try:
+            from idle_lab.shell.tabs.molecule_lab import select_ml_subtab
+
+            if self._molecule_lab_root is not None:
+                select_ml_subtab(self._molecule_lab_root, "Atom")
+        except Exception:
+            pass
         self._atom_draft = AtomDraft()
         self._atom_create_phase = AtomCreatePhase.KIND
         self._enter_deck_mode(DeckMode.ATOM_CREATE)
         self._status(
-            "Create Atom — choose 1 Automation or 2 Phase map.",
+            "Create Atom — choose 1 Automation or 2 Phase map (pocket + keys).",
             "info",
         )
 
     def _open_atom_lab_from_deck(self) -> None:
-        """M→2 — lightweight Molecule Lab focused on Atom (library + coverage)."""
+        """Legacy M→2 — open Molecule Lab · Atom in expanded Idle Lab."""
 
-        self._ensure_deck_only_surface()
-        if self._shell_phase is ShellPhase.INACTIVE:
-            self._activate_flight_deck()
         self._hide_atom_create_overlay()
-        self._enter_deck_mode(DeckMode.ATOM_LAB)
-        self._open_atom_lab_float()
-        self._status("Atom Lab — library + LOL coverage. Create Atom via M→3 or button.", "ok")
+        self._deck_mode = DeckMode.MENU
+        self.hooks.state.deck_mode_active = False
+        self.hooks.state.atom_create_active = False
+        self._return_to_molecule_atom_tab()
+        self._status("Atom Lab — use Create Atom in the Atom pane.", "ok")
+
+    def _return_to_molecule_atom_tab(self) -> None:
+        self._morph_to_expanded()
+        self._show_lab_window(quiet=True)
+        self._goto_lab_tab("Molecule Lab")
+        try:
+            from idle_lab.shell.tabs.molecule_lab import select_ml_subtab
+
+            if self._molecule_lab_root is not None:
+                select_ml_subtab(self._molecule_lab_root, "Atom")
+        except Exception:
+            pass
+        if self.hotkey_pocket is not None:
+            self.hotkey_pocket.set_focus_lab("Molecule Lab")
+        self._sync_shell_hook_flags()
 
     def _open_atom_lab_float(self) -> None:
         self._close_floating_lab()
@@ -1988,13 +2269,13 @@ class App(ctk.CTk):
         ).pack(side="left")
         ctk.CTkButton(
             header,
-            text="Create Atom (Deck)",
-            width=150,
-            command=self._open_atom_create_from_deck,
+            text="Create Atom",
+            width=120,
+            command=self._open_atom_create_from_lab,
         ).pack(side="right")
         ctk.CTkLabel(
             win,
-            text="Lightweight Molecule Lab · Atom tab — Esc closes to Flight Deck",
+            text="Lightweight Atom float — prefer Molecule Lab · Atom in Idle Lab",
             text_color="#7E8796",
             anchor="w",
         ).pack(fill="x", padx=12, pady=(0, 6))
@@ -2034,7 +2315,7 @@ class App(ctk.CTk):
             self._refresh_atom_create_chrome()
             self._status("Cancelled exit — still in Atom Create.", "info")
             return
-        # save or discard (or empty) → leave Create for Atom Lab.
+        # save or discard (or empty) → leave Create for Molecule Lab · Atom.
         self._hide_atom_create_overlay()
         self._atom_create_phase = AtomCreatePhase.IDLE
         self._atom_key_capture = False
@@ -2045,13 +2326,11 @@ class App(ctk.CTk):
             self.flight_deck.set_deck_lab_mode(False)
         except Exception:
             pass
-        if self._shell_phase is ShellPhase.INACTIVE:
-            self._activate_flight_deck()
         self._deck_mode = DeckMode.MENU
         self._restore_menu_keymap()
-        self._open_atom_lab_from_deck()
+        self._return_to_molecule_atom_tab()
         if outcome == "saved":
-            self._status("Atom saved — returned to Atom Lab.", "ok")
+            self._status("Atom saved — Molecule Lab · Atom.", "ok")
         elif outcome == "discarded":
             self._status("Draft discarded — returned to Atom Lab.", "warn")
         else:
@@ -2233,13 +2512,31 @@ class App(ctk.CTk):
         self.flight_deck.set_keymap(keymap)
         try:
             self.flight_deck.set_expanded(True)
+            self.flight_deck.hide_deck()
         except Exception:
             pass
         self._sync_atom_create_overlay()
+        self._sync_atom_create_pocket()
         self._status(
             f"Atom Create · {len(self._atom_draft.steps)} step(s) · {atom_create_legend(phase=self._atom_create_phase)}",
             "info",
         )
+
+    def _sync_atom_create_pocket(self) -> None:
+        if self.hotkey_pocket is None:
+            return
+        phase = self._atom_create_phase
+        key = {
+            AtomCreatePhase.KIND: "kind",
+            AtomCreatePhase.CREATE: "create",
+            AtomCreatePhase.PLAYBOOK: "playbook",
+            AtomCreatePhase.EDIT: "edit",
+            AtomCreatePhase.PHASE_MAP: "phase_map",
+        }.get(phase, "create")
+        try:
+            self.hotkey_pocket.set_atom_create_phase(key)
+        except Exception:
+            pass
 
     def _restore_menu_keymap(self) -> None:
         keymap = getattr(self, "_flight_deck_keymap", None)
@@ -3231,14 +3528,17 @@ class App(ctk.CTk):
         self._open_settings_float()
 
     def _enter_deck_mode(self, mode: DeckMode) -> None:
-        """Abandon menu letters; open floating Lab skeleton when needed."""
+        """Mode owner for Labs / Create — Idle Lab stays visible; peer Deck stays hidden."""
 
         if mode is DeckMode.MENU:
             self._exit_deck_mode()
             return
-        self._ensure_deck_only_surface()
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
         if self._shell_phase is not ShellPhase.ACTIVE:
-            self._activate_flight_deck()
+            self._shell_phase = ShellPhase.ACTIVE
         self._close_floating_lab()
         self._deck_mode = mode
         key = vk_label(self._flight_deck_expand_vk_for_anchor())
@@ -3247,38 +3547,36 @@ class App(ctk.CTk):
         self.hooks.state.deck_mode_active = True
 
         if mode is DeckMode.ATOM_CREATE:
-            # Keep real FD accordion chrome with a create keymap (Esc → Atom Lab).
+            self._morph_to_expanded()
+            self._show_lab_window(quiet=True)
             if self._atom_create_phase is AtomCreatePhase.IDLE:
                 self._atom_draft = AtomDraft()
                 self._atom_create_phase = AtomCreatePhase.KIND
             self._install_atom_create_keymap()
             self.hooks.state.atom_create_active = True
             self._sync_shell_hook_flags()
-            self._status(f"Deck mode: {mode_display_name(mode)}.", "info")
+            self._status(f"{mode_display_name(mode)} — expanded Idle Lab.", "info")
             return
 
         self.flight_deck.collapse_menu()
         self.flight_deck.set_deck_lab_mode(True, prompt=prompt, legend=legend)
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
         self._sync_shell_hook_flags()
 
         if mode is DeckMode.MOLECULE_LAB:
-            # Floating composer opened by caller / Deck M dispatch.
-            pass
+            self._goto_lab_tab("Molecule Lab")
         elif mode is DeckMode.ATOM_LAB:
-            # Float opened by _open_atom_lab_from_deck.
-            pass
+            self._return_to_molecule_atom_tab()
         elif mode is DeckMode.OBSERVATION_LAB:
-            self._open_floating_lab(
-                title="Idle Lab · Observation Lab",
-                heading="Observation Lab",
-                blurb="Review/capture lives in Idle Lab → Observation Lab. This float is a lightweight entry stub.",
-            )
+            self._goto_lab_tab("Observation Lab")
         elif mode is DeckMode.LOL:
-            # Live enter is the product surface — no extra float.
             pass
         elif mode is DeckMode.SETTINGS:
             self._open_settings_float()
-        self._status(f"Deck mode: {mode_display_name(mode)}.", "info")
+        self._status(f"{mode_display_name(mode)}.", "info")
 
     def _exit_deck_mode(self, *, quiet: bool = False) -> None:
         leaving = self._deck_mode
@@ -3299,19 +3597,17 @@ class App(ctk.CTk):
         self.hooks.state.atom_placing = False
         try:
             self.flight_deck.set_deck_lab_mode(False)
+            self.flight_deck.hide_deck()
         except Exception:
             pass
         self.hooks.state.deck_mode_active = False
         self.hooks.state.atom_create_active = False
         self._restore_menu_keymap()
-        if self._shell_phase is ShellPhase.ACTIVE and self._is_anchored() and not self._is_lab_visible():
-            try:
-                self.flight_deck.set_expanded(True)
-            except Exception:
-                pass
+        if leaving is DeckMode.ATOM_CREATE:
+            self._return_to_molecule_atom_tab()
         self._sync_shell_hook_flags()
         if not quiet:
-            self._status("Deck menu.", "info")
+            self._status("Idle Lab desk.", "info")
 
     def _close_floating_lab(self) -> None:
         win = self._floating_lab
@@ -3380,7 +3676,7 @@ class App(ctk.CTk):
             self.flight_deck.hide_deck()
         except Exception:
             pass
-        self._status("Peer Flight Deck is folded away — use the hotkey pocket.", "info")
+        self._status("Idle Lab is the desk — use the hotkey pocket.", "info")
 
     def _toggle_flight_deck_from_lab(self) -> None:
         self._open_flight_deck_from_lab()
@@ -3916,7 +4212,7 @@ class App(ctk.CTk):
             snapshot=self.anchor_target.snapshot,
             humanize=self._humanize_profile(),
         )
-        self._status(f"Flight deck · {path}", "run")
+        self._status(f"Hotkey · {path}", "run")
 
     def _flight_deck_start_event(self, event_id: str, *, path: str) -> None:
         event = self.auto_store.events.get(event_id)
@@ -3925,7 +4221,7 @@ class App(ctk.CTk):
             return
         self._start_automations_selection(event, None)
         if self.auto_runtime.collection_running or self.auto_runtime.is_running:
-            self._status(f"Flight deck · {path}", "run")
+            self._status(f"Hotkey · {path}", "run")
 
     def _flight_deck_start_collection(self, collection_id: str, *, path: str) -> None:
         collection = self.auto_store.collections.get(collection_id)
@@ -3934,7 +4230,7 @@ class App(ctk.CTk):
             return
         self._start_molecule(collection)
         if self.auto_runtime.collection_running or self.auto_runtime.is_running:
-            self._status(f"Flight deck · {path}", "run")
+            self._status(f"Hotkey · {path}", "run")
 
     def _molecule_lab_is_open(self) -> bool:
         win = getattr(self, "_molecule_composer", None)
@@ -4088,9 +4384,9 @@ class App(ctk.CTk):
         self._refresh_screen_map_catalog()
         self._update_activity()
         if not self.live_control.active:
-            self._morph_to_condensed(reason="observation")
+            self._morph_to_collapsed(reason="observation")
         self._refresh_condensed_status()
-        self._status(f"Observation ON · {batch.folder.name} — Lab condensed; Esc stops.", "run")
+        self._status(f"Observation ON · {batch.folder.name} — Lab collapsed; Esc stops.", "run")
 
     def _mark_observation(self) -> None:
         if not self.observation.active:
@@ -4199,12 +4495,15 @@ class App(ctk.CTk):
         elif running:
             status = f"Running · {status}"
         self.flight_deck.set_run_state(running=running, paused=paused, status=status)
-        self.hooks.state.flight_deck_expanded = bool(self.flight_deck.expanded)
-        self.hooks.state.flight_deck_open = self._flight_deck_is_visible()
+        # Peer visibility must not own flight_deck_open — virtual Lab surface does.
+        try:
+            self.flight_deck.hide_deck()
+        except Exception:
+            pass
+        self._sync_shell_hook_flags()
 
     def _maybe_auto_show_flight_deck(self, status: str, rect) -> None:
-        # Activate model: deck stays visible; poller only syncs flags + onscreen.
-        self.hooks.state.flight_deck_expand_armed = True
+        # Peer Deck stays sealed; poller only syncs anchored/expand state for hooks.
         if self._shell_phase is ShellPhase.ACTIVE:
             anchored = status in ("ok", "minimized")
             self.flight_deck.set_anchored(anchored)
@@ -4218,9 +4517,11 @@ class App(ctk.CTk):
                     lab_visible=self._is_lab_visible(),
                     anchored=False,
                 )
+            try:
+                self.flight_deck.hide_deck()
+            except Exception:
+                pass
         self._sync_shell_hook_flags()
-        if self._flight_deck_is_visible():
-            self.flight_deck.ensure_onscreen()
         _ = rect
 
     def _edited_points(self) -> list[ClickPoint]:

@@ -58,7 +58,6 @@ WS_EX_NOACTIVATE = 0x08000000
 SW_HIDE = 0
 
 ID_OPEN_LAB = 1001
-ID_SHOW_DECK = 1002
 ID_QUIT = 1003
 
 
@@ -177,15 +176,15 @@ class TrayController:
         *,
         schedule: Callable[[Callable[[], None]], None],
         on_open_lab: Callable[[], None],
-        on_show_deck: Callable[[], None],
         on_quit: Callable[[], None],
         on_error: Callable[[str], None] | None = None,
+        on_show_deck: Callable[[], None] | None = None,
     ) -> None:
         self._schedule = schedule
         self._on_open_lab = on_open_lab
-        self._on_show_deck = on_show_deck
         self._on_quit = on_quit
         self._on_error = on_error
+        _ = on_show_deck  # peer Deck removed from tray
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
         self._hwnd: int = 0
@@ -268,8 +267,6 @@ class TrayController:
                 cmd = int(wparam) & 0xFFFF
                 if cmd == ID_OPEN_LAB:
                     controller._schedule(controller._on_open_lab)
-                elif cmd == ID_SHOW_DECK:
-                    controller._schedule(controller._on_show_deck)
                 elif cmd == ID_QUIT:
                     controller._schedule(controller._on_quit)
                 return 0
@@ -408,7 +405,6 @@ class TrayController:
         if not menu:
             return
         user32.AppendMenuW(menu, MF_STRING, ID_OPEN_LAB, "Open Lab")
-        user32.AppendMenuW(menu, MF_STRING, ID_SHOW_DECK, "Show Flight Deck")
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(menu, MF_STRING, ID_QUIT, "Quit Idle Lab")
         pt = wintypes.POINT()
